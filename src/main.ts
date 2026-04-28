@@ -6,11 +6,27 @@ import { AppModule } from "./app.module";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.enableCors({
-    origin: [
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-      "https://monraspgit.github.io"
-    ]
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void
+    ) => {
+      const allowedOrigins = new Set([
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://monraspgit.github.io"
+      ]);
+
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Not allowed by CORS"), false);
+    },
+    methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: false,
+    optionsSuccessStatus: 204
   });
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
