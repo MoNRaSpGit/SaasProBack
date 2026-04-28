@@ -6,7 +6,39 @@ type DbConnectionCheckResult = {
   ok: boolean;
   errorCode?: string;
   errorMessage?: string;
+  probableCause?: string;
+  suggestedFix?: string;
 };
+
+function mapDatabaseError(code: string, message: string): Pick<DbConnectionCheckResult, "probableCause" | "suggestedFix"> {
+  switch (code) {
+    case "ECONNREFUSED":
+      return {
+        probableCause: "El host o puerto de MySQL rechaza la conexion desde Render (firewall/ACL o puerto incorrecto).",
+        suggestedFix: "Verifica DB_HOST/DB_PORT y habilita acceso desde la red de Render en Clever Cloud."
+      };
+    case "ER_ACCESS_DENIED_ERROR":
+      return {
+        probableCause: "Usuario o password incorrectos, o el usuario no tiene permiso desde ese host/IP.",
+        suggestedFix: "Revisar DB_USER/DB_PASSWORD y permisos del usuario para conexiones remotas."
+      };
+    case "ENOTFOUND":
+      return {
+        probableCause: "El hostname de la base no se puede resolver por DNS.",
+        suggestedFix: "Verifica DB_HOST o usa el host directo de Clever Cloud."
+      };
+    case "ETIMEDOUT":
+      return {
+        probableCause: "Timeout de red hacia MySQL (bloqueo o latencia alta).",
+        suggestedFix: "Probar host/puerto directos y revisar reglas de red/allowlist."
+      };
+    default:
+      return {
+        probableCause: "Fallo de conexion a MySQL no clasificado.",
+        suggestedFix: "Revisar variables de entorno y logs completos del deploy."
+      };
+  }
+}
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
@@ -40,11 +72,17 @@ export class DatabaseService implements OnModuleDestroy {
       await this.checkConnection();
       return { ok: true };
     } catch (error: unknown) {
-      const err = error as { code?: string; message?: string };
+      const err = error as { code?: string; message?: string; sqlMessage?: string };
+      const errorCode = err.code || "UNKNOWN_DB_ERROR";
+      const errorMessage = err.message || err.sqlMessage || "Database connection failed";
+      const mapped = mapDatabaseError(errorCode, errorMessage);
+
       return {
         ok: false,
-        errorCode: err.code || "UNKNOWN_DB_ERROR",
-        errorMessage: err.message || "Database connection failed"
+        errorCode,
+        errorMessage,
+        probableCause: mapped.probableCause,
+        suggestedFix: mapped.suggestedFix
       };
     }
   }

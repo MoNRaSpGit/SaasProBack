@@ -39,7 +39,9 @@ export class HealthController {
       status: "error",
       database: "disconnected",
       errorCode: dbStatus.errorCode,
-      errorMessage: dbStatus.errorMessage
+      errorMessage: dbStatus.errorMessage,
+      probableCause: dbStatus.probableCause,
+      suggestedFix: dbStatus.suggestedFix
     };
   }
 }
