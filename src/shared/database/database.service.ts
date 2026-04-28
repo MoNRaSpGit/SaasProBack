@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createPool, Pool } from "mysql2/promise";
+import { createPool, Pool, RowDataPacket } from "mysql2/promise";
 
 type DbConnectionCheckResult = {
   ok: boolean;
@@ -65,6 +65,15 @@ export class DatabaseService implements OnModuleDestroy {
   async checkConnection() {
     const [rows] = await this.pool.query("SELECT 1 AS ok");
     return rows;
+  }
+
+  async query<T extends RowDataPacket[]>(sql: string, values: any[] = []) {
+    const [rows] = await this.pool.query<T>(sql, values);
+    return rows;
+  }
+
+  async execute(sql: string, values: any[] = []) {
+    await this.pool.execute(sql, values);
   }
 
   async checkConnectionDetailed(): Promise<DbConnectionCheckResult> {
