@@ -7,19 +7,39 @@ export class HealthController {
 
   @Get()
   async getHealth() {
-    try {
-      await this.databaseService.checkConnection();
-      return {
-        status: "ok",
-        service: "saaspro-backend",
-        database: "connected"
-      };
-    } catch {
+    const dbStatus = await this.databaseService.checkConnectionDetailed();
+
+    if (!dbStatus.ok) {
       return {
         status: "degraded",
         service: "saaspro-backend",
         database: "disconnected"
       };
     }
+
+    return {
+      status: "ok",
+      service: "saaspro-backend",
+      database: "connected"
+    };
+  }
+
+  @Get("db")
+  async getDatabaseHealth() {
+    const dbStatus = await this.databaseService.checkConnectionDetailed();
+
+    if (dbStatus.ok) {
+      return {
+        status: "ok",
+        database: "connected"
+      };
+    }
+
+    return {
+      status: "error",
+      database: "disconnected",
+      errorCode: dbStatus.errorCode,
+      errorMessage: dbStatus.errorMessage
+    };
   }
 }

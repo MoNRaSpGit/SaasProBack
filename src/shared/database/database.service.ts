@@ -2,6 +2,12 @@ import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createPool, Pool } from "mysql2/promise";
 
+type DbConnectionCheckResult = {
+  ok: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+};
+
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
   private readonly pool: Pool;
@@ -27,6 +33,20 @@ export class DatabaseService implements OnModuleDestroy {
   async checkConnection() {
     const [rows] = await this.pool.query("SELECT 1 AS ok");
     return rows;
+  }
+
+  async checkConnectionDetailed(): Promise<DbConnectionCheckResult> {
+    try {
+      await this.checkConnection();
+      return { ok: true };
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
+      return {
+        ok: false,
+        errorCode: err.code || "UNKNOWN_DB_ERROR",
+        errorMessage: err.message || "Database connection failed"
+      };
+    }
   }
 
   async onModuleDestroy() {
