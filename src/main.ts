@@ -14,7 +14,9 @@ async function bootstrap() {
     })
   );
 
-  const port = Number(process.env.PORT || 3000);
+  const rawPort = process.env.PORT;
+  const parsedPort = rawPort ? Number(rawPort) : 3000;
+  const port = Number.isFinite(parsedPort) && parsedPort > 0 && parsedPort < 65536 ? parsedPort : 3000;
   await app.listen(port);
 }
 
