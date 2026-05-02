@@ -34,6 +34,10 @@ type TenantMembershipRow = RowDataPacket & {
   membership_role: "owner" | "admin" | "operario" | "staff";
   membership_status: "active" | "invited" | "suspended";
   membership_is_default: number;
+  billing_status: "active" | "grace_period" | "pending_manual_block" | "blocked";
+  paid_until: string | null;
+  grace_until: string | null;
+  blocked_reason: string | null;
 };
 
 type TenantModuleRow = RowDataPacket & {
@@ -75,6 +79,12 @@ type AuthSessionPayload = {
       role: string;
       status: string;
       isDefault: boolean;
+    };
+    billing: {
+      status: "active" | "grace_period" | "pending_manual_block" | "blocked";
+      paidUntil: string | null;
+      graceUntil: string | null;
+      blockedReason: string | null;
     };
     modules: string[];
   } | null;
@@ -351,7 +361,7 @@ export class AuthService {
       return null;
     }
 
-    const membershipRows = await this.db.query<TenantMembershipRow[]>(
+      const membershipRows = await this.db.query<TenantMembershipRow[]>(
       `SELECT
          m.tenant_id,
          t.name AS tenant_name,
@@ -359,9 +369,14 @@ export class AuthService {
          t.status AS tenant_status,
          m.role AS membership_role,
          m.status AS membership_status,
-         m.is_default AS membership_is_default
+         m.is_default AS membership_is_default,
+         s.billing_status,
+         s.paid_until,
+         s.grace_until,
+         s.blocked_reason
        FROM saas_tenant_memberships m
        INNER JOIN saas_tenants t ON t.id = m.tenant_id
+       LEFT JOIN saas_tenant_settings s ON s.tenant_id = t.id
        WHERE m.user_id = ?
          AND m.status = 'active'
          AND t.status = 'active'
@@ -394,6 +409,12 @@ export class AuthService {
         role: normalizeTenantMembershipRole(membership.membership_role),
         status: membership.membership_status,
         isDefault: Boolean(membership.membership_is_default)
+      },
+      billing: {
+        status: membership.billing_status || "active",
+        paidUntil: membership.paid_until,
+        graceUntil: membership.grace_until,
+        blockedReason: membership.blocked_reason
       },
       modules: moduleRows.map((row) => row.module_key)
     };

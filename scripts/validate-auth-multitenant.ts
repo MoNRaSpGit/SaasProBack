@@ -23,6 +23,12 @@ type AuthResponse = {
       status: string;
       isDefault: boolean;
     };
+    billing: {
+      status: string;
+      paidUntil: string | null;
+      graceUntil: string | null;
+      blockedReason: string | null;
+    };
     modules: string[];
   } | null;
   tokens?: {
@@ -43,6 +49,10 @@ type TenantAuditRow = RowDataPacket & {
   membership_status: string;
   membership_is_default: number;
   brand_name: string | null;
+  billing_status: string;
+  paid_until: string | null;
+  grace_until: string | null;
+  blocked_reason: string | null;
 };
 
 function buildUniqueSuffix() {
@@ -117,7 +127,11 @@ async function main() {
          m.role AS membership_role,
          m.status AS membership_status,
          m.is_default AS membership_is_default,
-         s.brand_name
+         s.brand_name,
+         s.billing_status,
+         s.paid_until,
+         s.grace_until,
+         s.blocked_reason
        FROM saasPro_users u
        INNER JOIN saas_tenant_memberships m ON m.user_id = u.id
        INNER JOIN saas_tenants t ON t.id = m.tenant_id
@@ -131,6 +145,14 @@ async function main() {
     const auditRow = rows[0];
     if (!auditRow) {
       throw new Error("Database audit failed: no tenant context row found");
+    }
+
+    if (registerPayload.tenantContext?.billing.status !== "active") {
+      throw new Error(`Unexpected register billing status: ${JSON.stringify(registerPayload.tenantContext?.billing)}`);
+    }
+
+    if (loginPayload.tenantContext?.billing.status !== "active") {
+      throw new Error(`Unexpected login billing status: ${JSON.stringify(loginPayload.tenantContext?.billing)}`);
     }
 
     console.log(
@@ -152,7 +174,11 @@ async function main() {
             membershipRole: auditRow.membership_role,
             membershipStatus: auditRow.membership_status,
             membershipIsDefault: Boolean(auditRow.membership_is_default),
-            brandName: auditRow.brand_name
+            brandName: auditRow.brand_name,
+            billingStatus: auditRow.billing_status,
+            paidUntil: auditRow.paid_until,
+            graceUntil: auditRow.grace_until,
+            blockedReason: auditRow.blocked_reason
           }
         },
         null,
