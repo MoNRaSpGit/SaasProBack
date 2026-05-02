@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { getCapabilitiesForRole, hasCapability } from "../authz/capabilities";
 import { AuthRateLimitMiddleware } from "../http/auth-rate-limit.middleware";
 
 describe("backend smoke", () => {
@@ -41,5 +42,13 @@ describe("backend smoke", () => {
     expect(nextCount).toBe(2);
     expect(response.statusCode).toBe(429);
     expect(response.body).toMatchObject({ message: "Too many requests" });
+  });
+
+  it("maps tenant capabilities by role", () => {
+    expect(hasCapability("owner", "distribuidora.admin.read")).toBe(true);
+    expect(hasCapability("admin", "camiones.trips.pay")).toBe(true);
+    expect(hasCapability("staff", "distribuidora.admin.read")).toBe(false);
+    expect(hasCapability("operario", "camiones.trips.write")).toBe(true);
+    expect(getCapabilitiesForRole("unknown")).toEqual([]);
   });
 });

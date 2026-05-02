@@ -16,7 +16,8 @@
     "test:functional:auth": "npx.cmd ts-node scripts/validate-auth-multitenant.ts",
     "test:functional:pos": "npx.cmd ts-node scripts/validate-pos-products.ts && npx.cmd ts-node scripts/validate-pos-sales.ts && npx.cmd ts-node scripts/validate-pos-dashboard.ts",
     "test:functional:camiones": "npx.cmd ts-node scripts/validate-camiones.ts",
-    "test:functional:distribuidora": "npx.cmd ts-node scripts/validate-distribuidora-shell.ts"
+    "test:functional:distribuidora": "npx.cmd ts-node scripts/validate-distribuidora-shell.ts",
+    "test:functional:rbac": "npx.cmd ts-node scripts/validate-role-capabilities.ts"
   },
   "engines": {
     "node": ">=22.12.0"

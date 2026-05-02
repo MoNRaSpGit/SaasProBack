@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { hasCapability } from "../../shared/authz/capabilities";
 import { DistribuidoraRequestUser } from "./distribuidora.types";
 
 @Injectable()
@@ -19,8 +20,8 @@ export class DistribuidoraService {
         membershipRole: currentUser.membershipRole
       },
       capabilities: {
-        orderCapture: false,
-        orderAdmin: false,
+        orderCapture: hasCapability(currentUser.membershipRole, "distribuidora.shell.read"),
+        orderAdmin: hasCapability(currentUser.membershipRole, "distribuidora.admin.read"),
         localDrafts: false,
         backendOrders: false
       },

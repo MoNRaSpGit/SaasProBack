@@ -1,4 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { CapabilityGuard } from "../../shared/authz/capability.guard";
+import { RequireCapability } from "../../shared/authz/require-capability.decorator";
 import { CamionesAuthGuard } from "./camiones-auth.guard";
 import { CamionesService } from "./camiones.service";
 import { CamionesRequestUser } from "./camiones.types";
@@ -13,26 +15,36 @@ import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
 export class CamionesController {
   constructor(private readonly camionesService: CamionesService) {}
 
+  @RequireCapability("camiones.clients.read")
+  @UseGuards(CapabilityGuard)
   @Get("clients")
   listClients(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Query() query: ListCamionesClientsDto) {
     return this.camionesService.listClients(currentUser, query);
   }
 
+  @RequireCapability("camiones.clients.write")
+  @UseGuards(CapabilityGuard)
   @Post("clients")
   createClient(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesClientDto) {
     return this.camionesService.createClient(currentUser, dto);
   }
 
+  @RequireCapability("camiones.trips.read")
+  @UseGuards(CapabilityGuard)
   @Get("trips")
   listTrips(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Query() query: ListCamionesTripsDto) {
     return this.camionesService.listTrips(currentUser, query);
   }
 
+  @RequireCapability("camiones.trips.write")
+  @UseGuards(CapabilityGuard)
   @Post("trips")
   createTrip(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesTripDto) {
     return this.camionesService.createTrip(currentUser, dto);
   }
 
+  @RequireCapability("camiones.trips.pay")
+  @UseGuards(CapabilityGuard)
   @Patch("trips/:id/pay")
   markTripPaid(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) tripId: number) {
     return this.camionesService.markTripPaid(currentUser, tripId);

@@ -4,6 +4,7 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
 import { DistribuidoraModule } from "./modules/distribuidora/distribuidora.module";
 import { PosModule } from "./modules/pos/pos.module";
+import { AuthzModule } from "./shared/authz/authz.module";
 import { DatabaseModule } from "./shared/database/database.module";
 import { HealthController } from "./shared/health/health.controller";
 import { AuthRateLimitMiddleware } from "./shared/http/auth-rate-limit.middleware";
@@ -12,6 +13,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    AuthzModule,
     DatabaseModule,
     AuthModule,
     PosModule,

@@ -40,6 +40,11 @@ const suite = [
     name: "distribuidora-shell",
     command: "npx.cmd",
     args: ["ts-node", "scripts/validate-distribuidora-shell.ts"]
+  },
+  {
+    name: "role-capabilities",
+    command: "npx.cmd",
+    args: ["ts-node", "scripts/validate-role-capabilities.ts"]
   }
 ];
 
