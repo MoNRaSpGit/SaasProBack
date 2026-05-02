@@ -8,6 +8,7 @@ import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
 import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
+import { UpdateCamionesPlaceDto } from "./dto/update-camiones-place.dto";
 
 type CamionesClientRow = RowDataPacket & {
   id: number;
@@ -121,7 +122,42 @@ export class CamionesService {
     );
 
     if (existingRows[0]) {
-      return { item: this.mapClient(existingRows[0]) };
+      const existingClient = existingRows[0];
+      const nextPhone = phone ?? existingClient.phone;
+      const nextNotes = notes ?? existingClient.notes;
+
+      if (existingClient.phone !== nextPhone || existingClient.notes !== nextNotes) {
+        await this.databaseService.execute<ResultSetHeader>(
+          `UPDATE saas_camiones_clients
+           SET phone = ?,
+               notes = ?
+           WHERE id = ?
+             AND tenant_id = ?`,
+          [nextPhone, nextNotes, existingClient.id, currentUser.tenantId]
+        );
+
+        const refreshedRows = await this.databaseService.query<CamionesClientRow[]>(
+          `SELECT
+             id,
+             tenant_id,
+             branch_id,
+             name,
+             phone,
+             notes,
+             is_active,
+             created_at,
+             updated_at
+           FROM saas_camiones_clients
+           WHERE id = ?
+             AND tenant_id = ?
+           LIMIT 1`,
+          [existingClient.id, currentUser.tenantId]
+        );
+
+        return { item: this.mapClient(refreshedRows[0]) };
+      }
+
+      return { item: this.mapClient(existingClient) };
     }
 
     const result = await this.databaseService.execute<ResultSetHeader>(
@@ -257,6 +293,93 @@ export class CamionesService {
     return {
       item: this.mapPlace(rows[0])
     };
+  }
+
+  async updatePlace(currentUser: CamionesRequestUser, placeId: number, dto: UpdateCamionesPlaceDto) {
+    const name = dto.name.trim();
+    const notes = dto.notes?.trim() || null;
+
+    const duplicateRows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE tenant_id = ?
+         AND LOWER(name) = LOWER(?)
+         AND id <> ?
+       LIMIT 1`,
+      [currentUser.tenantId, name, placeId]
+    );
+
+    if (duplicateRows[0]) {
+      throw new BadRequestException("Ya existe otro lugar con ese nombre");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_places
+       SET name = ?,
+           notes = ?
+       WHERE id = ?
+         AND tenant_id = ?
+         AND is_active = 1`,
+      [name, notes, placeId, currentUser.tenantId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Lugar no encontrado para este tenant");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_trips
+       SET place = ?
+       WHERE place_id = ?
+         AND tenant_id = ?`,
+      [name, placeId, currentUser.tenantId]
+    );
+
+    const rows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE id = ?
+         AND tenant_id = ?
+       LIMIT 1`,
+      [placeId, currentUser.tenantId]
+    );
+
+    return {
+      item: this.mapPlace(rows[0])
+    };
+  }
+
+  async archivePlace(currentUser: CamionesRequestUser, placeId: number) {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_places
+       SET is_active = 0
+       WHERE id = ?
+         AND tenant_id = ?
+         AND is_active = 1`,
+      [placeId, currentUser.tenantId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Lugar activo no encontrado para este tenant");
+    }
+
+    return { ok: true };
   }
 
   async listTrips(currentUser: CamionesRequestUser, query: ListCamionesTripsDto) {

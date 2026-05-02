@@ -111,6 +111,25 @@ async function main() {
       throw new Error(`Create client failed: ${JSON.stringify(createClientPayload)}`);
     }
 
+    const duplicateClientResponse = await fetch(`${baseUrl}/camiones/clients`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        name: `Cliente Camiones ${suffix}`,
+        phone: "099000111"
+      })
+    });
+    const duplicateClientPayload = await readJson(duplicateClientResponse);
+    if (!duplicateClientResponse.ok || duplicateClientPayload.item?.id !== createClientPayload.item.id) {
+      throw new Error(`Duplicate client handling failed: ${JSON.stringify(duplicateClientPayload)}`);
+    }
+    if (duplicateClientPayload.item?.phone !== "099000111") {
+      throw new Error(`Duplicate client phone merge failed: ${JSON.stringify(duplicateClientPayload)}`);
+    }
+
     const listClientsResponse = await fetch(`${baseUrl}/camiones/clients?limit=10`, {
       headers: {
         Authorization: `Bearer ${accessToken}`
@@ -135,6 +154,21 @@ async function main() {
     const createPlacePayload = await readJson(createPlaceResponse);
     if (!createPlaceResponse.ok || !createPlacePayload.item?.id) {
       throw new Error(`Create place failed: ${JSON.stringify(createPlacePayload)}`);
+    }
+
+    const updatePlaceResponse = await fetch(`${baseUrl}/camiones/places/${createPlacePayload.item.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        name: `Lugar Editado ${suffix}`
+      })
+    });
+    const updatePlacePayload = await readJson(updatePlaceResponse);
+    if (!updatePlaceResponse.ok || updatePlacePayload.item?.name !== `Lugar Editado ${suffix}`) {
+      throw new Error(`Update place failed: ${JSON.stringify(updatePlacePayload)}`);
     }
 
     const createTripResponse = await fetch(`${baseUrl}/camiones/trips`, {
@@ -187,6 +221,17 @@ async function main() {
       throw new Error(`List paid trips failed: ${JSON.stringify(listPaidTripsPayload)}`);
     }
 
+    const archivePlaceResponse = await fetch(`${baseUrl}/camiones/places/${createPlacePayload.item.id}/archive`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    const archivePlacePayload = await readJson(archivePlaceResponse);
+    if (!archivePlaceResponse.ok || archivePlacePayload.ok !== true) {
+      throw new Error(`Archive place failed: ${JSON.stringify(archivePlacePayload)}`);
+    }
+
     console.log(
       JSON.stringify(
         {
@@ -197,11 +242,14 @@ async function main() {
             modules: registerPayload.tenantContext?.modules || []
           },
           createdClient: createClientPayload.item,
+          duplicateClient: duplicateClientPayload.item,
           createdPlace: createPlacePayload.item,
+          updatedPlace: updatePlacePayload.item,
           listedClientsCount: listClientsPayload.meta?.count,
           createdTrip: createTripPayload.trip,
           listedTripsCount: listTripsPayload.meta?.count,
           paidTrip: markPaidPayload.trip,
+          archivedPlace: archivePlacePayload.ok,
           listedPaidTripsCount: listPaidTripsPayload.meta?.count,
           paidTrips: listPaidTripsPayload.items
         },

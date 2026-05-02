@@ -10,6 +10,8 @@ export type TenantCapability =
   | "pos.dashboard.read"
   | "camiones.clients.read"
   | "camiones.clients.write"
+  | "camiones.places.read"
+  | "camiones.places.write"
   | "camiones.trips.read"
   | "camiones.trips.write"
   | "camiones.trips.pay"
@@ -26,6 +28,8 @@ const ALL_CAPABILITIES: TenantCapability[] = [
   "pos.dashboard.read",
   "camiones.clients.read",
   "camiones.clients.write",
+  "camiones.places.read",
+  "camiones.places.write",
   "camiones.trips.read",
   "camiones.trips.write",
   "camiones.trips.pay",
@@ -41,6 +45,7 @@ const ROLE_CAPABILITIES: Record<TenantMembershipRole, TenantCapability[]> = {
     "pos.sales.read",
     "pos.sales.write",
     "camiones.clients.read",
+    "camiones.places.read",
     "camiones.trips.read",
     "camiones.trips.write",
     "distribuidora.shell.read"

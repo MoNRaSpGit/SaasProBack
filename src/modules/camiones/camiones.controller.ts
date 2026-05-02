@@ -11,6 +11,7 @@ import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
 import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
+import { UpdateCamionesPlaceDto } from "./dto/update-camiones-place.dto";
 
 @Controller("camiones")
 @UseGuards(CamionesAuthGuard)
@@ -31,18 +32,36 @@ export class CamionesController {
     return this.camionesService.createClient(currentUser, dto);
   }
 
-  @RequireCapability("camiones.clients.read")
+  @RequireCapability("camiones.places.read")
   @UseGuards(CapabilityGuard)
   @Get("places")
   listPlaces(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Query() query: ListCamionesPlacesDto) {
     return this.camionesService.listPlaces(currentUser, query);
   }
 
-  @RequireCapability("camiones.clients.write")
+  @RequireCapability("camiones.places.write")
   @UseGuards(CapabilityGuard)
   @Post("places")
   createPlace(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesPlaceDto) {
     return this.camionesService.createPlace(currentUser, dto);
+  }
+
+  @RequireCapability("camiones.places.write")
+  @UseGuards(CapabilityGuard)
+  @Patch("places/:id")
+  updatePlace(
+    @CurrentCamionesUser() currentUser: CamionesRequestUser,
+    @Param("id", ParseIntPipe) placeId: number,
+    @Body() dto: UpdateCamionesPlaceDto
+  ) {
+    return this.camionesService.updatePlace(currentUser, placeId, dto);
+  }
+
+  @RequireCapability("camiones.places.write")
+  @UseGuards(CapabilityGuard)
+  @Patch("places/:id/archive")
+  archivePlace(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) placeId: number) {
+    return this.camionesService.archivePlace(currentUser, placeId);
   }
 
   @RequireCapability("camiones.trips.read")

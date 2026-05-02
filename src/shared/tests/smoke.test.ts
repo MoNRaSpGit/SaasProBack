@@ -50,7 +50,10 @@ describe("backend smoke", () => {
   it("maps tenant capabilities by role", () => {
     expect(hasCapability("staff", "distribuidora.admin.read")).toBe(true);
     expect(hasCapability("admin", "camiones.trips.pay")).toBe(true);
+    expect(hasCapability("admin", "camiones.places.write")).toBe(true);
     expect(hasCapability("operario", "distribuidora.admin.read")).toBe(false);
+    expect(hasCapability("operario", "camiones.places.read")).toBe(true);
+    expect(hasCapability("operario", "camiones.places.write")).toBe(false);
     expect(hasCapability("operario", "camiones.trips.write")).toBe(true);
     expect(getCapabilitiesForRole("unknown")).toEqual([]);
   });
