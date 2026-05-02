@@ -366,6 +366,8 @@ export class AuthService {
        FROM saas_tenant_memberships m
        INNER JOIN saas_tenants t ON t.id = m.tenant_id
        WHERE m.user_id = ?
+         AND m.status = 'active'
+         AND t.status = 'active'
        ORDER BY m.is_default DESC, m.id ASC
        LIMIT 1`,
       [userId]

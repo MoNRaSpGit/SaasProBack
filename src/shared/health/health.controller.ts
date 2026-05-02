@@ -1,4 +1,5 @@
-import { Controller, Get } from "@nestjs/common";
+import { Controller, Get, HttpStatus, Res } from "@nestjs/common";
+import { Response } from "express";
 import { DatabaseService } from "../database/database.service";
 
 @Controller("health")
@@ -6,10 +7,11 @@ export class HealthController {
   constructor(private readonly databaseService: DatabaseService) {}
 
   @Get()
-  async getHealth() {
+  async getHealth(@Res({ passthrough: true }) response: Response) {
     const dbStatus = await this.databaseService.checkConnectionDetailed();
 
     if (!dbStatus.ok) {
+      response.status(HttpStatus.SERVICE_UNAVAILABLE);
       return {
         status: "degraded",
         service: "saaspro-backend",
@@ -25,7 +27,7 @@ export class HealthController {
   }
 
   @Get("db")
-  async getDatabaseHealth() {
+  async getDatabaseHealth(@Res({ passthrough: true }) response: Response) {
     const dbStatus = await this.databaseService.checkConnectionDetailed();
 
     if (dbStatus.ok) {
@@ -35,6 +37,7 @@ export class HealthController {
       };
     }
 
+    response.status(HttpStatus.SERVICE_UNAVAILABLE);
     return {
       status: "error",
       database: "disconnected",
