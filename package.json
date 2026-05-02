@@ -17,7 +17,8 @@
     "test:functional:pos": "npx.cmd ts-node scripts/validate-pos-products.ts && npx.cmd ts-node scripts/validate-pos-sales.ts && npx.cmd ts-node scripts/validate-pos-dashboard.ts",
     "test:functional:camiones": "npx.cmd ts-node scripts/validate-camiones.ts",
     "test:functional:distribuidora": "npx.cmd ts-node scripts/validate-distribuidora-shell.ts",
-    "test:functional:rbac": "npx.cmd ts-node scripts/validate-role-capabilities.ts"
+    "test:functional:rbac": "npx.cmd ts-node scripts/validate-role-capabilities.ts",
+    "test:functional:saas-admin": "npx.cmd ts-node scripts/validate-saas-admin-lite.ts"
   },
   "engines": {
     "node": ">=22.12.0"

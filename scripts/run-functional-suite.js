@@ -45,6 +45,11 @@ const suite = [
     name: "role-capabilities",
     command: "npx.cmd",
     args: ["ts-node", "scripts/validate-role-capabilities.ts"]
+  },
+  {
+    name: "saas-admin-lite",
+    command: "npx.cmd",
+    args: ["ts-node", "scripts/validate-saas-admin-lite.ts"]
   }
 ];
 
