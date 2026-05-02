@@ -2,33 +2,19 @@ import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import { getAllowedCorsOrigins, isCorsOriginAllowed } from "./shared/http/cors";
 import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const allowedOrigins = new Set(
-    (process.env.ALLOWED_ORIGINS || "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-  );
-
-  if (allowedOrigins.size === 0) {
-    [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://127.0.0.1:5173",
-      "http://127.0.0.1:5174",
-      "https://monraspgit.github.io"
-    ].forEach((origin) => allowedOrigins.add(origin));
-  }
+  const allowedOrigins = getAllowedCorsOrigins();
 
   app.enableCors({
     origin: (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void
     ) => {
-      if (!origin || allowedOrigins.has(origin)) {
+      if (isCorsOriginAllowed(origin, allowedOrigins)) {
         callback(null, true);
         return;
       }
@@ -36,7 +22,8 @@ async function bootstrap() {
       callback(new Error("Not allowed by CORS"), false);
     },
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
+    exposedHeaders: ["X-Request-Id"],
     credentials: false,
     optionsSuccessStatus: 204
   });

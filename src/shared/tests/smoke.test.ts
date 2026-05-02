@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getCapabilitiesForRole, hasCapability } from "../authz/capabilities";
 import { HealthController } from "../health/health.controller";
+import { getAllowedCorsOrigins, isCorsOriginAllowed } from "../http/cors";
 import { AuthRateLimitMiddleware } from "../http/auth-rate-limit.middleware";
 import { RequestLoggingMiddleware } from "../http/request-logging.middleware";
 
@@ -123,5 +124,29 @@ describe("backend smoke", () => {
     expect(typeof meta.uptimeSeconds).toBe("number");
     expect(typeof meta.startedAt).toBe("string");
     expect(typeof meta.timestamp).toBe("string");
+  });
+
+  it("uses stricter cors defaults by environment", () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
+
+    process.env.ALLOWED_ORIGINS = "";
+    process.env.NODE_ENV = "production";
+
+    const productionOrigins = getAllowedCorsOrigins();
+    expect(productionOrigins).toEqual(["https://monraspgit.github.io"]);
+    expect(isCorsOriginAllowed("https://monraspgit.github.io", productionOrigins)).toBe(true);
+    expect(isCorsOriginAllowed("http://localhost:5174", productionOrigins)).toBe(false);
+
+    process.env.NODE_ENV = "development";
+
+    const developmentOrigins = getAllowedCorsOrigins();
+    expect(developmentOrigins).toContain("http://localhost:5173");
+    expect(developmentOrigins).toContain("http://localhost:5174");
+    expect(developmentOrigins).toContain("https://monraspgit.github.io");
+    expect(isCorsOriginAllowed(undefined, developmentOrigins)).toBe(true);
+
+    process.env.NODE_ENV = previousNodeEnv;
+    process.env.ALLOWED_ORIGINS = previousAllowedOrigins;
   });
 });
