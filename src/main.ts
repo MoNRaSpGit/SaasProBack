@@ -2,22 +2,32 @@ import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "./app.module";
+import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const allowedOrigins = new Set(
+    (process.env.ALLOWED_ORIGINS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+  );
+
+  if (allowedOrigins.size === 0) {
+    [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://127.0.0.1:5173",
+      "http://127.0.0.1:5174",
+      "https://monraspgit.github.io"
+    ].forEach((origin) => allowedOrigins.add(origin));
+  }
+
   app.enableCors({
     origin: (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void
     ) => {
-      const allowedOrigins = new Set([
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "https://monraspgit.github.io"
-      ]);
-
       if (!origin || allowedOrigins.has(origin)) {
         callback(null, true);
         return;
@@ -38,6 +48,7 @@ async function bootstrap() {
       forbidNonWhitelisted: true
     })
   );
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   const rawPort = process.env.PORT;
   const parsedPort = rawPort ? Number(rawPort) : 3000;
