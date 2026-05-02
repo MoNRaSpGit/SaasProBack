@@ -338,13 +338,6 @@ export class AuthService {
          VALUES (?, ?)`,
         [tenantId, tenantName]
       );
-
-      await connection.execute(
-        `INSERT INTO saas_tenant_modules (tenant_id, module_key, enabled)
-         VALUES (?, 'pos', 1)
-         ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)`,
-        [tenantId]
-      );
     });
   }
 

@@ -11,7 +11,12 @@
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",
     "test:smoke": "vitest run src/shared/tests/smoke.test.ts",
-    "test:smoke:auth": "node scripts/smoke-auth-module-access.js"
+    "test:smoke:auth": "node scripts/smoke-auth-module-access.js",
+    "test:functional": "node scripts/run-functional-suite.js",
+    "test:functional:auth": "npx.cmd ts-node scripts/validate-auth-multitenant.ts",
+    "test:functional:pos": "npx.cmd ts-node scripts/validate-pos-products.ts && npx.cmd ts-node scripts/validate-pos-sales.ts && npx.cmd ts-node scripts/validate-pos-dashboard.ts",
+    "test:functional:camiones": "npx.cmd ts-node scripts/validate-camiones.ts",
+    "test:functional:distribuidora": "npx.cmd ts-node scripts/validate-distribuidora-shell.ts"
   },
   "engines": {
     "node": ">=22.12.0"
