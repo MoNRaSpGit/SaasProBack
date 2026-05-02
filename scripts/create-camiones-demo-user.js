@@ -103,7 +103,7 @@ async function main() {
 
     await connection.query(
       `INSERT INTO saas_tenant_memberships (tenant_id, user_id, role, status, is_default)
-       VALUES (?, ?, 'owner', 'active', 1)
+       VALUES (?, ?, 'admin', 'active', 1)
        ON DUPLICATE KEY UPDATE
          role = VALUES(role),
          status = VALUES(status),

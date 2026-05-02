@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS saas_tenant_memberships (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   tenant_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
-  role ENUM('owner', 'admin', 'operario', 'staff') NOT NULL DEFAULT 'staff',
+  role ENUM('admin', 'operario', 'staff') NOT NULL DEFAULT 'admin',
   status ENUM('active', 'invited', 'suspended') NOT NULL DEFAULT 'active',
   is_default TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -87,6 +87,10 @@ type AuthSessionPayload = {
   };
 };
 
+function normalizeTenantMembershipRole(role: TenantMembershipRow["membership_role"]) {
+  return role === "owner" ? "admin" : role;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -329,7 +333,7 @@ export class AuthService {
 
       await connection.execute(
         `INSERT INTO saas_tenant_memberships (tenant_id, user_id, role, status, is_default)
-         VALUES (?, ?, 'owner', 'active', 1)`,
+         VALUES (?, ?, 'admin', 'active', 1)`,
         [tenantId, user.id]
       );
 
@@ -387,7 +391,7 @@ export class AuthService {
         status: membership.tenant_status
       },
       membership: {
-        role: membership.membership_role,
+        role: normalizeTenantMembershipRole(membership.membership_role),
         status: membership.membership_status,
         isDefault: Boolean(membership.membership_is_default)
       },
