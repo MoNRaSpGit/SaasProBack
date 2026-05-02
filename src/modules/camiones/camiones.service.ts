@@ -3,8 +3,10 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CamionesRequestUser } from "./camiones.types";
 import { CreateCamionesClientDto } from "./dto/create-camiones-client.dto";
+import { CreateCamionesPlaceDto } from "./dto/create-camiones-place.dto";
 import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
+import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
 
 type CamionesClientRow = RowDataPacket & {
@@ -24,6 +26,7 @@ type CamionesTripRow = RowDataPacket & {
   tenant_id: number;
   branch_id: number | null;
   client_id: number;
+  place_id: number | null;
   user_id: number;
   trip_date: string;
   place: string;
@@ -34,6 +37,18 @@ type CamionesTripRow = RowDataPacket & {
   created_at: string;
   updated_at: string;
   client_name?: string;
+  place_name?: string;
+};
+
+type CamionesPlaceRow = RowDataPacket & {
+  id: number;
+  tenant_id: number;
+  branch_id: number | null;
+  name: string;
+  notes: string | null;
+  is_active: number;
+  created_at: string;
+  updated_at: string;
 };
 
 @Injectable()
@@ -145,6 +160,105 @@ export class CamionesService {
     };
   }
 
+  async listPlaces(currentUser: CamionesRequestUser, query: ListCamionesPlacesDto) {
+    const limit = query.limit ?? 50;
+    const search = query.search?.trim();
+    const whereParts = ["tenant_id = ?", "is_active = 1"];
+    const values: Array<string | number> = [currentUser.tenantId];
+
+    if (search) {
+      whereParts.push("name LIKE ?");
+      values.push(`%${search}%`);
+    }
+
+    values.push(limit);
+
+    const rows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE ${whereParts.join(" AND ")}
+       ORDER BY name ASC
+       LIMIT ?`,
+      values
+    );
+
+    return {
+      items: rows.map((row) => this.mapPlace(row)),
+      meta: {
+        tenantId: currentUser.tenantId,
+        count: rows.length,
+        limit
+      }
+    };
+  }
+
+  async createPlace(currentUser: CamionesRequestUser, dto: CreateCamionesPlaceDto) {
+    const name = dto.name.trim();
+    const notes = dto.notes?.trim() || null;
+
+    const existingRows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE tenant_id = ?
+         AND LOWER(name) = LOWER(?)
+       LIMIT 1`,
+      [currentUser.tenantId, name]
+    );
+
+    if (existingRows[0]) {
+      return { item: this.mapPlace(existingRows[0]) };
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_camiones_places (
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active
+       )
+       VALUES (?, NULL, ?, ?, 1)`,
+      [currentUser.tenantId, name, notes]
+    );
+
+    const rows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE id = ?
+         AND tenant_id = ?
+       LIMIT 1`,
+      [result.insertId, currentUser.tenantId]
+    );
+
+    return {
+      item: this.mapPlace(rows[0])
+    };
+  }
+
   async listTrips(currentUser: CamionesRequestUser, query: ListCamionesTripsDto) {
     const limit = query.limit ?? 50;
     const whereParts = ["t.tenant_id = ?"];
@@ -168,6 +282,7 @@ export class CamionesService {
          t.tenant_id,
          t.branch_id,
          t.client_id,
+         t.place_id,
          t.user_id,
          t.trip_date,
          t.place,
@@ -177,9 +292,11 @@ export class CamionesService {
          t.paid_at,
          t.created_at,
          t.updated_at,
-         c.name AS client_name
+         c.name AS client_name,
+         p.name AS place_name
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
+       LEFT JOIN saas_camiones_places p ON p.id = t.place_id
        WHERE ${whereParts.join(" AND ")}
        ORDER BY t.trip_date DESC, t.id DESC
        LIMIT ?`,
@@ -221,11 +338,35 @@ export class CamionesService {
       throw new BadRequestException("Cliente no encontrado para este tenant");
     }
 
+    const placeRows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE id = ?
+         AND tenant_id = ?
+         AND is_active = 1
+       LIMIT 1`,
+      [dto.placeId, currentUser.tenantId]
+    );
+
+    const place = placeRows[0];
+    if (!place) {
+      throw new BadRequestException("Lugar no encontrado para este tenant");
+    }
+
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_camiones_trips (
          tenant_id,
          branch_id,
          client_id,
+         place_id,
          user_id,
          trip_date,
          place,
@@ -233,13 +374,14 @@ export class CamionesService {
          status,
          notes
        )
-       VALUES (?, NULL, ?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         currentUser.tenantId,
         client.id,
+        place.id,
         currentUser.userId,
         dto.tripDate,
-        dto.place.trim(),
+        place.name,
         Number(dto.kilometers.toFixed(2)),
         dto.notes?.trim() || null
       ]
@@ -251,6 +393,7 @@ export class CamionesService {
          t.tenant_id,
          t.branch_id,
          t.client_id,
+         t.place_id,
          t.user_id,
          t.trip_date,
          t.place,
@@ -260,9 +403,11 @@ export class CamionesService {
          t.paid_at,
          t.created_at,
          t.updated_at,
-         c.name AS client_name
+         c.name AS client_name,
+         p.name AS place_name
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
+       LEFT JOIN saas_camiones_places p ON p.id = t.place_id
        WHERE t.id = ?
          AND t.tenant_id = ?
        LIMIT 1`,
@@ -295,6 +440,7 @@ export class CamionesService {
          t.tenant_id,
          t.branch_id,
          t.client_id,
+         t.place_id,
          t.user_id,
          t.trip_date,
          t.place,
@@ -304,9 +450,11 @@ export class CamionesService {
          t.paid_at,
          t.created_at,
          t.updated_at,
-         c.name AS client_name
+         c.name AS client_name,
+         p.name AS place_name
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
+       LEFT JOIN saas_camiones_places p ON p.id = t.place_id
        WHERE t.id = ?
          AND t.tenant_id = ?
        LIMIT 1`,
@@ -346,14 +494,32 @@ export class CamionesService {
       tenantId: row.tenant_id,
       branchId: row.branch_id,
       clientId: row.client_id,
+      placeId: row.place_id,
       clientName: row.client_name,
       userId: row.user_id,
       tripDate: row.trip_date,
-      place: row.place,
+      place: row.place_name || row.place,
       kilometers: Number(row.kilometers),
       status: row.status,
       notes: row.notes,
       paidAt: row.paid_at,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapPlace(row: CamionesPlaceRow | undefined) {
+    if (!row) {
+      throw new BadRequestException("Lugar no encontrado");
+    }
+
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      branchId: row.branch_id,
+      name: row.name,
+      notes: row.notes,
+      isActive: Boolean(row.is_active),
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

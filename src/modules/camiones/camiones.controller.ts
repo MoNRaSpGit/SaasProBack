@@ -6,8 +6,10 @@ import { CamionesService } from "./camiones.service";
 import { CamionesRequestUser } from "./camiones.types";
 import { CurrentCamionesUser } from "./current-camiones-user.decorator";
 import { CreateCamionesClientDto } from "./dto/create-camiones-client.dto";
+import { CreateCamionesPlaceDto } from "./dto/create-camiones-place.dto";
 import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
+import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
 
 @Controller("camiones")
@@ -27,6 +29,20 @@ export class CamionesController {
   @Post("clients")
   createClient(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesClientDto) {
     return this.camionesService.createClient(currentUser, dto);
+  }
+
+  @RequireCapability("camiones.clients.read")
+  @UseGuards(CapabilityGuard)
+  @Get("places")
+  listPlaces(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Query() query: ListCamionesPlacesDto) {
+    return this.camionesService.listPlaces(currentUser, query);
+  }
+
+  @RequireCapability("camiones.clients.write")
+  @UseGuards(CapabilityGuard)
+  @Post("places")
+  createPlace(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesPlaceDto) {
+    return this.camionesService.createPlace(currentUser, dto);
   }
 
   @RequireCapability("camiones.trips.read")

@@ -7,12 +7,13 @@ export class CreateCamionesTripDto {
   @Min(1)
   clientId!: number;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  placeId!: number;
+
   @IsDateString()
   tripDate!: string;
-
-  @IsString()
-  @MaxLength(160)
-  place!: string;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

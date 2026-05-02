@@ -121,6 +121,22 @@ async function main() {
       throw new Error(`List clients failed: ${JSON.stringify(listClientsPayload)}`);
     }
 
+    const createPlaceResponse = await fetch(`${baseUrl}/camiones/places`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        name: `Lugar ${suffix}`,
+        notes: "lugar de prueba"
+      })
+    });
+    const createPlacePayload = await readJson(createPlaceResponse);
+    if (!createPlaceResponse.ok || !createPlacePayload.item?.id) {
+      throw new Error(`Create place failed: ${JSON.stringify(createPlacePayload)}`);
+    }
+
     const createTripResponse = await fetch(`${baseUrl}/camiones/trips`, {
       method: "POST",
       headers: {
@@ -129,8 +145,8 @@ async function main() {
       },
       body: JSON.stringify({
         clientId: createClientPayload.item.id,
+        placeId: createPlacePayload.item.id,
         tripDate: "2026-05-02",
-        place: `Lugar ${suffix}`,
         kilometers: 512.5,
         notes: "viaje de prueba"
       })
@@ -181,6 +197,7 @@ async function main() {
             modules: registerPayload.tenantContext?.modules || []
           },
           createdClient: createClientPayload.item,
+          createdPlace: createPlacePayload.item,
           listedClientsCount: listClientsPayload.meta?.count,
           createdTrip: createTripPayload.trip,
           listedTripsCount: listTripsPayload.meta?.count,
