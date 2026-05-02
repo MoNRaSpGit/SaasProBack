@@ -2,7 +2,8 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { UpdateTenantBillingDto } from "./dto/update-tenant-billing.dto";
-import { TenantBillingStatus } from "./saas-admin.types";
+import { UpdateTenantModulesDto } from "./dto/update-tenant-modules.dto";
+import { SAAS_ADMIN_MODULE_KEYS, SaasAdminModuleKey, TenantBillingStatus } from "./saas-admin.types";
 
 type TenantListRow = RowDataPacket & {
   tenant_id: number;
@@ -18,7 +19,7 @@ type TenantListRow = RowDataPacket & {
   primary_user_email: string | null;
   primary_user_full_name: string | null;
   primary_membership_role: string | null;
-  module_key: string | null;
+  module_key: SaasAdminModuleKey | null;
 };
 
 type TenantRow = RowDataPacket & {
@@ -108,6 +109,7 @@ export class SaasAdminService {
     }
 
     return {
+      availableModules: [...SAAS_ADMIN_MODULE_KEYS],
       items: Array.from(tenants.values()),
       total: tenants.size
     };
@@ -183,6 +185,61 @@ export class SaasAdminService {
         graceUntil: updated.grace_until,
         blockedReason: updated.blocked_reason
       }
+    };
+  }
+
+  async updateTenantModules(tenantId: number, dto: UpdateTenantModulesDto) {
+    const tenantRows = await this.databaseService.query<TenantRow[]>(
+      `SELECT id, name, slug, status
+       FROM saas_tenants
+       WHERE id = ?
+       LIMIT 1`,
+      [tenantId]
+    );
+    const tenant = tenantRows[0];
+    if (!tenant) {
+      throw new NotFoundException("Tenant not found");
+    }
+
+    await this.databaseService.withTransaction(async (connection) => {
+      await connection.execute(
+        `DELETE FROM saas_tenant_modules
+         WHERE tenant_id = ?`,
+        [tenantId]
+      );
+
+      for (const moduleKey of dto.enabledModules) {
+        await connection.execute(
+          `INSERT INTO saas_tenant_modules (tenant_id, module_key, enabled)
+           VALUES (?, ?, 1)`,
+          [tenantId, moduleKey]
+        );
+      }
+    });
+
+    const moduleRows = await this.databaseService.query<
+      Array<
+        RowDataPacket & {
+          module_key: SaasAdminModuleKey;
+        }
+      >
+    >(
+      `SELECT module_key
+       FROM saas_tenant_modules
+       WHERE tenant_id = ?
+         AND enabled = 1
+       ORDER BY module_key ASC`,
+      [tenantId]
+    );
+
+    return {
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        status: tenant.status
+      },
+      modules: moduleRows.map((row) => row.module_key)
     };
   }
 }

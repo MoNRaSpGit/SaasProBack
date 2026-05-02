@@ -89,7 +89,8 @@ async function main() {
       }
     });
     const listPayload = (await readJson(listResponse)) as {
-      items?: Array<{ id: number; slug: string; billing: { status: string } }>;
+      availableModules?: string[];
+      items?: Array<{ id: number; slug: string; billing: { status: string }; modules: string[] }>;
       total?: number;
       message?: string;
     };
@@ -100,6 +101,12 @@ async function main() {
     const ownTenant = listPayload.items.find((item) => item.id === loginPayload.tenantContext!.tenant.id);
     if (!ownTenant) {
       throw new Error(`Own tenant not visible in SaaS admin: ${JSON.stringify(listPayload)}`);
+    }
+
+    for (const moduleKey of ["camiones", "distribuidora", "pos"]) {
+      if (!listPayload.availableModules?.includes(moduleKey)) {
+        throw new Error(`Expected available module ${moduleKey} in SaaS admin payload`);
+      }
     }
 
     const paidUntil = "2026-11-01";
@@ -131,6 +138,24 @@ async function main() {
       throw new Error(`Update billing failed: ${JSON.stringify(updatePayload)}`);
     }
 
+    const updateModulesResponse = await fetch(`${baseUrl}/saas-admin/tenants/${ownTenant.id}/modules`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${loginPayload.tokens.accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        enabledModules: ["camiones", "distribuidora"]
+      })
+    });
+    const updateModulesPayload = (await readJson(updateModulesResponse)) as {
+      modules?: string[];
+      message?: string;
+    };
+    if (!updateModulesResponse.ok || !Array.isArray(updateModulesPayload.modules)) {
+      throw new Error(`Update modules failed: ${JSON.stringify(updateModulesPayload)}`);
+    }
+
     console.log(
       JSON.stringify(
         {
@@ -138,7 +163,8 @@ async function main() {
           tenantId: ownTenant.id,
           totalTenantsVisible: listPayload.total,
           previousStatus: ownTenant.billing.status,
-          updatedBilling: updatePayload.billing
+          updatedBilling: updatePayload.billing,
+          updatedModules: updateModulesPayload.modules
         },
         null,
         2
