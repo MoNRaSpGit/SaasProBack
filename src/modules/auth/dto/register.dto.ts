@@ -14,4 +14,9 @@ export class RegisterDto {
   @IsString()
   @MaxLength(120)
   fullName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  tenantName?: string;
 }

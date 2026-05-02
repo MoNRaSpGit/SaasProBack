@@ -2,7 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from "@nestjs/co
 import { ConfigService } from "@nestjs/config";
 import { compare, hash } from "bcryptjs";
 import { createHash, randomUUID } from "node:crypto";
-import { RowDataPacket } from "mysql2";
+import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { JwtPayload as BaseJwtPayload, SignOptions, sign, verify } from "jsonwebtoken";
 import { DatabaseService } from "../../shared/database/database.service";
 import { LoginDto } from "./dto/login.dto";
@@ -26,6 +26,20 @@ type RefreshTokenRow = RowDataPacket & {
   revoked_at: string | null;
 };
 
+type TenantMembershipRow = RowDataPacket & {
+  tenant_id: number;
+  tenant_name: string;
+  tenant_slug: string;
+  tenant_status: "active" | "suspended" | "archived";
+  membership_role: "owner" | "admin" | "operario" | "staff";
+  membership_status: "active" | "invited" | "suspended";
+  membership_is_default: number;
+};
+
+type TenantModuleRow = RowDataPacket & {
+  module_key: string;
+};
+
 type JwtPayload = {
   sub: number;
   email: string;
@@ -42,6 +56,36 @@ function isAuthJwtPayload(value: BaseJwtPayload): value is BaseJwtPayload & JwtP
     (value.type === "access" || value.type === "refresh")
   );
 }
+
+type AuthSessionPayload = {
+  user: {
+    id: number;
+    email: string;
+    fullName: string | null;
+    role: string;
+  };
+  tenantContext: {
+    tenant: {
+      id: number;
+      name: string;
+      slug: string;
+      status: string;
+    };
+    membership: {
+      role: string;
+      status: string;
+      isDefault: boolean;
+    };
+    modules: string[];
+  } | null;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    tokenType: string;
+    accessTtl: string;
+    refreshTtl: string;
+  };
+};
 
 @Injectable()
 export class AuthService {
@@ -69,6 +113,7 @@ export class AuthService {
       throw new UnauthorizedException("Unable to create user");
     }
 
+    await this.ensureDefaultTenantContext(user, dto.tenantName?.trim() || dto.fullName?.trim() || null);
     return this.createSession(user);
   }
 
@@ -151,7 +196,7 @@ export class AuthService {
     return { success: true };
   }
 
-  private async createSession(user: UserRow) {
+  private async createSession(user: UserRow): Promise<AuthSessionPayload> {
     const accessSecret = this.getRequiredEnv("JWT_ACCESS_SECRET");
     const refreshSecret = this.getRequiredEnv("JWT_REFRESH_SECRET");
     const accessTtl = this.configService.get<string>("JWT_ACCESS_TTL") || "15m";
@@ -183,6 +228,8 @@ export class AuthService {
       [user.id, this.hashToken(refreshToken), refreshExpiresAt]
     );
 
+    const tenantContext = await this.getTenantContext(user.id);
+
     return {
       user: {
         id: user.id,
@@ -190,6 +237,7 @@ export class AuthService {
         fullName: user.full_name,
         role: user.role
       },
+      tenantContext,
       tokens: {
         accessToken,
         refreshToken,
@@ -251,5 +299,158 @@ export class AuthService {
       [id]
     );
     return rows[0];
+  }
+
+  private async ensureDefaultTenantContext(user: UserRow, preferredTenantName: string | null) {
+    const coreTablesAvailable = await this.hasSaasCoreTables();
+    if (!coreTablesAvailable) {
+      return;
+    }
+
+    const existingContext = await this.getTenantContext(user.id);
+    if (existingContext) {
+      return;
+    }
+
+    const tenantName = preferredTenantName && preferredTenantName.length > 0 ? preferredTenantName : this.buildTenantNameFromUser(user);
+    const tenantSlug = await this.buildUniqueTenantSlug(tenantName);
+
+    await this.db.withTransaction(async (connection) => {
+      const [tenantResult] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_tenants (name, slug, status)
+         VALUES (?, ?, 'active')`,
+        [tenantName, tenantSlug]
+      );
+
+      const tenantId = Number(tenantResult.insertId);
+      if (!tenantId) {
+        throw new UnauthorizedException("Unable to create tenant context");
+      }
+
+      await connection.execute(
+        `INSERT INTO saas_tenant_memberships (tenant_id, user_id, role, status, is_default)
+         VALUES (?, ?, 'owner', 'active', 1)`,
+        [tenantId, user.id]
+      );
+
+      await connection.execute(
+        `INSERT INTO saas_tenant_settings (tenant_id, brand_name)
+         VALUES (?, ?)`,
+        [tenantId, tenantName]
+      );
+
+      await connection.execute(
+        `INSERT INTO saas_tenant_modules (tenant_id, module_key, enabled)
+         VALUES (?, 'pos', 1)
+         ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)`,
+        [tenantId]
+      );
+    });
+  }
+
+  private async getTenantContext(userId: number): Promise<AuthSessionPayload["tenantContext"]> {
+    const coreTablesAvailable = await this.hasSaasCoreTables();
+    if (!coreTablesAvailable) {
+      return null;
+    }
+
+    const membershipRows = await this.db.query<TenantMembershipRow[]>(
+      `SELECT
+         m.tenant_id,
+         t.name AS tenant_name,
+         t.slug AS tenant_slug,
+         t.status AS tenant_status,
+         m.role AS membership_role,
+         m.status AS membership_status,
+         m.is_default AS membership_is_default
+       FROM saas_tenant_memberships m
+       INNER JOIN saas_tenants t ON t.id = m.tenant_id
+       WHERE m.user_id = ?
+       ORDER BY m.is_default DESC, m.id ASC
+       LIMIT 1`,
+      [userId]
+    );
+
+    const membership = membershipRows[0];
+    if (!membership) {
+      return null;
+    }
+
+    const moduleRows = await this.db.query<TenantModuleRow[]>(
+      `SELECT module_key
+       FROM saas_tenant_modules
+       WHERE tenant_id = ? AND enabled = 1
+       ORDER BY module_key ASC`,
+      [membership.tenant_id]
+    );
+
+    return {
+      tenant: {
+        id: membership.tenant_id,
+        name: membership.tenant_name,
+        slug: membership.tenant_slug,
+        status: membership.tenant_status
+      },
+      membership: {
+        role: membership.membership_role,
+        status: membership.membership_status,
+        isDefault: Boolean(membership.membership_is_default)
+      },
+      modules: moduleRows.map((row) => row.module_key)
+    };
+  }
+
+  private async hasSaasCoreTables() {
+    try {
+      const rows = await this.db.query<Array<RowDataPacket & { table_name: string }>>(
+        `SELECT table_name
+         FROM information_schema.tables
+         WHERE table_schema = DATABASE()
+           AND table_name IN ('saas_tenants', 'saas_tenant_memberships', 'saas_tenant_modules', 'saas_tenant_settings')`
+      );
+
+      return rows.length === 4;
+    } catch {
+      return false;
+    }
+  }
+
+  private buildTenantNameFromUser(user: UserRow) {
+    if (user.full_name?.trim()) {
+      return user.full_name.trim();
+    }
+
+    const localPart = user.email.split("@")[0] || "tenant";
+    return localPart.replace(/[._-]+/g, " ").trim() || "tenant";
+  }
+
+  private async buildUniqueTenantSlug(rawName: string) {
+    const baseSlug = this.slugify(rawName) || `tenant-${randomUUID().slice(0, 8)}`;
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const candidate = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+      const rows = await this.db.query<Array<RowDataPacket & { id: number }>>(
+        `SELECT id
+         FROM saas_tenants
+         WHERE slug = ?
+         LIMIT 1`,
+        [candidate]
+      );
+
+      if (!rows[0]) {
+        return candidate;
+      }
+    }
+
+    return `${baseSlug}-${randomUUID().slice(0, 8)}`;
+  }
+
+  private slugify(value: string) {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120);
   }
 }
