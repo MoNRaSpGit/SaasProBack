@@ -8,7 +8,9 @@ import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
 import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
+import { UpdateCamionesClientDto } from "./dto/update-camiones-client.dto";
 import { UpdateCamionesPlaceDto } from "./dto/update-camiones-place.dto";
+import { UpdateCamionesTripDto } from "./dto/update-camiones-trip.dto";
 
 type CamionesClientRow = RowDataPacket & {
   id: number;
@@ -194,6 +196,89 @@ export class CamionesService {
     return {
       item: this.mapClient(rows[0])
     };
+  }
+
+  async updateClient(currentUser: CamionesRequestUser, clientId: number, dto: UpdateCamionesClientDto) {
+    const name = dto.name.trim();
+    const phone = dto.phone?.trim() || null;
+    const notes = dto.notes?.trim() || null;
+
+    const duplicateRows = await this.databaseService.query<CamionesClientRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         phone,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_clients
+       WHERE tenant_id = ?
+         AND LOWER(name) = LOWER(?)
+         AND id <> ?
+       LIMIT 1`,
+      [currentUser.tenantId, name, clientId]
+    );
+
+    if (duplicateRows[0]) {
+      throw new BadRequestException("Ya existe otro cliente con ese nombre");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_clients
+       SET name = ?,
+           phone = ?,
+           notes = ?
+       WHERE id = ?
+         AND tenant_id = ?
+         AND is_active = 1`,
+      [name, phone, notes, clientId, currentUser.tenantId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Cliente no encontrado para este tenant");
+    }
+
+    const rows = await this.databaseService.query<CamionesClientRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         phone,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_clients
+       WHERE id = ?
+         AND tenant_id = ?
+       LIMIT 1`,
+      [clientId, currentUser.tenantId]
+    );
+
+    return {
+      item: this.mapClient(rows[0])
+    };
+  }
+
+  async archiveClient(currentUser: CamionesRequestUser, clientId: number) {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_clients
+       SET is_active = 0
+       WHERE id = ?
+         AND tenant_id = ?
+         AND is_active = 1`,
+      [clientId, currentUser.tenantId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Cliente activo no encontrado para este tenant");
+    }
+
+    return { ok: true };
   }
 
   async listPlaces(currentUser: CamionesRequestUser, query: ListCamionesPlacesDto) {
@@ -535,6 +620,86 @@ export class CamionesService {
          AND t.tenant_id = ?
        LIMIT 1`,
       [result.insertId, currentUser.tenantId]
+    );
+
+    return {
+      trip: this.mapTrip(rows[0])
+    };
+  }
+
+  async updateTrip(currentUser: CamionesRequestUser, tripId: number, dto: UpdateCamionesTripDto) {
+    const placeRows = await this.databaseService.query<CamionesPlaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_places
+       WHERE id = ?
+         AND tenant_id = ?
+         AND is_active = 1
+       LIMIT 1`,
+      [dto.placeId, currentUser.tenantId]
+    );
+
+    const place = placeRows[0];
+    if (!place) {
+      throw new BadRequestException("Lugar no encontrado para este tenant");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_trips
+       SET trip_date = ?,
+           place_id = ?,
+           place = ?,
+           kilometers = ?,
+           notes = ?
+       WHERE id = ?
+         AND tenant_id = ?`,
+      [
+        dto.tripDate,
+        place.id,
+        place.name,
+        Number(dto.kilometers.toFixed(2)),
+        dto.notes?.trim() || null,
+        tripId,
+        currentUser.tenantId
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Viaje no encontrado para este tenant");
+    }
+
+    const rows = await this.databaseService.query<CamionesTripRow[]>(
+      `SELECT
+         t.id,
+         t.tenant_id,
+         t.branch_id,
+         t.client_id,
+         t.place_id,
+         t.user_id,
+         t.trip_date,
+         t.place,
+         t.kilometers,
+         t.status,
+         t.notes,
+         t.paid_at,
+         t.created_at,
+         t.updated_at,
+         c.name AS client_name,
+         p.name AS place_name
+       FROM saas_camiones_trips t
+       INNER JOIN saas_camiones_clients c ON c.id = t.client_id
+       LEFT JOIN saas_camiones_places p ON p.id = t.place_id
+       WHERE t.id = ?
+         AND t.tenant_id = ?
+       LIMIT 1`,
+      [tripId, currentUser.tenantId]
     );
 
     return {

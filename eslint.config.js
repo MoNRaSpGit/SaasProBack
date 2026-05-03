@@ -16,7 +16,15 @@ module.exports = [
       "@typescript-eslint": tsPlugin
     },
     rules: {
-      ...tsPlugin.configs.recommended.rules
+      "no-undef": "off",
+      ...tsPlugin.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }]
+    }
+  },
+  {
+    files: ["src/shared/tests/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off"
     }
   },
   {

@@ -11,7 +11,9 @@ import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
 import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
+import { UpdateCamionesClientDto } from "./dto/update-camiones-client.dto";
 import { UpdateCamionesPlaceDto } from "./dto/update-camiones-place.dto";
+import { UpdateCamionesTripDto } from "./dto/update-camiones-trip.dto";
 
 @Controller("camiones")
 @UseGuards(CamionesAuthGuard)
@@ -30,6 +32,24 @@ export class CamionesController {
   @Post("clients")
   createClient(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesClientDto) {
     return this.camionesService.createClient(currentUser, dto);
+  }
+
+  @RequireCapability("camiones.clients.write")
+  @UseGuards(CapabilityGuard)
+  @Patch("clients/:id")
+  updateClient(
+    @CurrentCamionesUser() currentUser: CamionesRequestUser,
+    @Param("id", ParseIntPipe) clientId: number,
+    @Body() dto: UpdateCamionesClientDto
+  ) {
+    return this.camionesService.updateClient(currentUser, clientId, dto);
+  }
+
+  @RequireCapability("camiones.clients.write")
+  @UseGuards(CapabilityGuard)
+  @Patch("clients/:id/archive")
+  archiveClient(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) clientId: number) {
+    return this.camionesService.archiveClient(currentUser, clientId);
   }
 
   @RequireCapability("camiones.places.read")
@@ -76,6 +96,17 @@ export class CamionesController {
   @Post("trips")
   createTrip(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: CreateCamionesTripDto) {
     return this.camionesService.createTrip(currentUser, dto);
+  }
+
+  @RequireCapability("camiones.trips.write")
+  @UseGuards(CapabilityGuard)
+  @Patch("trips/:id")
+  updateTrip(
+    @CurrentCamionesUser() currentUser: CamionesRequestUser,
+    @Param("id", ParseIntPipe) tripId: number,
+    @Body() dto: UpdateCamionesTripDto
+  ) {
+    return this.camionesService.updateTrip(currentUser, tripId, dto);
   }
 
   @RequireCapability("camiones.trips.pay")

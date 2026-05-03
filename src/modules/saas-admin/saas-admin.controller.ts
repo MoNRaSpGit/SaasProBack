@@ -12,7 +12,7 @@ export class SaasAdminController {
   constructor(private readonly saasAdminService: SaasAdminService) {}
 
   @Get("tenants")
-  listTenants(@CurrentSaasAdminUser() currentUser: SaasAdminRequestUser) {
+  listTenants(@CurrentSaasAdminUser() _currentUser: SaasAdminRequestUser) {
     return this.saasAdminService.listTenants();
   }
 
@@ -20,7 +20,7 @@ export class SaasAdminController {
   updateTenantBilling(
     @Param("tenantId", ParseIntPipe) tenantId: number,
     @Body() dto: UpdateTenantBillingDto,
-    @CurrentSaasAdminUser() currentUser: SaasAdminRequestUser
+    @CurrentSaasAdminUser() _currentUser: SaasAdminRequestUser
   ) {
     return this.saasAdminService.updateTenantBilling(tenantId, dto);
   }
@@ -29,7 +29,7 @@ export class SaasAdminController {
   updateTenantModules(
     @Param("tenantId", ParseIntPipe) tenantId: number,
     @Body() dto: UpdateTenantModulesDto,
-    @CurrentSaasAdminUser() currentUser: SaasAdminRequestUser
+    @CurrentSaasAdminUser() _currentUser: SaasAdminRequestUser
   ) {
     return this.saasAdminService.updateTenantModules(tenantId, dto);
   }

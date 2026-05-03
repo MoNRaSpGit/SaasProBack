@@ -10,7 +10,9 @@ type DbConnectionCheckResult = {
   suggestedFix?: string;
 };
 
-function mapDatabaseError(code: string, message: string): Pick<DbConnectionCheckResult, "probableCause" | "suggestedFix"> {
+type SqlValue = string | number | boolean | null | Date;
+
+function mapDatabaseError(code: string): Pick<DbConnectionCheckResult, "probableCause" | "suggestedFix"> {
   switch (code) {
     case "ECONNREFUSED":
       return {
@@ -67,13 +69,17 @@ export class DatabaseService implements OnModuleDestroy {
     return rows;
   }
 
-  async query<T extends RowDataPacket[]>(sql: string, values: any[] = []) {
-    const [rows] = await this.pool.query<T>(sql, values);
+  private normalizeValues(values: Array<SqlValue | undefined>) {
+    return values.map((value) => value ?? null);
+  }
+
+  async query<T extends RowDataPacket[]>(sql: string, values: Array<SqlValue | undefined> = []) {
+    const [rows] = await this.pool.query<T>(sql, this.normalizeValues(values));
     return rows;
   }
 
-  async execute<T extends QueryResult>(sql: string, values: any[] = []) {
-    const [result] = await this.pool.execute<T>(sql, values);
+  async execute<T extends QueryResult>(sql: string, values: Array<SqlValue | undefined> = []) {
+    const [result] = await this.pool.execute<T>(sql, this.normalizeValues(values));
     return result;
   }
 
@@ -101,7 +107,7 @@ export class DatabaseService implements OnModuleDestroy {
       const err = error as { code?: string; message?: string; sqlMessage?: string };
       const errorCode = err.code || "UNKNOWN_DB_ERROR";
       const errorMessage = err.message || err.sqlMessage || "Database connection failed";
-      const mapped = mapDatabaseError(errorCode, errorMessage);
+      const mapped = mapDatabaseError(errorCode);
 
       return {
         ok: false,

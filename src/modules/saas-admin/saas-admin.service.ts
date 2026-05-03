@@ -29,6 +29,27 @@ type TenantRow = RowDataPacket & {
   status: string;
 };
 
+type TenantListItem = {
+  id: number;
+  name: string;
+  slug: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  billing: {
+    status: TenantBillingStatus;
+    paidUntil: string | null;
+    graceUntil: string | null;
+    blockedReason: string | null;
+  };
+  primaryUser: {
+    email: string;
+    fullName: string | null;
+    membershipRole: string | null;
+  } | null;
+  modules: string[];
+};
+
 @Injectable()
 export class SaasAdminService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -73,7 +94,7 @@ export class SaasAdminService {
          t.id DESC`
     );
 
-    const tenants = new Map<number, any>();
+    const tenants = new Map<number, TenantListItem>();
 
     for (const row of rows) {
       const existing =

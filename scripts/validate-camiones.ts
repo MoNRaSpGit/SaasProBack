@@ -140,6 +140,22 @@ async function main() {
       throw new Error(`List clients failed: ${JSON.stringify(listClientsPayload)}`);
     }
 
+    const updateClientResponse = await fetch(`${baseUrl}/camiones/clients/${createClientPayload.item.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        name: `Cliente Camiones Editado ${suffix}`,
+        phone: "099222333"
+      })
+    });
+    const updateClientPayload = await readJson(updateClientResponse);
+    if (!updateClientResponse.ok || updateClientPayload.item?.name !== `Cliente Camiones Editado ${suffix}`) {
+      throw new Error(`Update client failed: ${JSON.stringify(updateClientPayload)}`);
+    }
+
     const createPlaceResponse = await fetch(`${baseUrl}/camiones/places`, {
       method: "POST",
       headers: {
@@ -200,6 +216,23 @@ async function main() {
       throw new Error(`List trips failed: ${JSON.stringify(listTripsPayload)}`);
     }
 
+    const updateTripResponse = await fetch(`${baseUrl}/camiones/trips/${createTripPayload.trip.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        placeId: createPlacePayload.item.id,
+        tripDate: "2026-05-03",
+        kilometers: 530
+      })
+    });
+    const updateTripPayload = await readJson(updateTripResponse);
+    if (!updateTripResponse.ok || updateTripPayload.trip?.kilometers !== 530) {
+      throw new Error(`Update trip failed: ${JSON.stringify(updateTripPayload)}`);
+    }
+
     const markPaidResponse = await fetch(`${baseUrl}/camiones/trips/${createTripPayload.trip.id}/pay`, {
       method: "PATCH",
       headers: {
@@ -232,6 +265,17 @@ async function main() {
       throw new Error(`Archive place failed: ${JSON.stringify(archivePlacePayload)}`);
     }
 
+    const archiveClientResponse = await fetch(`${baseUrl}/camiones/clients/${createClientPayload.item.id}/archive`, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    const archiveClientPayload = await readJson(archiveClientResponse);
+    if (!archiveClientResponse.ok || archiveClientPayload.ok !== true) {
+      throw new Error(`Archive client failed: ${JSON.stringify(archiveClientPayload)}`);
+    }
+
     console.log(
       JSON.stringify(
         {
@@ -243,12 +287,15 @@ async function main() {
           },
           createdClient: createClientPayload.item,
           duplicateClient: duplicateClientPayload.item,
+          updatedClient: updateClientPayload.item,
           createdPlace: createPlacePayload.item,
           updatedPlace: updatePlacePayload.item,
           listedClientsCount: listClientsPayload.meta?.count,
           createdTrip: createTripPayload.trip,
           listedTripsCount: listTripsPayload.meta?.count,
+          updatedTrip: updateTripPayload.trip,
           paidTrip: markPaidPayload.trip,
+          archivedClient: archiveClientPayload.ok,
           archivedPlace: archivePlacePayload.ok,
           listedPaidTripsCount: listPaidTripsPayload.meta?.count,
           paidTrips: listPaidTripsPayload.items
