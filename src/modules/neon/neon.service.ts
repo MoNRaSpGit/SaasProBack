@@ -1,14 +1,30 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
-import { NeonAccount, NeonActivity, NeonActivityPayment, NeonClient, NeonRequestUser, NeonShellStatus } from "./neon.types";
+import {
+  NeonAccount,
+  NeonActivity,
+  NeonActivityPayment,
+  NeonCategory,
+  NeonClient,
+  NeonExpense,
+  NeonRequestUser,
+  NeonShellStatus
+} from "./neon.types";
 import { CreateNeonActivityDto, NeonCommercialStatus } from "./dto/create-neon-activity.dto";
+import { CreateNeonActivityPaymentDto } from "./dto/create-neon-activity-payment.dto";
+import {
+  CreateNeonCategoryDto,
+  NeonCategoryClassification,
+  NeonCategoryMovementType
+} from "./dto/create-neon-category.dto";
 import { CreateNeonClientDto } from "./dto/create-neon-client.dto";
+import { CreateNeonExpenseDto, NeonExpenseDestinationType } from "./dto/create-neon-expense.dto";
 import { ListNeonActivitiesDto } from "./dto/list-neon-activities.dto";
+import { ListNeonCategoriesDto } from "./dto/list-neon-categories.dto";
 import { ListNeonClientsDto } from "./dto/list-neon-clients.dto";
 import { UpdateNeonActivityDto } from "./dto/update-neon-activity.dto";
 import { UpdateNeonClientDto } from "./dto/update-neon-client.dto";
-import { CreateNeonActivityPaymentDto } from "./dto/create-neon-activity-payment.dto";
 
 type NeonClientRow = RowDataPacket & {
   id: number;
@@ -61,6 +77,48 @@ type NeonActivityPaymentRow = RowDataPacket & {
   description: string | null;
   created_at: string;
 };
+
+type NeonCategoryRow = RowDataPacket & {
+  id: number;
+  tenant_id: number;
+  name: string;
+  movement_type: NeonCategoryMovementType;
+  classification: NeonCategoryClassification;
+  is_system: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type NeonExpenseRow = RowDataPacket & {
+  id: number;
+  tenant_id: number;
+  movement_date: string;
+  account_id: number;
+  account_name: string;
+  category_id: number;
+  category_name: string;
+  category_classification: NeonCategoryClassification;
+  total_amount: string;
+  description: string | null;
+  destination_type: NeonExpenseDestinationType;
+  destination_activity_id: number | null;
+  destination_activity_code: string | null;
+  destination_activity_description: string | null;
+  destination_label: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const DEFAULT_EXPENSE_CATEGORIES: Array<{
+  name: string;
+  classification: NeonCategoryClassification;
+}> = [
+  { name: "Nafta", classification: "empresa" },
+  { name: "Alquiler", classification: "empresa" },
+  { name: "Servicios", classification: "empresa" },
+  { name: "Gastos personales", classification: "personal" },
+  { name: "Otros", classification: "empresa" }
+];
 
 @Injectable()
 export class NeonService {
@@ -310,6 +368,104 @@ export class NeonService {
     };
   }
 
+  async listCategories(currentUser: NeonRequestUser, query: ListNeonCategoriesDto) {
+    await this.ensureDefaultCategories(currentUser.tenantId);
+
+    const whereParts = ["tenant_id = ?", "deleted_at IS NULL"];
+    const values: Array<number | string> = [currentUser.tenantId];
+
+    if (query.movementType) {
+      whereParts.push("movement_type = ?");
+      values.push(query.movementType);
+    }
+
+    const rows = await this.databaseService.query<NeonCategoryRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         name,
+         movement_type,
+         classification,
+         is_system,
+         created_at,
+         updated_at
+       FROM saas_neon_categories
+       WHERE ${whereParts.join(" AND ")}
+       ORDER BY is_system DESC, name ASC`,
+      values
+    );
+
+    return {
+      items: rows.map((row) => this.mapCategory(row)),
+      meta: {
+        tenantId: currentUser.tenantId,
+        count: rows.length
+      }
+    };
+  }
+
+  async createCategory(currentUser: NeonRequestUser, dto: CreateNeonCategoryDto) {
+    await this.ensureDefaultCategories(currentUser.tenantId);
+
+    const name = dto.name.trim();
+    const movementType = dto.movementType ?? "expense";
+    const classification = dto.classification ?? "empresa";
+
+    const duplicateRows = await this.databaseService.query<NeonCategoryRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         name,
+         movement_type,
+         classification,
+         is_system,
+         created_at,
+         updated_at
+       FROM saas_neon_categories
+       WHERE tenant_id = ?
+         AND deleted_at IS NULL
+         AND movement_type = ?
+         AND LOWER(name) = LOWER(?)
+       LIMIT 1`,
+      [currentUser.tenantId, movementType, name]
+    );
+
+    if (duplicateRows[0]) {
+      return { item: this.mapCategory(duplicateRows[0]) };
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_neon_categories (
+         tenant_id,
+         name,
+         movement_type,
+         classification,
+         is_system
+       )
+       VALUES (?, ?, ?, ?, 0)`,
+      [currentUser.tenantId, name, movementType, classification]
+    );
+
+    const rows = await this.databaseService.query<NeonCategoryRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         name,
+         movement_type,
+         classification,
+         is_system,
+         created_at,
+         updated_at
+       FROM saas_neon_categories
+       WHERE id = ?
+         AND tenant_id = ?
+       LIMIT 1`,
+      [result.insertId, currentUser.tenantId]
+    );
+
+    return { item: this.mapCategory(rows[0]) };
+  }
+
   async listActivities(currentUser: NeonRequestUser, query: ListNeonActivitiesDto) {
     const limit = query.limit ?? 50;
     const search = query.search?.trim();
@@ -539,6 +695,128 @@ export class NeonService {
     return { item: this.mapActivity(nextActivity, payments) };
   }
 
+  async listExpenses(currentUser: NeonRequestUser) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+    await this.ensureDefaultCategories(currentUser.tenantId);
+
+    const rows = await this.databaseService.query<NeonExpenseRow[]>(
+      `SELECT
+         m.id,
+         m.tenant_id,
+         m.movement_date,
+         m.account_id,
+         a.name AS account_name,
+         m.category_id,
+         c.name AS category_name,
+         c.classification AS category_classification,
+         m.total_amount,
+         m.description,
+         alloc.destination_type,
+         alloc.destination_activity_id,
+         CASE
+           WHEN alloc.destination_activity_id IS NULL THEN NULL
+           ELSE CONCAT('#', act.activity_number, '/', act.activity_year)
+         END AS destination_activity_code,
+         act.description AS destination_activity_description,
+         alloc.destination_label,
+         m.created_at,
+         m.updated_at
+       FROM saas_neon_movements m
+       INNER JOIN saas_neon_accounts a
+         ON a.id = m.account_id
+        AND a.tenant_id = m.tenant_id
+       INNER JOIN saas_neon_categories c
+         ON c.id = m.category_id
+        AND c.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_movement_allocations alloc
+         ON alloc.movement_id = m.id
+        AND alloc.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_activities act
+         ON act.id = alloc.destination_activity_id
+        AND act.tenant_id = alloc.tenant_id
+       WHERE m.tenant_id = ?
+         AND m.movement_type = 'expense'
+         AND m.deleted_at IS NULL
+       ORDER BY m.movement_date DESC, m.id DESC`,
+      [currentUser.tenantId]
+    );
+
+    return {
+      items: rows.map((row) => this.mapExpense(row)),
+      meta: {
+        tenantId: currentUser.tenantId,
+        count: rows.length
+      }
+    };
+  }
+
+  async createExpense(currentUser: NeonRequestUser, dto: CreateNeonExpenseDto) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+    await this.ensureDefaultCategories(currentUser.tenantId);
+
+    const totalAmount = Number(dto.totalAmount.toFixed(2));
+    const description = dto.description?.trim() || null;
+    const destinationLabel = dto.destinationLabel?.trim() || null;
+
+    const expense = await this.databaseService.withTransaction(async (connection) => {
+      await this.ensureAccountExistsWithConnection(connection, currentUser.tenantId, dto.accountId);
+      await this.ensureCategoryExistsWithConnection(connection, currentUser.tenantId, dto.categoryId, "expense");
+
+      if (dto.destinationType === "activity") {
+        if (!dto.destinationActivityId) {
+          throw new BadRequestException("Falta elegir la actividad destino");
+        }
+
+        await this.findActivityRowWithConnection(connection, currentUser.tenantId, dto.destinationActivityId);
+      }
+
+      if (dto.destinationType === "other" && !destinationLabel) {
+        throw new BadRequestException("Falta la etiqueta del destino");
+      }
+
+      const [movementResult] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_neon_movements (
+           tenant_id,
+           movement_type,
+           movement_date,
+           account_id,
+           total_amount,
+           description,
+           category_id,
+           source_type,
+           source_activity_id
+         )
+         VALUES (?, 'expense', ?, ?, ?, ?, ?, 'independent', NULL)`,
+        [currentUser.tenantId, dto.expenseDate, dto.accountId, totalAmount, description, dto.categoryId]
+      );
+
+      await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_neon_movement_allocations (
+           tenant_id,
+           movement_id,
+           destination_type,
+           destination_activity_id,
+           destination_label,
+           amount,
+           metadata_json
+         )
+         VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+        [
+          currentUser.tenantId,
+          movementResult.insertId,
+          dto.destinationType,
+          dto.destinationType === "activity" ? dto.destinationActivityId ?? null : null,
+          dto.destinationType === "other" ? destinationLabel : null,
+          totalAmount
+        ]
+      );
+
+      return this.findExpenseRowWithConnection(connection, currentUser.tenantId, movementResult.insertId);
+    });
+
+    return { item: this.mapExpense(expense) };
+  }
+
   private async ensureDefaultAccounts(tenantId: number) {
     const countRows = await this.databaseService.query<RowDataPacket[]>(
       `SELECT COUNT(*) AS total
@@ -579,6 +857,51 @@ export class NeonService {
            (?, 'Banco', 'bank', 0)`,
         [tenantId, tenantId]
       );
+    });
+  }
+
+  private async ensureDefaultCategories(tenantId: number) {
+    const countRows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total
+       FROM saas_neon_categories
+       WHERE tenant_id = ?
+         AND deleted_at IS NULL
+         AND movement_type = 'expense'`,
+      [tenantId]
+    );
+
+    if (Number(countRows[0]?.total || 0) > 0) {
+      return;
+    }
+
+    await this.databaseService.withTransaction(async (connection) => {
+      const [existingRows] = await connection.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total
+         FROM saas_neon_categories
+         WHERE tenant_id = ?
+           AND deleted_at IS NULL
+           AND movement_type = 'expense'
+         FOR UPDATE`,
+        [tenantId]
+      );
+
+      if (Number(existingRows[0]?.total || 0) > 0) {
+        return;
+      }
+
+      for (const category of DEFAULT_EXPENSE_CATEGORIES) {
+        await connection.execute(
+          `INSERT INTO saas_neon_categories (
+             tenant_id,
+             name,
+             movement_type,
+             classification,
+             is_system
+           )
+           VALUES (?, ?, 'expense', ?, 1)`,
+          [tenantId, category.name, category.classification]
+        );
+      }
     });
   }
 
@@ -651,6 +974,28 @@ export class NeonService {
 
     if (!rows[0]) {
       throw new BadRequestException("Cuenta no encontrada para este tenant");
+    }
+  }
+
+  private async ensureCategoryExistsWithConnection(
+    connection: PoolConnection,
+    tenantId: number,
+    categoryId: number,
+    movementType: NeonCategoryMovementType
+  ) {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id
+       FROM saas_neon_categories
+       WHERE id = ?
+         AND tenant_id = ?
+         AND movement_type = ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [categoryId, tenantId, movementType]
+    );
+
+    if (!rows[0]) {
+      throw new BadRequestException("Categoria no encontrada para este tenant");
     }
   }
 
@@ -744,6 +1089,57 @@ export class NeonService {
     return rows[0];
   }
 
+  private async findExpenseRowWithConnection(connection: PoolConnection, tenantId: number, movementId: number) {
+    const [rows] = await connection.query<NeonExpenseRow[]>(
+      `SELECT
+         m.id,
+         m.tenant_id,
+         m.movement_date,
+         m.account_id,
+         a.name AS account_name,
+         m.category_id,
+         c.name AS category_name,
+         c.classification AS category_classification,
+         m.total_amount,
+         m.description,
+         alloc.destination_type,
+         alloc.destination_activity_id,
+         CASE
+           WHEN alloc.destination_activity_id IS NULL THEN NULL
+           ELSE CONCAT('#', act.activity_number, '/', act.activity_year)
+         END AS destination_activity_code,
+         act.description AS destination_activity_description,
+         alloc.destination_label,
+         m.created_at,
+         m.updated_at
+       FROM saas_neon_movements m
+       INNER JOIN saas_neon_accounts a
+         ON a.id = m.account_id
+        AND a.tenant_id = m.tenant_id
+       INNER JOIN saas_neon_categories c
+         ON c.id = m.category_id
+        AND c.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_movement_allocations alloc
+         ON alloc.movement_id = m.id
+        AND alloc.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_activities act
+         ON act.id = alloc.destination_activity_id
+        AND act.tenant_id = alloc.tenant_id
+       WHERE m.id = ?
+         AND m.tenant_id = ?
+         AND m.movement_type = 'expense'
+         AND m.deleted_at IS NULL
+       LIMIT 1`,
+      [movementId, tenantId]
+    );
+
+    if (!rows[0]) {
+      throw new BadRequestException("Gasto no encontrado para este tenant");
+    }
+
+    return rows[0];
+  }
+
   private async listActivityPayments(tenantId: number, activityId: number) {
     const rows = await this.databaseService.query<NeonActivityPaymentRow[]>(
       `SELECT
@@ -806,6 +1202,23 @@ export class NeonService {
     };
   }
 
+  private mapCategory(row: NeonCategoryRow | undefined): NeonCategory {
+    if (!row) {
+      throw new BadRequestException("Categoria no encontrada");
+    }
+
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      name: row.name,
+      movementType: row.movement_type,
+      classification: row.classification,
+      isSystem: Boolean(row.is_system),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
   private mapPayment(row: NeonActivityPaymentRow | undefined): NeonActivityPayment {
     if (!row) {
       throw new BadRequestException("Pago no encontrado");
@@ -845,6 +1258,32 @@ export class NeonService {
       collectedAmount: Number(row.collected_amount),
       pendingAmount: Number(row.pending_amount),
       payments,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapExpense(row: NeonExpenseRow | undefined): NeonExpense {
+    if (!row) {
+      throw new BadRequestException("Gasto no encontrado");
+    }
+
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      movementDate: row.movement_date,
+      accountId: row.account_id,
+      accountName: row.account_name,
+      categoryId: row.category_id,
+      categoryName: row.category_name,
+      categoryClassification: row.category_classification,
+      totalAmount: Number(row.total_amount),
+      description: row.description,
+      destinationType: row.destination_type,
+      destinationActivityId: row.destination_activity_id,
+      destinationActivityCode: row.destination_activity_code,
+      destinationActivityDescription: row.destination_activity_description,
+      destinationLabel: row.destination_label,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

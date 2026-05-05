@@ -6,7 +6,10 @@ import { NeonAuthGuard } from "./neon-auth.guard";
 import { NeonRequestUser } from "./neon.types";
 import { CreateNeonActivityDto } from "./dto/create-neon-activity.dto";
 import { CreateNeonClientDto } from "./dto/create-neon-client.dto";
+import { CreateNeonCategoryDto } from "./dto/create-neon-category.dto";
+import { CreateNeonExpenseDto } from "./dto/create-neon-expense.dto";
 import { ListNeonActivitiesDto } from "./dto/list-neon-activities.dto";
+import { ListNeonCategoriesDto } from "./dto/list-neon-categories.dto";
 import { ListNeonClientsDto } from "./dto/list-neon-clients.dto";
 import { UpdateNeonActivityDto } from "./dto/update-neon-activity.dto";
 import { UpdateNeonClientDto } from "./dto/update-neon-client.dto";
@@ -57,6 +60,20 @@ export class NeonController {
     return this.neonService.listAccounts(currentUser);
   }
 
+  @RequireCapability("neon.categories.read")
+  @UseGuards(CapabilityGuard)
+  @Get("categories")
+  listCategories(@CurrentNeonUser() currentUser: NeonRequestUser, @Query() query: ListNeonCategoriesDto) {
+    return this.neonService.listCategories(currentUser, query);
+  }
+
+  @RequireCapability("neon.categories.write")
+  @UseGuards(CapabilityGuard)
+  @Post("categories")
+  createCategory(@CurrentNeonUser() currentUser: NeonRequestUser, @Body() dto: CreateNeonCategoryDto) {
+    return this.neonService.createCategory(currentUser, dto);
+  }
+
   @RequireCapability("neon.activities.read")
   @UseGuards(CapabilityGuard)
   @Get("activities")
@@ -98,5 +115,19 @@ export class NeonController {
     @Body() dto: CreateNeonActivityPaymentDto
   ) {
     return this.neonService.createActivityPayment(currentUser, activityId, dto);
+  }
+
+  @RequireCapability("neon.expenses.read")
+  @UseGuards(CapabilityGuard)
+  @Get("expenses")
+  listExpenses(@CurrentNeonUser() currentUser: NeonRequestUser) {
+    return this.neonService.listExpenses(currentUser);
+  }
+
+  @RequireCapability("neon.expenses.write")
+  @UseGuards(CapabilityGuard)
+  @Post("expenses")
+  createExpense(@CurrentNeonUser() currentUser: NeonRequestUser, @Body() dto: CreateNeonExpenseDto) {
+    return this.neonService.createExpense(currentUser, dto);
   }
 }

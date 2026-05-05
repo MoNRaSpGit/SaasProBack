@@ -17,11 +17,15 @@ Endpoints activos:
 - `POST /api/v1/neon/clients`
 - `PATCH /api/v1/neon/clients/:id`
 - `GET /api/v1/neon/accounts`
+- `GET /api/v1/neon/categories`
+- `POST /api/v1/neon/categories`
 - `GET /api/v1/neon/activities`
 - `GET /api/v1/neon/activities/:id`
 - `POST /api/v1/neon/activities`
 - `PATCH /api/v1/neon/activities/:id`
 - `POST /api/v1/neon/activities/:id/payments`
+- `GET /api/v1/neon/expenses`
+- `POST /api/v1/neon/expenses`
 
 Reglas activas:
 
@@ -34,6 +38,10 @@ Reglas activas:
 - capability `neon.accounts.read`
 - capability `neon.activities.read`
 - capability `neon.activities.write`
+- capability `neon.categories.read`
+- capability `neon.categories.write`
+- capability `neon.expenses.read`
+- capability `neon.expenses.write`
 
 Base funcional actual:
 
@@ -43,11 +51,14 @@ Base funcional actual:
 - pagos de actividad enlazados a cuentas
 - recalculo automatico de `cobrado` y `pendiente`
 - saldo de cuentas calculado por movimientos
+- categorias de gasto por tenant
+- gasto simple con destino y cuenta
 
 Migraciones activas del modulo:
 
 - `009_saas_neon_core.sql`
 - `010_saas_neon_payments.sql`
+- `011_saas_neon_expenses.sql`
 
 ## Frontend
 
@@ -78,6 +89,8 @@ Estado actual del bloque 2:
 - `Registrar pago` publicado
 - pagos parciales activos desde actividad
 - `cobrado` y `pendiente` recalculados automaticamente
+- categorias de gasto publicadas
+- gasto simple publicado
 
 ## Regla documental
 
@@ -93,8 +106,6 @@ El siguiente bloque de `neon` ya no es infraestructura ni ingresos desde activid
 
 El siguiente foco funcional es:
 
-- gastos
-- categorias
 - dividir gasto
 - centros de costo
 - primeros reportes base

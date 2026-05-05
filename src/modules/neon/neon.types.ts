@@ -1,5 +1,7 @@
 import { ModuleRequestUser } from "../../shared/authz/module-auth";
 import { NeonActivityType, NeonCommercialStatus } from "./dto/create-neon-activity.dto";
+import { NeonCategoryClassification, NeonCategoryMovementType } from "./dto/create-neon-category.dto";
+import { NeonExpenseDestinationType } from "./dto/create-neon-expense.dto";
 
 export type NeonRequestUser = ModuleRequestUser;
 
@@ -71,6 +73,37 @@ export type NeonActivity = {
   collectedAmount: number;
   pendingAmount: number;
   payments?: NeonActivityPayment[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NeonCategory = {
+  id: number;
+  tenantId: number;
+  name: string;
+  movementType: NeonCategoryMovementType;
+  classification: NeonCategoryClassification;
+  isSystem: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NeonExpense = {
+  id: number;
+  tenantId: number;
+  movementDate: string;
+  accountId: number;
+  accountName: string;
+  categoryId: number;
+  categoryName: string;
+  categoryClassification: NeonCategoryClassification;
+  totalAmount: number;
+  description: string | null;
+  destinationType: NeonExpenseDestinationType;
+  destinationActivityId: number | null;
+  destinationActivityCode: string | null;
+  destinationActivityDescription: string | null;
+  destinationLabel: string | null;
   createdAt: string;
   updatedAt: string;
 };
