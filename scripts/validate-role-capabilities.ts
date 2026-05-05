@@ -81,7 +81,7 @@ async function main() {
     const connection = await createConnection({ uri: process.env.DATABASE_URL });
     await connection.query(
       `INSERT INTO saas_tenant_modules (tenant_id, module_key, enabled)
-       VALUES (?, 'distribuidora', 1)
+       VALUES (?, 'camiones', 1)
        ON DUPLICATE KEY UPDATE enabled = VALUES(enabled)`,
       [registerPayload.tenantContext.tenant.id]
     );
@@ -95,24 +95,59 @@ async function main() {
 
     const accessToken = registerPayload.tokens.accessToken;
 
-    const shellResponse = await fetch(`${baseUrl}/distribuidora/status`, {
+    const createClientResponse = await fetch(`${baseUrl}/camiones/clients`, {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ name: `Cliente RBAC ${suffix}` })
     });
-    const shellPayload = await readJson(shellResponse);
-    if (!shellResponse.ok) {
-      throw new Error(`Distribuidora shell failed: ${JSON.stringify(shellPayload)}`);
+    const createClientPayload = await readJson(createClientResponse);
+    if (createClientResponse.status !== 403) {
+      throw new Error(`Camiones client create should be forbidden: ${JSON.stringify(createClientPayload)}`);
     }
 
-    const adminResponse = await fetch(`${baseUrl}/distribuidora/admin/status`, {
+    const adminConnection = await createConnection({ uri: process.env.DATABASE_URL });
+    const [clientResult] = await adminConnection.query(
+      `INSERT INTO saas_camiones_clients (tenant_id, branch_id, name, phone, notes, is_active)
+       VALUES (?, NULL, ?, NULL, NULL, 1)`,
+      [registerPayload.tenantContext.tenant.id, `Cliente RBAC ${suffix}`]
+    );
+    await adminConnection.end();
+
+    const clientId = Number((clientResult as { insertId?: number }).insertId);
+    if (!clientId) {
+      throw new Error("Unable to seed camiones client for RBAC validation");
+    }
+
+    const createTripResponse = await fetch(`${baseUrl}/camiones/trips`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        clientId,
+        placeName: `Destino ${suffix}`,
+        kilometers: 12,
+        tripDate: "2026-05-05"
+      })
+    });
+    const createTripPayload = await readJson(createTripResponse);
+    if (!createTripResponse.ok) {
+      throw new Error(`Camiones trip create should be allowed: ${JSON.stringify(createTripPayload)}`);
+    }
+
+    const payTripResponse = await fetch(`${baseUrl}/camiones/trips/${createTripPayload.trip.id}/pay`, {
+      method: "PATCH",
       headers: {
         Authorization: `Bearer ${accessToken}`
       }
     });
-    const adminPayload = await readJson(adminResponse);
-    if (adminResponse.status !== 403) {
-      throw new Error(`Distribuidora admin should be forbidden: ${JSON.stringify(adminPayload)}`);
+    const payTripPayload = await readJson(payTripResponse);
+    if (payTripResponse.status !== 403) {
+      throw new Error(`Camiones trip pay should be forbidden: ${JSON.stringify(payTripPayload)}`);
     }
 
     console.log(
@@ -120,9 +155,9 @@ async function main() {
         {
           ok: true,
           role: "operario",
-          shellStatus: shellPayload.status,
-          adminStatusCode: adminResponse.status,
-          adminError: adminPayload.message
+          clientCreateStatusCode: createClientResponse.status,
+          tripCreateStatusCode: createTripResponse.status,
+          tripPayStatusCode: payTripResponse.status
         },
         null,
         2

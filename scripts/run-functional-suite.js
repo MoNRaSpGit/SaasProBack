@@ -17,29 +17,9 @@ const suite = [
     args: ["scripts/smoke-auth-module-access.js"]
   },
   {
-    name: "pos-products",
-    command: "npx.cmd",
-    args: ["ts-node", "scripts/validate-pos-products.ts"]
-  },
-  {
-    name: "pos-sales",
-    command: "npx.cmd",
-    args: ["ts-node", "scripts/validate-pos-sales.ts"]
-  },
-  {
-    name: "pos-dashboard",
-    command: "npx.cmd",
-    args: ["ts-node", "scripts/validate-pos-dashboard.ts"]
-  },
-  {
     name: "camiones",
     command: "npx.cmd",
     args: ["ts-node", "scripts/validate-camiones.ts"]
-  },
-  {
-    name: "distribuidora-shell",
-    command: "npx.cmd",
-    args: ["ts-node", "scripts/validate-distribuidora-shell.ts"]
   },
   {
     name: "role-capabilities",
