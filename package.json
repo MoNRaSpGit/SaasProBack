@@ -15,6 +15,7 @@
     "test:functional": "node scripts/run-functional-suite.js",
     "test:functional:auth": "npx.cmd ts-node scripts/validate-auth-multitenant.ts",
     "test:functional:camiones": "npx.cmd ts-node scripts/validate-camiones.ts",
+    "test:functional:neon": "npx.cmd ts-node scripts/validate-neon-shell.ts",
     "test:functional:rbac": "npx.cmd ts-node scripts/validate-role-capabilities.ts",
     "test:functional:saas-admin": "npx.cmd ts-node scripts/validate-saas-admin-lite.ts"
   },

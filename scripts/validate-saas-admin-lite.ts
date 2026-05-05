@@ -103,8 +103,14 @@ async function main() {
       throw new Error(`Own tenant not visible in SaaS admin: ${JSON.stringify(listPayload)}`);
     }
 
-    if (!listPayload.availableModules?.includes("camiones") || listPayload.availableModules.length !== 1) {
-      throw new Error(`Expected only camiones in available modules: ${JSON.stringify(listPayload.availableModules)}`);
+    const availableModules = listPayload.availableModules ?? [];
+    const expectedModules = ["camiones", "neon"];
+    const hasExpectedModules =
+      expectedModules.every((moduleKey) => availableModules.includes(moduleKey)) &&
+      availableModules.length === expectedModules.length;
+
+    if (!hasExpectedModules) {
+      throw new Error(`Expected available modules ${JSON.stringify(expectedModules)}: ${JSON.stringify(availableModules)}`);
     }
 
     const paidUntil = "2026-11-01";
@@ -143,7 +149,7 @@ async function main() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        enabledModules: ["camiones"]
+        enabledModules: ["camiones", "neon"]
       })
     });
     const updateModulesPayload = (await readJson(updateModulesResponse)) as {

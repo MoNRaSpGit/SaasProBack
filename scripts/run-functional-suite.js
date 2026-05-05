@@ -22,6 +22,11 @@ const suite = [
     args: ["ts-node", "scripts/validate-camiones.ts"]
   },
   {
+    name: "neon-shell",
+    command: "npx.cmd",
+    args: ["ts-node", "scripts/validate-neon-shell.ts"]
+  },
+  {
     name: "role-capabilities",
     command: "npx.cmd",
     args: ["ts-node", "scripts/validate-role-capabilities.ts"]
