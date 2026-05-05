@@ -2,8 +2,6 @@ import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./modules/auth/auth.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
-import { DistribuidoraModule } from "./modules/distribuidora/distribuidora.module";
-import { PosModule } from "./modules/pos/pos.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
 import { AuthzModule } from "./shared/authz/authz.module";
 import { DatabaseModule } from "./shared/database/database.module";
@@ -18,9 +16,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     DatabaseModule,
     AuthModule,
     SaasAdminModule,
-    PosModule,
-    CamionesModule,
-    DistribuidoraModule
+    CamionesModule
   ],
   controllers: [HealthController],
   providers: []
