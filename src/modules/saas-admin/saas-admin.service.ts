@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { buildEnabledProductDescriptors, SAAS_PRODUCTS } from "../../shared/saas/product-catalog";
 import { UpdateTenantBillingDto } from "./dto/update-tenant-billing.dto";
 import { UpdateTenantModulesDto } from "./dto/update-tenant-modules.dto";
 import { SAAS_ADMIN_MODULE_KEYS, SaasAdminModuleKey, TenantBillingStatus } from "./saas-admin.types";
@@ -48,6 +49,12 @@ type TenantListItem = {
     membershipRole: string | null;
   } | null;
   modules: string[];
+  products: Array<{
+    key: string;
+    label: string;
+    frontend: string;
+  }>;
+  preferredFrontend: string | null;
 };
 
 @Injectable()
@@ -119,11 +126,15 @@ export class SaasAdminService {
                 membershipRole: row.primary_membership_role
               }
             : null,
-          modules: [] as string[]
+          modules: [] as string[],
+          products: [] as TenantListItem["products"],
+          preferredFrontend: null
         };
 
       if (row.module_key && !existing.modules.includes(row.module_key)) {
         existing.modules.push(row.module_key);
+        existing.products = buildEnabledProductDescriptors(existing.modules);
+        existing.preferredFrontend = existing.products[0]?.frontend || null;
       }
 
       tenants.set(row.tenant_id, existing);
@@ -131,6 +142,7 @@ export class SaasAdminService {
 
     return {
       availableModules: [...SAAS_ADMIN_MODULE_KEYS],
+      availableProducts: Object.values(SAAS_PRODUCTS),
       items: Array.from(tenants.values()),
       total: tenants.size
     };
@@ -249,9 +261,12 @@ export class SaasAdminService {
        FROM saas_tenant_modules
        WHERE tenant_id = ?
          AND enabled = 1
-       ORDER BY module_key ASC`,
+      ORDER BY module_key ASC`,
       [tenantId]
     );
+
+    const modules = moduleRows.map((row) => row.module_key);
+    const products = buildEnabledProductDescriptors(modules);
 
     return {
       tenant: {
@@ -260,7 +275,9 @@ export class SaasAdminService {
         slug: tenant.slug,
         status: tenant.status
       },
-      modules: moduleRows.map((row) => row.module_key)
+      modules,
+      products,
+      preferredFrontend: products[0]?.frontend || null
     };
   }
 }

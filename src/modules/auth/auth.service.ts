@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { JwtPayload as BaseJwtPayload, SignOptions, sign, verify } from "jsonwebtoken";
 import { DatabaseService } from "../../shared/database/database.service";
+import { buildEnabledProductDescriptors } from "../../shared/saas/product-catalog";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { RegisterDto } from "./dto/register.dto";
@@ -87,6 +88,12 @@ type AuthSessionPayload = {
       blockedReason: string | null;
     };
     modules: string[];
+    products: Array<{
+      key: string;
+      label: string;
+      frontend: string;
+    }>;
+    preferredFrontend: string | null;
   } | null;
   tokens: {
     accessToken: string;
@@ -398,6 +405,9 @@ export class AuthService {
       [membership.tenant_id]
     );
 
+    const modules = moduleRows.map((row) => row.module_key);
+    const products = buildEnabledProductDescriptors(modules);
+
     return {
       tenant: {
         id: membership.tenant_id,
@@ -416,7 +426,9 @@ export class AuthService {
         graceUntil: membership.grace_until,
         blockedReason: membership.blocked_reason
       },
-      modules: moduleRows.map((row) => row.module_key)
+      modules,
+      products,
+      preferredFrontend: products[0]?.frontend || null
     };
   }
 

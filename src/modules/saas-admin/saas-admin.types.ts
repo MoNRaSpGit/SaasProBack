@@ -1,3 +1,5 @@
+import { SAAS_PRODUCT_KEYS, SaasProductKey } from "../../shared/saas/product-catalog";
+
 export type SaasAdminRequestUser = {
   userId: number;
   email: string;
@@ -6,6 +8,6 @@ export type SaasAdminRequestUser = {
 
 export type TenantBillingStatus = "active" | "grace_period" | "pending_manual_block" | "blocked";
 
-export const SAAS_ADMIN_MODULE_KEYS = ["camiones", "distribuidora", "pos"] as const;
+export const SAAS_ADMIN_MODULE_KEYS = SAAS_PRODUCT_KEYS;
 
-export type SaasAdminModuleKey = (typeof SAAS_ADMIN_MODULE_KEYS)[number];
+export type SaasAdminModuleKey = SaasProductKey;

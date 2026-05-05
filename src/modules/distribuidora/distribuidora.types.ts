@@ -1,9 +1,3 @@
-export type DistribuidoraRequestUser = {
-  userId: number;
-  email: string;
-  tenantId: number;
-  tenantName: string;
-  tenantSlug: string;
-  membershipRole: string;
-  modules: string[];
-};
+import { ModuleRequestUser } from "../../shared/authz/module-auth";
+
+export type DistribuidoraRequestUser = ModuleRequestUser;
