@@ -49,10 +49,16 @@ describe("backend smoke", () => {
 
   it("maps tenant capabilities by role", () => {
     expect(hasCapability("staff", "neon.shell.read")).toBe(true);
+    expect(hasCapability("staff", "neon.clients.write")).toBe(true);
+    expect(hasCapability("staff", "neon.activities.write")).toBe(true);
     expect(hasCapability("staff", "camiones.trips.pay")).toBe(true);
     expect(hasCapability("admin", "camiones.trips.pay")).toBe(true);
     expect(hasCapability("admin", "camiones.places.write")).toBe(true);
+    expect(hasCapability("admin", "neon.activities.write")).toBe(true);
     expect(hasCapability("operario", "neon.shell.read")).toBe(true);
+    expect(hasCapability("operario", "neon.clients.read")).toBe(true);
+    expect(hasCapability("operario", "neon.activities.read")).toBe(true);
+    expect(hasCapability("operario", "neon.activities.write")).toBe(false);
     expect(hasCapability("operario", "camiones.trips.pay")).toBe(false);
     expect(hasCapability("operario", "camiones.places.read")).toBe(true);
     expect(hasCapability("operario", "camiones.places.write")).toBe(false);

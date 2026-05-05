@@ -93,14 +93,62 @@ async function main() {
     );
     await connection.end();
 
-    const statusResponse = await fetch(`${baseUrl}/neon/status`, {
-      headers: {
-        Authorization: `Bearer ${registerPayload.tokens.accessToken}`
-      }
-    });
+    const authHeaders = {
+      Authorization: `Bearer ${registerPayload.tokens.accessToken}`,
+      "Content-Type": "application/json"
+    };
+
+    const statusResponse = await fetch(`${baseUrl}/neon/status`, { headers: authHeaders });
     const statusPayload = await readJson(statusResponse);
     if (!statusResponse.ok) {
       throw new Error(`Neon status failed: ${JSON.stringify(statusPayload)}`);
+    }
+
+    const createClientResponse = await fetch(`${baseUrl}/neon/clients`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        name: `Cliente Neon ${suffix}`,
+        phone: "099123123",
+        notes: "cliente de prueba neon"
+      })
+    });
+    const createClientPayload = await readJson(createClientResponse);
+    if (!createClientResponse.ok || !createClientPayload?.item?.id) {
+      throw new Error(`Create Neon client failed: ${JSON.stringify(createClientPayload)}`);
+    }
+
+    const createActivityResponse = await fetch(`${baseUrl}/neon/activities`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        activityDate: "2026-05-05",
+        description: `Pantalla demo ${suffix}`,
+        clientId: createClientPayload.item.id,
+        activityType: "neon",
+        quotedAmount: 2500,
+        commercialStatus: "pendiente_de_facturar"
+      })
+    });
+    const createActivityPayload = await readJson(createActivityResponse);
+    if (!createActivityResponse.ok || !createActivityPayload?.item?.id) {
+      throw new Error(`Create Neon activity failed: ${JSON.stringify(createActivityPayload)}`);
+    }
+
+    const listActivitiesResponse = await fetch(`${baseUrl}/neon/activities?limit=10`, {
+      headers: authHeaders
+    });
+    const listActivitiesPayload = await readJson(listActivitiesResponse);
+    if (!listActivitiesResponse.ok || !Array.isArray(listActivitiesPayload?.items)) {
+      throw new Error(`List Neon activities failed: ${JSON.stringify(listActivitiesPayload)}`);
+    }
+
+    const detailResponse = await fetch(`${baseUrl}/neon/activities/${createActivityPayload.item.id}`, {
+      headers: authHeaders
+    });
+    const detailPayload = await readJson(detailResponse);
+    if (!detailResponse.ok || !detailPayload?.item?.id) {
+      throw new Error(`Get Neon activity failed: ${JSON.stringify(detailPayload)}`);
     }
 
     console.log(
@@ -108,7 +156,11 @@ async function main() {
         {
           ok: true,
           tenant: registerPayload.tenantContext.tenant,
-          status: statusPayload
+          status: statusPayload,
+          client: createClientPayload.item,
+          activity: createActivityPayload.item,
+          listedActivitiesCount: listActivitiesPayload.items.length,
+          activityDetail: detailPayload.item
         },
         null,
         2
