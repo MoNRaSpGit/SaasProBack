@@ -7,6 +7,8 @@ Fecha de actualizacion: 2026-05-05
 - modulo oficial activo: `camiones`
 - frontend oficial activo: `frontend-camiones`
 - backend oficial activo: `backend`
+- modulo en incubacion tecnica: `neon`
+- frontend en incubacion tecnica: `frontend-neon`
 
 ## Regla de producto
 
@@ -17,6 +19,21 @@ Eso significa:
 - no hay otros modulos activos en el camino oficial
 - no se vende ni se comunica otro modulo como parte del producto actual
 - cualquier modulo futuro entra como modulo nuevo sobre esta base
+
+## Incubacion actual
+
+`neon` ya tiene:
+
+- frontend propio publicado
+- shell protegido por auth
+- endpoint backend activo
+- validacion de conexion a base
+
+Pero en esta etapa:
+
+- no reemplaza a `camiones` como producto oficial
+- no se comunica como producto cerrado
+- funciona como base valida para arrancar su bloque funcional siguiente
 
 ## Multi-modulo
 
@@ -35,6 +52,7 @@ Hoy su alcance practico es:
 - billing
 - tenants
 - habilitacion de `camiones`
+- habilitacion de modulos nuevos en incubacion como `neon`
 
 ## Regla de crecimiento
 

@@ -10,6 +10,7 @@ Definir la estructura oficial del SaaS para seguir creciendo sin ruido.
 
 - `backend` = nucleo unico del SaaS
 - `frontend-camiones` = unico frontend oficial activo
+- `frontend-neon` = frontend de modulo en incubacion
 - `camiones` = unico modulo oficial activo
 
 ## Regla de arquitectura
@@ -18,6 +19,8 @@ Definir la estructura oficial del SaaS para seguir creciendo sin ruido.
 - un frontend por producto cuando un modulo madura
 - no se crean frontends por cliente individual
 - no se mezcla un modulo nuevo dentro de `frontend-camiones`
+- cada repo mantiene su propia carpeta `docs/`
+- `backend/docs` conserva la documentacion estructural y compartida
 
 ## Nucleo compartido obligatorio
 
@@ -82,6 +85,7 @@ Cuando haya dudas sobre el producto actual:
 
 - el backend
 - esta carpeta `backend/docs`
+- la carpeta `docs/` del frontend del modulo involucrado
 - la base de datos actual del SaaS
 
 son la referencia oficial.

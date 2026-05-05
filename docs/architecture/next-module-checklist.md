@@ -56,6 +56,7 @@ Confirmar:
 Crear frontend propio:
 
 - `frontend-<modulo>`
+- `frontend-<modulo>/docs`
 
 Base minima:
 
@@ -64,6 +65,7 @@ Base minima:
 - rutas
 - features propias
 - shared minimo
+- documentacion particular del modulo
 
 No agregar el modulo nuevo dentro de `frontend-camiones`.
 

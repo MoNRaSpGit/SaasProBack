@@ -9,7 +9,7 @@ Esta carpeta es la fuente oficial de documentacion del SaaS.
 La regla actual es:
 
 - la documentacion estructural vive en `backend/docs`
-- `frontend-camiones` puede tener notas puntuales de frontend si algun dia hacen falta
+- cada frontend de producto mantiene su propia carpeta `docs/`
 - la documentacion vieja fuera de este repo queda solo como referencia historica
 
 ## Mapa rapido
@@ -29,6 +29,7 @@ La regla actual es:
 ### Producto
 
 - [Camiones](./products/camiones.md)
+- [Neon](./products/neon.md)
 
 ### Archivo
 
@@ -45,4 +46,5 @@ Si hay contradiccion entre un documento historico y esta carpeta:
 - producto oficial activo: `camiones`
 - frontend oficial activo: `frontend-camiones`
 - backend oficial activo: este repo
+- `frontend-neon` existe como modulo en incubacion, con shell publicado y documentacion propia
 - `main` representa la linea estable oficial
