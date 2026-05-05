@@ -49,6 +49,7 @@ describe("backend smoke", () => {
 
   it("maps tenant capabilities by role", () => {
     expect(hasCapability("staff", "neon.shell.read")).toBe(true);
+    expect(hasCapability("staff", "neon.accounts.read")).toBe(true);
     expect(hasCapability("staff", "neon.clients.write")).toBe(true);
     expect(hasCapability("staff", "neon.activities.write")).toBe(true);
     expect(hasCapability("staff", "camiones.trips.pay")).toBe(true);

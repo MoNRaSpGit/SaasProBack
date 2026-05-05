@@ -1,13 +1,14 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
-import { NeonActivity, NeonClient, NeonRequestUser, NeonShellStatus } from "./neon.types";
+import { NeonAccount, NeonActivity, NeonActivityPayment, NeonClient, NeonRequestUser, NeonShellStatus } from "./neon.types";
 import { CreateNeonActivityDto, NeonCommercialStatus } from "./dto/create-neon-activity.dto";
 import { CreateNeonClientDto } from "./dto/create-neon-client.dto";
 import { ListNeonActivitiesDto } from "./dto/list-neon-activities.dto";
 import { ListNeonClientsDto } from "./dto/list-neon-clients.dto";
 import { UpdateNeonActivityDto } from "./dto/update-neon-activity.dto";
 import { UpdateNeonClientDto } from "./dto/update-neon-client.dto";
+import { CreateNeonActivityPaymentDto } from "./dto/create-neon-activity-payment.dto";
 
 type NeonClientRow = RowDataPacket & {
   id: number;
@@ -15,6 +16,17 @@ type NeonClientRow = RowDataPacket & {
   name: string;
   phone: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type NeonAccountRow = RowDataPacket & {
+  id: number;
+  tenant_id: number;
+  name: string;
+  account_type: "cash" | "bank";
+  opening_balance: string;
+  current_balance: string;
   created_at: string;
   updated_at: string;
 };
@@ -35,6 +47,19 @@ type NeonActivityRow = RowDataPacket & {
   pending_amount: string;
   created_at: string;
   updated_at: string;
+};
+
+type NeonActivityPaymentRow = RowDataPacket & {
+  id: number;
+  tenant_id: number;
+  activity_id: number;
+  movement_id: number;
+  account_id: number;
+  account_name: string;
+  payment_date: string;
+  paid_amount: string;
+  description: string | null;
+  created_at: string;
 };
 
 @Injectable()
@@ -272,6 +297,19 @@ export class NeonService {
     return { item: this.mapClient(rows[0]) };
   }
 
+  async listAccounts(currentUser: NeonRequestUser) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+    const rows = await this.listAccountRows(currentUser.tenantId);
+
+    return {
+      items: rows.map((row) => this.mapAccount(row)),
+      meta: {
+        tenantId: currentUser.tenantId,
+        count: rows.length
+      }
+    };
+  }
+
   async listActivities(currentUser: NeonRequestUser, query: ListNeonActivitiesDto) {
     const limit = query.limit ?? 50;
     const search = query.search?.trim();
@@ -309,18 +347,27 @@ export class NeonService {
          a.activity_type,
          a.commercial_status,
          a.quoted_amount,
-         CAST(0 AS DECIMAL(12,2)) AS collected_amount,
-         a.quoted_amount AS pending_amount,
+         COALESCE(p.collected_amount, 0) AS collected_amount,
+         GREATEST(a.quoted_amount - COALESCE(p.collected_amount, 0), 0) AS pending_amount,
          a.created_at,
          a.updated_at
        FROM saas_neon_activities a
        LEFT JOIN saas_neon_clients c
          ON c.id = a.client_id
         AND c.tenant_id = a.tenant_id
+       LEFT JOIN (
+         SELECT
+           activity_id,
+           SUM(paid_amount) AS collected_amount
+         FROM saas_neon_activity_payments
+         WHERE tenant_id = ?
+         GROUP BY activity_id
+       ) p
+         ON p.activity_id = a.id
        WHERE ${whereParts.join(" AND ")}
        ORDER BY a.activity_year DESC, a.activity_number DESC
        LIMIT ?`,
-      values
+      [currentUser.tenantId, ...values]
     );
 
     return {
@@ -335,7 +382,8 @@ export class NeonService {
 
   async getActivity(currentUser: NeonRequestUser, activityId: number) {
     const row = await this.findActivityRow(currentUser.tenantId, activityId);
-    return { item: this.mapActivity(row) };
+    const payments = await this.listActivityPayments(currentUser.tenantId, activityId);
+    return { item: this.mapActivity(row, payments) };
   }
 
   async createActivity(currentUser: NeonRequestUser, dto: CreateNeonActivityDto) {
@@ -429,7 +477,142 @@ export class NeonService {
     );
 
     const row = await this.findActivityRow(currentUser.tenantId, activityId);
-    return { item: this.mapActivity(row) };
+    const payments = await this.listActivityPayments(currentUser.tenantId, activityId);
+    return { item: this.mapActivity(row, payments) };
+  }
+
+  async createActivityPayment(currentUser: NeonRequestUser, activityId: number, dto: CreateNeonActivityPaymentDto) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+
+    const nextActivity = await this.databaseService.withTransaction(async (connection) => {
+      const activity = await this.findActivityRowWithConnection(connection, currentUser.tenantId, activityId);
+      const pendingAmount = Number(activity.pending_amount);
+
+      if (pendingAmount <= 0) {
+        throw new BadRequestException("La actividad ya no tiene saldo pendiente");
+      }
+
+      const paidAmount = Number(dto.paidAmount.toFixed(2));
+      if (paidAmount > pendingAmount) {
+        throw new BadRequestException("El pago no puede superar el pendiente actual");
+      }
+
+      await this.ensureAccountExistsWithConnection(connection, currentUser.tenantId, dto.accountId);
+
+      const [movementResult] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_neon_movements (
+           tenant_id,
+           movement_type,
+           movement_date,
+           account_id,
+           total_amount,
+           description,
+           source_type,
+           source_activity_id
+         )
+         VALUES (?, 'income', ?, ?, ?, ?, 'activity', ?)`,
+        [
+          currentUser.tenantId,
+          dto.paymentDate,
+          dto.accountId,
+          paidAmount,
+          dto.description?.trim() || `Pago actividad #${activity.activity_number}/${activity.activity_year}`,
+          activityId
+        ]
+      );
+
+      await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_neon_activity_payments (
+           tenant_id,
+           activity_id,
+           movement_id,
+           paid_amount
+         )
+         VALUES (?, ?, ?, ?)`,
+        [currentUser.tenantId, activityId, movementResult.insertId, paidAmount]
+      );
+
+      return this.findActivityRowWithConnection(connection, currentUser.tenantId, activityId);
+    });
+
+    const payments = await this.listActivityPayments(currentUser.tenantId, activityId);
+    return { item: this.mapActivity(nextActivity, payments) };
+  }
+
+  private async ensureDefaultAccounts(tenantId: number) {
+    const countRows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total
+       FROM saas_neon_accounts
+       WHERE tenant_id = ?
+         AND deleted_at IS NULL`,
+      [tenantId]
+    );
+
+    const total = Number(countRows[0]?.total || 0);
+    if (total > 0) {
+      return;
+    }
+
+    await this.databaseService.withTransaction(async (connection) => {
+      const [existingRows] = await connection.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total
+         FROM saas_neon_accounts
+         WHERE tenant_id = ?
+           AND deleted_at IS NULL
+         FOR UPDATE`,
+        [tenantId]
+      );
+
+      if (Number(existingRows[0]?.total || 0) > 0) {
+        return;
+      }
+
+      await connection.execute(
+        `INSERT INTO saas_neon_accounts (
+           tenant_id,
+           name,
+           account_type,
+           opening_balance
+         )
+         VALUES
+           (?, 'Caja', 'cash', 0),
+           (?, 'Banco', 'bank', 0)`,
+        [tenantId, tenantId]
+      );
+    });
+  }
+
+  private async listAccountRows(tenantId: number) {
+    return this.databaseService.query<NeonAccountRow[]>(
+      `SELECT
+         a.id,
+         a.tenant_id,
+         a.name,
+         a.account_type,
+         a.opening_balance,
+         a.opening_balance
+           + COALESCE(SUM(CASE WHEN m.movement_type = 'income' THEN m.total_amount ELSE -m.total_amount END), 0)
+           AS current_balance,
+         a.created_at,
+         a.updated_at
+       FROM saas_neon_accounts a
+       LEFT JOIN saas_neon_movements m
+         ON m.account_id = a.id
+        AND m.tenant_id = a.tenant_id
+        AND m.deleted_at IS NULL
+       WHERE a.tenant_id = ?
+         AND a.deleted_at IS NULL
+       GROUP BY
+         a.id,
+         a.tenant_id,
+         a.name,
+         a.account_type,
+         a.opening_balance,
+         a.created_at,
+         a.updated_at
+       ORDER BY a.id ASC`,
+      [tenantId]
+    );
   }
 
   private async ensureClientExists(tenantId: number, clientId: number) {
@@ -455,6 +638,22 @@ export class NeonService {
     }
   }
 
+  private async ensureAccountExistsWithConnection(connection: PoolConnection, tenantId: number, accountId: number) {
+    const [rows] = await connection.query<RowDataPacket[]>(
+      `SELECT id
+       FROM saas_neon_accounts
+       WHERE id = ?
+         AND tenant_id = ?
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [accountId, tenantId]
+    );
+
+    if (!rows[0]) {
+      throw new BadRequestException("Cuenta no encontrada para este tenant");
+    }
+  }
+
   private async findActivityRow(tenantId: number, activityId: number) {
     const rows = await this.databaseService.query<NeonActivityRow[]>(
       `SELECT
@@ -469,19 +668,28 @@ export class NeonService {
          a.activity_type,
          a.commercial_status,
          a.quoted_amount,
-         CAST(0 AS DECIMAL(12,2)) AS collected_amount,
-         a.quoted_amount AS pending_amount,
+         COALESCE(p.collected_amount, 0) AS collected_amount,
+         GREATEST(a.quoted_amount - COALESCE(p.collected_amount, 0), 0) AS pending_amount,
          a.created_at,
          a.updated_at
        FROM saas_neon_activities a
        LEFT JOIN saas_neon_clients c
          ON c.id = a.client_id
         AND c.tenant_id = a.tenant_id
+       LEFT JOIN (
+         SELECT
+           activity_id,
+           SUM(paid_amount) AS collected_amount
+         FROM saas_neon_activity_payments
+         WHERE tenant_id = ?
+         GROUP BY activity_id
+       ) p
+         ON p.activity_id = a.id
        WHERE a.id = ?
          AND a.tenant_id = ?
          AND a.deleted_at IS NULL
        LIMIT 1`,
-      [activityId, tenantId]
+      [tenantId, activityId, tenantId]
     );
 
     if (!rows[0]) {
@@ -505,19 +713,28 @@ export class NeonService {
          a.activity_type,
          a.commercial_status,
          a.quoted_amount,
-         CAST(0 AS DECIMAL(12,2)) AS collected_amount,
-         a.quoted_amount AS pending_amount,
+         COALESCE(p.collected_amount, 0) AS collected_amount,
+         GREATEST(a.quoted_amount - COALESCE(p.collected_amount, 0), 0) AS pending_amount,
          a.created_at,
          a.updated_at
        FROM saas_neon_activities a
        LEFT JOIN saas_neon_clients c
          ON c.id = a.client_id
         AND c.tenant_id = a.tenant_id
+       LEFT JOIN (
+         SELECT
+           activity_id,
+           SUM(paid_amount) AS collected_amount
+         FROM saas_neon_activity_payments
+         WHERE tenant_id = ?
+         GROUP BY activity_id
+       ) p
+         ON p.activity_id = a.id
        WHERE a.id = ?
          AND a.tenant_id = ?
          AND a.deleted_at IS NULL
        LIMIT 1`,
-      [activityId, tenantId]
+      [tenantId, activityId, tenantId]
     );
 
     if (!rows[0]) {
@@ -525,6 +742,35 @@ export class NeonService {
     }
 
     return rows[0];
+  }
+
+  private async listActivityPayments(tenantId: number, activityId: number) {
+    const rows = await this.databaseService.query<NeonActivityPaymentRow[]>(
+      `SELECT
+         p.id,
+         p.tenant_id,
+         p.activity_id,
+         p.movement_id,
+         m.account_id,
+         a.name AS account_name,
+         m.movement_date AS payment_date,
+         p.paid_amount,
+         m.description,
+         p.created_at
+       FROM saas_neon_activity_payments p
+       INNER JOIN saas_neon_movements m
+         ON m.id = p.movement_id
+        AND m.tenant_id = p.tenant_id
+       INNER JOIN saas_neon_accounts a
+         ON a.id = m.account_id
+        AND a.tenant_id = m.tenant_id
+       WHERE p.tenant_id = ?
+         AND p.activity_id = ?
+       ORDER BY m.movement_date DESC, p.id DESC`,
+      [tenantId, activityId]
+    );
+
+    return rows.map((row) => this.mapPayment(row));
   }
 
   private mapClient(row: NeonClientRow | undefined): NeonClient {
@@ -543,7 +789,43 @@ export class NeonService {
     };
   }
 
-  private mapActivity(row: NeonActivityRow | undefined): NeonActivity {
+  private mapAccount(row: NeonAccountRow | undefined): NeonAccount {
+    if (!row) {
+      throw new BadRequestException("Cuenta no encontrada");
+    }
+
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      name: row.name,
+      accountType: row.account_type,
+      openingBalance: Number(row.opening_balance),
+      currentBalance: Number(row.current_balance),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  private mapPayment(row: NeonActivityPaymentRow | undefined): NeonActivityPayment {
+    if (!row) {
+      throw new BadRequestException("Pago no encontrado");
+    }
+
+    return {
+      id: row.id,
+      tenantId: row.tenant_id,
+      activityId: row.activity_id,
+      movementId: row.movement_id,
+      accountId: row.account_id,
+      accountName: row.account_name,
+      paymentDate: row.payment_date,
+      paidAmount: Number(row.paid_amount),
+      description: row.description,
+      createdAt: row.created_at
+    };
+  }
+
+  private mapActivity(row: NeonActivityRow | undefined, payments: NeonActivityPayment[] = []): NeonActivity {
     if (!row) {
       throw new BadRequestException("Actividad no encontrada");
     }
@@ -562,6 +844,7 @@ export class NeonService {
       quotedAmount: Number(row.quoted_amount),
       collectedAmount: Number(row.collected_amount),
       pendingAmount: Number(row.pending_amount),
+      payments,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };

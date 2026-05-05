@@ -32,6 +32,30 @@ export type NeonClient = {
   updatedAt: string;
 };
 
+export type NeonAccount = {
+  id: number;
+  tenantId: number;
+  name: string;
+  accountType: "cash" | "bank";
+  openingBalance: number;
+  currentBalance: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NeonActivityPayment = {
+  id: number;
+  tenantId: number;
+  activityId: number;
+  movementId: number;
+  accountId: number;
+  accountName: string;
+  paymentDate: string;
+  paidAmount: number;
+  description: string | null;
+  createdAt: string;
+};
+
 export type NeonActivity = {
   id: number;
   tenantId: number;
@@ -46,6 +70,7 @@ export type NeonActivity = {
   quotedAmount: number;
   collectedAmount: number;
   pendingAmount: number;
+  payments?: NeonActivityPayment[];
   createdAt: string;
   updatedAt: string;
 };

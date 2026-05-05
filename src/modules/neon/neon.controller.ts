@@ -10,6 +10,7 @@ import { ListNeonActivitiesDto } from "./dto/list-neon-activities.dto";
 import { ListNeonClientsDto } from "./dto/list-neon-clients.dto";
 import { UpdateNeonActivityDto } from "./dto/update-neon-activity.dto";
 import { UpdateNeonClientDto } from "./dto/update-neon-client.dto";
+import { CreateNeonActivityPaymentDto } from "./dto/create-neon-activity-payment.dto";
 import { NeonService } from "./neon.service";
 
 @Controller("neon")
@@ -49,6 +50,13 @@ export class NeonController {
     return this.neonService.updateClient(currentUser, clientId, dto);
   }
 
+  @RequireCapability("neon.accounts.read")
+  @UseGuards(CapabilityGuard)
+  @Get("accounts")
+  listAccounts(@CurrentNeonUser() currentUser: NeonRequestUser) {
+    return this.neonService.listAccounts(currentUser);
+  }
+
   @RequireCapability("neon.activities.read")
   @UseGuards(CapabilityGuard)
   @Get("activities")
@@ -79,5 +87,16 @@ export class NeonController {
     @Body() dto: UpdateNeonActivityDto
   ) {
     return this.neonService.updateActivity(currentUser, activityId, dto);
+  }
+
+  @RequireCapability("neon.activities.write")
+  @UseGuards(CapabilityGuard)
+  @Post("activities/:id/payments")
+  createActivityPayment(
+    @CurrentNeonUser() currentUser: NeonRequestUser,
+    @Param("id", ParseIntPipe) activityId: number,
+    @Body() dto: CreateNeonActivityPaymentDto
+  ) {
+    return this.neonService.createActivityPayment(currentUser, activityId, dto);
   }
 }

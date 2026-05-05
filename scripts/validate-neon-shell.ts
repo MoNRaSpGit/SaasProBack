@@ -135,6 +135,34 @@ async function main() {
       throw new Error(`Create Neon activity failed: ${JSON.stringify(createActivityPayload)}`);
     }
 
+    const listAccountsResponse = await fetch(`${baseUrl}/neon/accounts`, {
+      headers: authHeaders
+    });
+    const listAccountsPayload = await readJson(listAccountsResponse);
+    if (!listAccountsResponse.ok || !Array.isArray(listAccountsPayload?.items) || listAccountsPayload.items.length < 2) {
+      throw new Error(`List Neon accounts failed: ${JSON.stringify(listAccountsPayload)}`);
+    }
+
+    const cashAccount = listAccountsPayload.items.find((item: { accountType?: string }) => item.accountType === "cash");
+    if (!cashAccount?.id) {
+      throw new Error(`Cash account missing: ${JSON.stringify(listAccountsPayload)}`);
+    }
+
+    const createPaymentResponse = await fetch(`${baseUrl}/neon/activities/${createActivityPayload.item.id}/payments`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        accountId: cashAccount.id,
+        paymentDate: "2026-05-05",
+        paidAmount: 300,
+        description: `Pago demo ${suffix}`
+      })
+    });
+    const createPaymentPayload = await readJson(createPaymentResponse);
+    if (!createPaymentResponse.ok || !createPaymentPayload?.item?.id) {
+      throw new Error(`Create Neon payment failed: ${JSON.stringify(createPaymentPayload)}`);
+    }
+
     const listActivitiesResponse = await fetch(`${baseUrl}/neon/activities?limit=10`, {
       headers: authHeaders
     });
@@ -159,6 +187,8 @@ async function main() {
           status: statusPayload,
           client: createClientPayload.item,
           activity: createActivityPayload.item,
+          accountsCount: listAccountsPayload.items.length,
+          paymentActivity: createPaymentPayload.item,
           listedActivitiesCount: listActivitiesPayload.items.length,
           activityDetail: detailPayload.item
         },
