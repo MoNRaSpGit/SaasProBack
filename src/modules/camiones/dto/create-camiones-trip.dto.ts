@@ -7,10 +7,16 @@ export class CreateCamionesTripDto {
   @Min(1)
   clientId!: number;
 
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  placeId!: number;
+  placeId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  placeName?: string;
 
   @IsDateString()
   tripDate!: string;

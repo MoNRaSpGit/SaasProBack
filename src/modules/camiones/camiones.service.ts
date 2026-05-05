@@ -546,27 +546,39 @@ export class CamionesService {
       throw new BadRequestException("Cliente no encontrado para este tenant");
     }
 
-    const placeRows = await this.databaseService.query<CamionesPlaceRow[]>(
-      `SELECT
-         id,
-         tenant_id,
-         branch_id,
-         name,
-         notes,
-         is_active,
-         created_at,
-         updated_at
-       FROM saas_camiones_places
-       WHERE id = ?
-         AND tenant_id = ?
-         AND is_active = 1
-       LIMIT 1`,
-      [dto.placeId, currentUser.tenantId]
-    );
+    let resolvedPlaceId: number | null = null;
+    let resolvedPlaceName = dto.placeName?.trim() || "";
 
-    const place = placeRows[0];
-    if (!place) {
-      throw new BadRequestException("Lugar no encontrado para este tenant");
+    if (dto.placeId) {
+      const placeRows = await this.databaseService.query<CamionesPlaceRow[]>(
+        `SELECT
+           id,
+           tenant_id,
+           branch_id,
+           name,
+           notes,
+           is_active,
+           created_at,
+           updated_at
+         FROM saas_camiones_places
+         WHERE id = ?
+           AND tenant_id = ?
+           AND is_active = 1
+         LIMIT 1`,
+        [dto.placeId, currentUser.tenantId]
+      );
+
+      const place = placeRows[0];
+      if (!place) {
+        throw new BadRequestException("Lugar no encontrado para este tenant");
+      }
+
+      resolvedPlaceId = place.id;
+      resolvedPlaceName = place.name;
+    }
+
+    if (!resolvedPlaceName) {
+      throw new BadRequestException("Falta el destino");
     }
 
     const result = await this.databaseService.execute<ResultSetHeader>(
@@ -586,10 +598,10 @@ export class CamionesService {
       [
         currentUser.tenantId,
         client.id,
-        place.id,
+        resolvedPlaceId,
         currentUser.userId,
         dto.tripDate,
-        place.name,
+        resolvedPlaceName,
         Number(dto.kilometers.toFixed(2)),
         dto.notes?.trim() || null
       ]
@@ -628,27 +640,39 @@ export class CamionesService {
   }
 
   async updateTrip(currentUser: CamionesRequestUser, tripId: number, dto: UpdateCamionesTripDto) {
-    const placeRows = await this.databaseService.query<CamionesPlaceRow[]>(
-      `SELECT
-         id,
-         tenant_id,
-         branch_id,
-         name,
-         notes,
-         is_active,
-         created_at,
-         updated_at
-       FROM saas_camiones_places
-       WHERE id = ?
-         AND tenant_id = ?
-         AND is_active = 1
-       LIMIT 1`,
-      [dto.placeId, currentUser.tenantId]
-    );
+    let resolvedPlaceId: number | null = null;
+    let resolvedPlaceName = dto.placeName?.trim() || "";
 
-    const place = placeRows[0];
-    if (!place) {
-      throw new BadRequestException("Lugar no encontrado para este tenant");
+    if (dto.placeId) {
+      const placeRows = await this.databaseService.query<CamionesPlaceRow[]>(
+        `SELECT
+           id,
+           tenant_id,
+           branch_id,
+           name,
+           notes,
+           is_active,
+           created_at,
+           updated_at
+         FROM saas_camiones_places
+         WHERE id = ?
+           AND tenant_id = ?
+           AND is_active = 1
+         LIMIT 1`,
+        [dto.placeId, currentUser.tenantId]
+      );
+
+      const place = placeRows[0];
+      if (!place) {
+        throw new BadRequestException("Lugar no encontrado para este tenant");
+      }
+
+      resolvedPlaceId = place.id;
+      resolvedPlaceName = place.name;
+    }
+
+    if (!resolvedPlaceName) {
+      throw new BadRequestException("Falta el destino");
     }
 
     const result = await this.databaseService.execute<ResultSetHeader>(
@@ -662,8 +686,8 @@ export class CamionesService {
          AND tenant_id = ?`,
       [
         dto.tripDate,
-        place.id,
-        place.name,
+        resolvedPlaceId,
+        resolvedPlaceName,
         Number(dto.kilometers.toFixed(2)),
         dto.notes?.trim() || null,
         tripId,
