@@ -48,6 +48,8 @@ Estado del bloque 1:
 - saas-admin enlazado
 - shell publicado en produccion
 - credenciales demo de prueba para esta etapa
+- contexto funcional cerrado
+- listo para diseno tecnico e implementacion MVP
 
 ## Regla documental
 
@@ -70,3 +72,8 @@ Es bajar el modelo funcional del producto:
 - cuentas
 - clientes
 - reportes
+
+La referencia funcional y de MVP de este modulo vive en:
+
+- `frontend-neon/docs/product-context.md`
+- `frontend-neon/docs/mvp-technical-design.md`
