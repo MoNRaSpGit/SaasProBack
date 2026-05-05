@@ -91,6 +91,10 @@ Estado actual del bloque 2:
 - `cobrado` y `pendiente` recalculados automaticamente
 - categorias de gasto publicadas
 - gasto simple publicado
+- home por 4 tarjetas publicado
+- flujo navegable `Actividades -> Gastos -> Ingresos -> Movimientos`
+- resumenes agrupados por actividad en gastos e ingresos
+- login simplificado del frontend con boton unico `Iniciar`
 
 ## Regla documental
 
@@ -99,6 +103,13 @@ La estructura general del SaaS se documenta en `backend/docs`.
 La documentacion funcional y operativa propia de `neon` vive en:
 
 - `frontend-neon/docs`
+
+Referencia operativa actual del frontend:
+
+- login sin campos visibles, con acceso directo por boton
+- `Gastos` usa clasificacion visible `Empresa` o `Personal`
+- `Ingresos registrados` se agrupa por actividad, no por pago suelto
+- `Movimientos` resume cobrado, gastado y pendiente por actividad
 
 ## Siguiente bloque natural
 
