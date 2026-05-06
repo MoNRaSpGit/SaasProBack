@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { AuthModule } from "./modules/auth/auth.module";
+import { AgroModule } from "./modules/agro/agro.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
 import { NeonModule } from "./modules/neon/neon.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
@@ -18,7 +19,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     AuthModule,
     SaasAdminModule,
     CamionesModule,
-    NeonModule
+    NeonModule,
+    AgroModule
   ],
   controllers: [HealthController],
   providers: []

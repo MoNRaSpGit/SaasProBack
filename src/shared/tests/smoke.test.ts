@@ -48,6 +48,11 @@ describe("backend smoke", () => {
   });
 
   it("maps tenant capabilities by role", () => {
+    expect(hasCapability("staff", "agro.shell.read")).toBe(true);
+    expect(hasCapability("staff", "agro.discovery.write")).toBe(true);
+    expect(hasCapability("admin", "agro.discovery.read")).toBe(true);
+    expect(hasCapability("operario", "agro.shell.read")).toBe(true);
+    expect(hasCapability("operario", "agro.discovery.write")).toBe(true);
     expect(hasCapability("staff", "neon.shell.read")).toBe(true);
     expect(hasCapability("staff", "neon.accounts.read")).toBe(true);
     expect(hasCapability("staff", "neon.accounts.write")).toBe(true);

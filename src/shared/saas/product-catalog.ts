@@ -1,4 +1,4 @@
-export const SAAS_PRODUCT_KEYS = ["camiones", "neon"] as const;
+export const SAAS_PRODUCT_KEYS = ["camiones", "neon", "agro"] as const;
 
 export type SaasProductKey = (typeof SAAS_PRODUCT_KEYS)[number];
 
@@ -18,12 +18,18 @@ export const SAAS_PRODUCTS: Record<SaasProductKey, SaasProductDescriptor> = {
     key: "neon",
     label: "Neon",
     frontend: "frontend-neon"
+  },
+  agro: {
+    key: "agro",
+    label: "Agro",
+    frontend: "frontend-agro"
   }
 };
 
 export const SAAS_PRODUCT_FRONTENDS: Record<SaasProductKey, string> = {
   camiones: SAAS_PRODUCTS.camiones.frontend,
-  neon: SAAS_PRODUCTS.neon.frontend
+  neon: SAAS_PRODUCTS.neon.frontend,
+  agro: SAAS_PRODUCTS.agro.frontend
 };
 
 export function isSaasProductKey(value: string): value is SaasProductKey {

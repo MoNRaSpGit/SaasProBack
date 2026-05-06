@@ -14,6 +14,7 @@
     "test:smoke:auth": "node scripts/smoke-auth-module-access.js",
     "test:functional": "node scripts/run-functional-suite.js",
     "test:functional:auth": "npx.cmd ts-node scripts/validate-auth-multitenant.ts",
+    "test:functional:agro": "npx.cmd ts-node scripts/validate-agro-discovery.ts",
     "test:functional:camiones": "npx.cmd ts-node scripts/validate-camiones.ts",
     "test:functional:neon": "npx.cmd ts-node scripts/validate-neon-shell.ts",
     "test:functional:rbac": "npx.cmd ts-node scripts/validate-role-capabilities.ts",

@@ -1,6 +1,9 @@
 export type TenantMembershipRole = "admin" | "operario" | "staff";
 
 export type TenantCapability =
+  | "agro.shell.read"
+  | "agro.discovery.read"
+  | "agro.discovery.write"
   | "neon.shell.read"
   | "neon.accounts.read"
   | "neon.accounts.write"
@@ -23,6 +26,9 @@ export type TenantCapability =
   | "camiones.trips.pay";
 
 const ALL_CAPABILITIES: TenantCapability[] = [
+  "agro.shell.read",
+  "agro.discovery.read",
+  "agro.discovery.write",
   "neon.shell.read",
   "neon.accounts.read",
   "neon.accounts.write",
@@ -49,6 +55,9 @@ const ROLE_CAPABILITIES: Record<TenantMembershipRole, TenantCapability[]> = {
   staff: ALL_CAPABILITIES,
   admin: ALL_CAPABILITIES,
   operario: [
+    "agro.shell.read",
+    "agro.discovery.read",
+    "agro.discovery.write",
     "neon.shell.read",
     "neon.accounts.read",
     "neon.journal.read",

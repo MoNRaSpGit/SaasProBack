@@ -9,6 +9,8 @@ Fecha de actualizacion: 2026-05-05
 - backend oficial activo: `backend`
 - modulo en incubacion tecnica: `neon`
 - frontend en incubacion tecnica: `frontend-neon`
+- modulo en incubacion tecnica temprana: `agro`
+- frontend en incubacion tecnica temprana: `frontend-agro`
 
 ## Regla de producto
 
@@ -35,6 +37,18 @@ Pero en esta etapa:
 - no se comunica como producto cerrado
 - funciona como base valida para arrancar su bloque funcional siguiente
 
+`agro` ya tiene:
+
+- frontend demo propio
+- contrato de discovery definido
+- endpoint backend inicial previsto para guardar respuestas
+
+Pero en esta etapa:
+
+- no se comunica como producto cerrado
+- no tiene aun stock ni contabilidad endurecidos en backend
+- se usa como base de discovery y validacion comercial
+
 ## Multi-modulo
 
 El core SaaS sigue soportando conceptualmente multi-modulo por tenant.
@@ -53,6 +67,7 @@ Hoy su alcance practico es:
 - tenants
 - habilitacion de `camiones`
 - habilitacion de modulos nuevos en incubacion como `neon`
+- habilitacion de modulos nuevos en incubacion temprana como `agro`
 
 ## Regla de crecimiento
 
