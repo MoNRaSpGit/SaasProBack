@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { AlamcenProductLookupResponse } from "./alamcen.types";
 import { CreateManualProductDto } from "./dto/create-manual-product.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
 
 type OpsProductoRow = RowDataPacket & {
   id: number;
@@ -131,6 +132,32 @@ export class AlamcenService {
     }
   }
 
+  async updateProduct(productId: number, payload: UpdateProductDto) {
+    if (!Number.isInteger(productId) || productId <= 0) {
+      throw new BadRequestException("El producto es obligatorio.");
+    }
+
+    const normalizedName = payload.nombre.trim();
+    if (!normalizedName) {
+      throw new BadRequestException("El nombre es obligatorio.");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE ops_producto
+       SET nombre = ?, precio_venta = ?
+       WHERE id = ?
+       LIMIT 1`,
+      [normalizedName, payload.precioVenta, productId]
+    );
+
+    const updatedRow = await this.findProductRowById(productId);
+    if (!updatedRow) {
+      throw new NotFoundException("No encontramos el producto a editar.");
+    }
+
+    return this.mapProductRow(updatedRow);
+  }
+
   private normalizeBarcode(value: string) {
     return value.trim().replace(/\s+/g, "");
   }
@@ -169,6 +196,35 @@ export class AlamcenService {
        ORDER BY (estado = 'activo') DESC, id ASC
        LIMIT 1`,
       [...candidates, ...candidates]
+    );
+
+    return rows[0] ?? null;
+  }
+
+  private async findProductRowById(productId: number) {
+    const rows = await this.databaseService.query<OpsProductoRow[]>(
+      `SELECT
+         id,
+         legacy_producto_id,
+         nombre,
+         descripcion,
+         barcode,
+         barcode_normalized,
+         precio_venta,
+         precio_lista,
+         stock_actual,
+         categoria,
+         categoria_compact,
+         categoria_id,
+         supplier_id,
+         subcategoria,
+         tiene_imagen,
+         estado,
+         imagen
+       FROM ops_producto
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
     );
 
     return rows[0] ?? null;

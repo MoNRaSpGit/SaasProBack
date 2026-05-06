@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post } from "@nestjs/common";
 import { AlamcenService } from "./alamcen.service";
 import { CreateManualProductDto } from "./dto/create-manual-product.dto";
+import { UpdateProductDto } from "./dto/update-product.dto";
 
 @Controller("alamcen")
 export class AlamcenController {
@@ -19,5 +20,10 @@ export class AlamcenController {
   @Post("productos/manual")
   createManualProduct(@Body() payload: CreateManualProductDto) {
     return this.alamcenService.createManualProduct(payload);
+  }
+
+  @Patch("productos/:productId")
+  updateProduct(@Param("productId") productId: string, @Body() payload: UpdateProductDto) {
+    return this.alamcenService.updateProduct(Number(productId), payload);
   }
 }
