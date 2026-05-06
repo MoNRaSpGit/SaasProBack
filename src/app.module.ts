@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { AlamcenModule } from "./modules/alamcen/alamcen.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
@@ -18,6 +19,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     DatabaseModule,
     AuthModule,
     SaasAdminModule,
+    AlamcenModule,
     CamionesModule,
     NeonModule,
     AgroModule
