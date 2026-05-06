@@ -5,12 +5,15 @@ import { CurrentNeonUser } from "./current-neon-user.decorator";
 import { NeonAuthGuard } from "./neon-auth.guard";
 import { NeonRequestUser } from "./neon.types";
 import { CreateNeonActivityDto } from "./dto/create-neon-activity.dto";
+import { CreateNeonAccountDto } from "./dto/create-neon-account.dto";
 import { CreateNeonClientDto } from "./dto/create-neon-client.dto";
 import { CreateNeonCategoryDto } from "./dto/create-neon-category.dto";
 import { CreateNeonExpenseDto } from "./dto/create-neon-expense.dto";
+import { CreateNeonJournalEntryDto } from "./dto/create-neon-journal-entry.dto";
 import { ListNeonActivitiesDto } from "./dto/list-neon-activities.dto";
 import { ListNeonCategoriesDto } from "./dto/list-neon-categories.dto";
 import { ListNeonClientsDto } from "./dto/list-neon-clients.dto";
+import { ListNeonJournalDto } from "./dto/list-neon-journal.dto";
 import { UpdateNeonActivityDto } from "./dto/update-neon-activity.dto";
 import { UpdateNeonClientDto } from "./dto/update-neon-client.dto";
 import { CreateNeonActivityPaymentDto } from "./dto/create-neon-activity-payment.dto";
@@ -58,6 +61,13 @@ export class NeonController {
   @Get("accounts")
   listAccounts(@CurrentNeonUser() currentUser: NeonRequestUser) {
     return this.neonService.listAccounts(currentUser);
+  }
+
+  @RequireCapability("neon.accounts.write")
+  @UseGuards(CapabilityGuard)
+  @Post("accounts")
+  createAccount(@CurrentNeonUser() currentUser: NeonRequestUser, @Body() dto: CreateNeonAccountDto) {
+    return this.neonService.createAccount(currentUser, dto);
   }
 
   @RequireCapability("neon.categories.read")
@@ -129,5 +139,19 @@ export class NeonController {
   @Post("expenses")
   createExpense(@CurrentNeonUser() currentUser: NeonRequestUser, @Body() dto: CreateNeonExpenseDto) {
     return this.neonService.createExpense(currentUser, dto);
+  }
+
+  @RequireCapability("neon.journal.read")
+  @UseGuards(CapabilityGuard)
+  @Get("journal")
+  listJournal(@CurrentNeonUser() currentUser: NeonRequestUser, @Query() query: ListNeonJournalDto) {
+    return this.neonService.listJournal(currentUser, query);
+  }
+
+  @RequireCapability("neon.journal.write")
+  @UseGuards(CapabilityGuard)
+  @Post("journal")
+  createJournalEntry(@CurrentNeonUser() currentUser: NeonRequestUser, @Body() dto: CreateNeonJournalEntryDto) {
+    return this.neonService.createJournalEntry(currentUser, dto);
   }
 }

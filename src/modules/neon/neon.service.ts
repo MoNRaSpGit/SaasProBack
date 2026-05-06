@@ -8,9 +8,12 @@ import {
   NeonCategory,
   NeonClient,
   NeonExpense,
+  NeonJournalAllocation,
+  NeonJournalEntry,
   NeonRequestUser,
   NeonShellStatus
 } from "./neon.types";
+import { CreateNeonAccountDto } from "./dto/create-neon-account.dto";
 import { CreateNeonActivityDto, NeonCommercialStatus } from "./dto/create-neon-activity.dto";
 import { CreateNeonActivityPaymentDto } from "./dto/create-neon-activity-payment.dto";
 import {
@@ -19,10 +22,17 @@ import {
   NeonCategoryMovementType
 } from "./dto/create-neon-category.dto";
 import { CreateNeonClientDto } from "./dto/create-neon-client.dto";
+import {
+  CreateNeonJournalAllocationDto,
+  CreateNeonJournalEntryDto,
+  NeonCostCenterType,
+  NeonJournalMovementType
+} from "./dto/create-neon-journal-entry.dto";
 import { CreateNeonExpenseDto, NeonExpenseDestinationType } from "./dto/create-neon-expense.dto";
 import { ListNeonActivitiesDto } from "./dto/list-neon-activities.dto";
 import { ListNeonCategoriesDto } from "./dto/list-neon-categories.dto";
 import { ListNeonClientsDto } from "./dto/list-neon-clients.dto";
+import { ListNeonJournalDto } from "./dto/list-neon-journal.dto";
 import { UpdateNeonActivityDto } from "./dto/update-neon-activity.dto";
 import { UpdateNeonClientDto } from "./dto/update-neon-client.dto";
 
@@ -105,6 +115,31 @@ type NeonExpenseRow = RowDataPacket & {
   destination_activity_code: string | null;
   destination_activity_description: string | null;
   destination_label: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type NeonJournalRow = RowDataPacket & {
+  id: number;
+  tenant_id: number;
+  movement_type: NeonJournalMovementType;
+  movement_date: string;
+  account_id: number;
+  account_name: string;
+  total_amount: string;
+  description: string | null;
+  source_type: "activity" | "independent";
+  source_activity_id: number | null;
+  source_activity_code: string | null;
+  source_activity_description: string | null;
+  allocation_id: number | null;
+  destination_type: NeonCostCenterType | null;
+  destination_activity_id: number | null;
+  destination_activity_code: string | null;
+  destination_activity_description: string | null;
+  destination_label: string | null;
+  allocation_amount: string | null;
+  allocation_metadata_json: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -368,6 +403,93 @@ export class NeonService {
     };
   }
 
+  async createAccount(currentUser: NeonRequestUser, dto: CreateNeonAccountDto) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+
+    const name = dto.name.trim();
+    const openingBalance = Number((dto.openingBalance ?? 0).toFixed(2));
+
+    const duplicateRows = await this.databaseService.query<NeonAccountRow[]>(
+      `SELECT
+         a.id,
+         a.tenant_id,
+         a.name,
+         a.account_type,
+         a.opening_balance,
+         a.opening_balance
+           + COALESCE(SUM(CASE WHEN m.movement_type = 'income' THEN m.total_amount ELSE -m.total_amount END), 0)
+           AS current_balance,
+         a.created_at,
+         a.updated_at
+       FROM saas_neon_accounts a
+       LEFT JOIN saas_neon_movements m
+         ON m.account_id = a.id
+        AND m.tenant_id = a.tenant_id
+        AND m.deleted_at IS NULL
+       WHERE a.tenant_id = ?
+         AND a.deleted_at IS NULL
+         AND LOWER(a.name) = LOWER(?)
+       GROUP BY
+         a.id,
+         a.tenant_id,
+         a.name,
+         a.account_type,
+         a.opening_balance,
+         a.created_at,
+         a.updated_at
+       LIMIT 1`,
+      [currentUser.tenantId, name]
+    );
+
+    if (duplicateRows[0]) {
+      return { item: this.mapAccount(duplicateRows[0]) };
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_neon_accounts (
+         tenant_id,
+         name,
+         account_type,
+         opening_balance
+       )
+       VALUES (?, ?, ?, ?)`,
+      [currentUser.tenantId, name, dto.accountType, openingBalance]
+    );
+
+    const rows = await this.databaseService.query<NeonAccountRow[]>(
+      `SELECT
+         a.id,
+         a.tenant_id,
+         a.name,
+         a.account_type,
+         a.opening_balance,
+         a.opening_balance
+           + COALESCE(SUM(CASE WHEN m.movement_type = 'income' THEN m.total_amount ELSE -m.total_amount END), 0)
+           AS current_balance,
+         a.created_at,
+         a.updated_at
+       FROM saas_neon_accounts a
+       LEFT JOIN saas_neon_movements m
+         ON m.account_id = a.id
+        AND m.tenant_id = a.tenant_id
+        AND m.deleted_at IS NULL
+       WHERE a.id = ?
+         AND a.tenant_id = ?
+       GROUP BY
+         a.id,
+         a.tenant_id,
+         a.name,
+         a.account_type,
+         a.opening_balance,
+         a.created_at,
+         a.updated_at
+       LIMIT 1`,
+      [result.insertId, currentUser.tenantId]
+    );
+
+    return { item: this.mapAccount(rows[0]) };
+  }
+
   async listCategories(currentUser: NeonRequestUser, query: ListNeonCategoriesDto) {
     await this.ensureDefaultCategories(currentUser.tenantId);
 
@@ -513,11 +635,18 @@ export class NeonService {
         AND c.tenant_id = a.tenant_id
        LEFT JOIN (
          SELECT
-           activity_id,
-           SUM(paid_amount) AS collected_amount
-         FROM saas_neon_activity_payments
-         WHERE tenant_id = ?
-         GROUP BY activity_id
+           alloc.destination_activity_id AS activity_id,
+           SUM(alloc.amount) AS collected_amount
+         FROM saas_neon_movement_allocations alloc
+         INNER JOIN saas_neon_movements m
+           ON m.id = alloc.movement_id
+          AND m.tenant_id = alloc.tenant_id
+         WHERE alloc.tenant_id = ?
+           AND alloc.destination_type = 'activity'
+           AND alloc.destination_activity_id IS NOT NULL
+           AND m.movement_type = 'income'
+           AND m.deleted_at IS NULL
+         GROUP BY alloc.destination_activity_id
        ) p
          ON p.activity_id = a.id
        WHERE ${whereParts.join(" AND ")}
@@ -581,7 +710,7 @@ export class NeonService {
           dto.description.trim(),
           dto.clientId ?? null,
           dto.activityType,
-          dto.commercialStatus ?? "pendiente_de_facturar",
+          this.normalizeStoredCommercialStatus(dto.commercialStatus ?? "pendiente_de_facturar"),
           Number(dto.quotedAmount.toFixed(2))
         ]
       );
@@ -604,7 +733,7 @@ export class NeonService {
       description: dto.description?.trim() || currentActivity.description,
       clientId: dto.clientId === undefined ? currentActivity.client_id : dto.clientId,
       activityType: dto.activityType ?? currentActivity.activity_type,
-      commercialStatus: dto.commercialStatus ?? currentActivity.commercial_status,
+      commercialStatus: this.normalizeStoredCommercialStatus(dto.commercialStatus ?? currentActivity.commercial_status),
       quotedAmount:
         dto.quotedAmount === undefined ? Number(currentActivity.quoted_amount) : Number(dto.quotedAmount.toFixed(2))
     };
@@ -678,14 +807,17 @@ export class NeonService {
       );
 
       await connection.execute<ResultSetHeader>(
-        `INSERT INTO saas_neon_activity_payments (
+        `INSERT INTO saas_neon_movement_allocations (
            tenant_id,
-           activity_id,
            movement_id,
-           paid_amount
+           destination_type,
+           destination_activity_id,
+           destination_label,
+           amount,
+           metadata_json
          )
-         VALUES (?, ?, ?, ?)`,
-        [currentUser.tenantId, activityId, movementResult.insertId, paidAmount]
+         VALUES (?, ?, 'activity', ?, NULL, ?, NULL)`,
+        [currentUser.tenantId, movementResult.insertId, activityId, paidAmount]
       );
 
       return this.findActivityRowWithConnection(connection, currentUser.tenantId, activityId);
@@ -815,6 +947,236 @@ export class NeonService {
     });
 
     return { item: this.mapExpense(expense) };
+  }
+
+  async listJournal(currentUser: NeonRequestUser, query: ListNeonJournalDto) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+
+    const limit = query.limit ?? 50;
+    const whereParts = ["m.tenant_id = ?", "m.deleted_at IS NULL"];
+    const values: Array<string | number> = [currentUser.tenantId];
+
+    if (query.movementType) {
+      whereParts.push("m.movement_type = ?");
+      values.push(query.movementType);
+    }
+
+    if (query.accountId) {
+      whereParts.push("m.account_id = ?");
+      values.push(query.accountId);
+    }
+
+    if (query.costCenterType) {
+      whereParts.push("alloc.destination_type = ?");
+      values.push(query.costCenterType);
+    }
+
+    if (query.dateFrom) {
+      whereParts.push("m.movement_date >= ?");
+      values.push(query.dateFrom);
+    }
+
+    if (query.dateTo) {
+      whereParts.push("m.movement_date <= ?");
+      values.push(query.dateTo);
+    }
+
+    if (query.search?.trim()) {
+      const likeValue = `%${query.search.trim()}%`;
+      whereParts.push("(m.description LIKE ? OR a.name LIKE ? OR src_act.description LIKE ? OR alloc.destination_label LIKE ?)");
+      values.push(likeValue, likeValue, likeValue, likeValue);
+    }
+
+    const rows = await this.databaseService.query<NeonJournalRow[]>(
+      `SELECT
+         m.id,
+         m.tenant_id,
+         m.movement_type,
+         m.movement_date,
+         m.account_id,
+         a.name AS account_name,
+         m.total_amount,
+         m.description,
+         m.source_type,
+         m.source_activity_id,
+         CASE
+           WHEN src_act.id IS NULL THEN NULL
+           ELSE CONCAT('#', src_act.activity_number, '/', src_act.activity_year)
+         END AS source_activity_code,
+         src_act.description AS source_activity_description,
+         alloc.id AS allocation_id,
+         alloc.destination_type,
+         alloc.destination_activity_id,
+         CASE
+           WHEN alloc_act.id IS NULL THEN NULL
+           ELSE CONCAT('#', alloc_act.activity_number, '/', alloc_act.activity_year)
+         END AS destination_activity_code,
+         alloc_act.description AS destination_activity_description,
+         alloc.destination_label,
+         alloc.amount AS allocation_amount,
+         CAST(alloc.metadata_json AS CHAR) AS allocation_metadata_json,
+         m.created_at,
+         m.updated_at
+       FROM saas_neon_movements m
+       INNER JOIN saas_neon_accounts a
+         ON a.id = m.account_id
+        AND a.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_activities src_act
+         ON src_act.id = m.source_activity_id
+        AND src_act.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_movement_allocations alloc
+         ON alloc.movement_id = m.id
+        AND alloc.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_activities alloc_act
+         ON alloc_act.id = alloc.destination_activity_id
+        AND alloc_act.tenant_id = alloc.tenant_id
+       WHERE ${whereParts.join(" AND ")}
+       ORDER BY m.movement_date DESC, m.id DESC, alloc.id ASC
+       LIMIT ?`,
+      [...values, limit * 10]
+    );
+
+    const items = this.mapJournalEntries(rows).slice(0, limit);
+
+    return {
+      items,
+      meta: {
+        tenantId: currentUser.tenantId,
+        count: items.length,
+        limit
+      }
+    };
+  }
+
+  async createJournalEntry(currentUser: NeonRequestUser, dto: CreateNeonJournalEntryDto) {
+    await this.ensureDefaultAccounts(currentUser.tenantId);
+
+    const totalAmount = Number(dto.totalAmount.toFixed(2));
+    const description = dto.description?.trim() || null;
+    const allocations = this.normalizeJournalAllocations(dto);
+
+    const entry = await this.databaseService.withTransaction(async (connection) => {
+      await this.ensureAccountExistsWithConnection(connection, currentUser.tenantId, dto.accountId);
+
+      let totalAllocatedCents = 0;
+      for (const allocation of allocations) {
+        totalAllocatedCents += this.toMoneyCents(allocation.amount);
+
+        if (allocation.destinationType === "activity") {
+          if (!allocation.destinationActivityId) {
+            throw new BadRequestException("Falta elegir la actividad del centro de costo");
+          }
+
+          await this.findActivityRowWithConnection(connection, currentUser.tenantId, allocation.destinationActivityId);
+        }
+
+        if (
+          (allocation.destinationType === "vehicle" ||
+            allocation.destinationType === "other" ||
+            allocation.destinationType === "personal") &&
+          !allocation.destinationLabel?.trim()
+        ) {
+          throw new BadRequestException("Falta la etiqueta del centro de costo");
+        }
+      }
+
+      if (allocations.length > 0 && totalAllocatedCents !== this.toMoneyCents(totalAmount)) {
+        throw new BadRequestException("La suma de las lineas debe coincidir con el monto total");
+      }
+
+      const sourceType = allocations.length === 1 && allocations[0].destinationType === "activity" ? "activity" : "independent";
+      const sourceActivityId = sourceType === "activity" ? allocations[0].destinationActivityId ?? null : null;
+
+      const [movementResult] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_neon_movements (
+           tenant_id,
+           movement_type,
+           movement_date,
+           account_id,
+           total_amount,
+           description,
+           source_type,
+           source_activity_id
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          currentUser.tenantId,
+          dto.movementType,
+          dto.movementDate,
+          dto.accountId,
+          totalAmount,
+          description,
+          sourceType,
+          sourceActivityId
+        ]
+      );
+
+      for (const allocation of allocations) {
+        const destinationLabel =
+          allocation.destinationType === "activity" ? null : allocation.destinationLabel?.trim() || null;
+        const metadataJson =
+          allocation.destinationType === "vehicle"
+            ? JSON.stringify({
+                kilometers: allocation.kilometers ?? null,
+                liters: allocation.liters ?? null
+              })
+            : null;
+
+        await connection.execute<ResultSetHeader>(
+          `INSERT INTO saas_neon_movement_allocations (
+             tenant_id,
+             movement_id,
+             destination_type,
+             destination_activity_id,
+             destination_label,
+             amount,
+             metadata_json
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            currentUser.tenantId,
+            movementResult.insertId,
+            allocation.destinationType,
+            allocation.destinationType === "activity" ? allocation.destinationActivityId ?? null : null,
+            destinationLabel,
+            Number(allocation.amount.toFixed(2)),
+            metadataJson
+          ]
+        );
+      }
+
+      return this.findJournalRowsWithConnection(connection, currentUser.tenantId, movementResult.insertId);
+    });
+
+    return { item: this.mapJournalEntries(entry)[0] };
+  }
+
+  private normalizeJournalAllocations(dto: CreateNeonJournalEntryDto): CreateNeonJournalAllocationDto[] {
+    if (dto.allocations?.length) {
+      return dto.allocations.map((allocation) => ({
+        ...allocation,
+        destinationLabel: allocation.destinationLabel?.trim()
+      }));
+    }
+
+    if (!dto.costCenterType) {
+      return [];
+    }
+
+    return [
+      {
+        destinationType: dto.costCenterType,
+        destinationActivityId: dto.destinationActivityId,
+        destinationLabel: dto.destinationLabel?.trim(),
+        amount: dto.totalAmount,
+        kilometers: dto.kilometers,
+        liters: dto.liters
+      }
+    ];
+  }
+
+  private toMoneyCents(value: number) {
+    return Math.round(value * 100);
   }
 
   private async ensureDefaultAccounts(tenantId: number) {
@@ -1023,11 +1385,18 @@ export class NeonService {
         AND c.tenant_id = a.tenant_id
        LEFT JOIN (
          SELECT
-           activity_id,
-           SUM(paid_amount) AS collected_amount
-         FROM saas_neon_activity_payments
-         WHERE tenant_id = ?
-         GROUP BY activity_id
+           alloc.destination_activity_id AS activity_id,
+           SUM(alloc.amount) AS collected_amount
+         FROM saas_neon_movement_allocations alloc
+         INNER JOIN saas_neon_movements m
+           ON m.id = alloc.movement_id
+          AND m.tenant_id = alloc.tenant_id
+         WHERE alloc.tenant_id = ?
+           AND alloc.destination_type = 'activity'
+           AND alloc.destination_activity_id IS NOT NULL
+           AND m.movement_type = 'income'
+           AND m.deleted_at IS NULL
+         GROUP BY alloc.destination_activity_id
        ) p
          ON p.activity_id = a.id
        WHERE a.id = ?
@@ -1068,11 +1437,18 @@ export class NeonService {
         AND c.tenant_id = a.tenant_id
        LEFT JOIN (
          SELECT
-           activity_id,
-           SUM(paid_amount) AS collected_amount
-         FROM saas_neon_activity_payments
-         WHERE tenant_id = ?
-         GROUP BY activity_id
+           alloc.destination_activity_id AS activity_id,
+           SUM(alloc.amount) AS collected_amount
+         FROM saas_neon_movement_allocations alloc
+         INNER JOIN saas_neon_movements m
+           ON m.id = alloc.movement_id
+          AND m.tenant_id = alloc.tenant_id
+         WHERE alloc.tenant_id = ?
+           AND alloc.destination_type = 'activity'
+           AND alloc.destination_activity_id IS NOT NULL
+           AND m.movement_type = 'income'
+           AND m.deleted_at IS NULL
+         GROUP BY alloc.destination_activity_id
        ) p
          ON p.activity_id = a.id
        WHERE a.id = ?
@@ -1140,29 +1516,90 @@ export class NeonService {
     return rows[0];
   }
 
-  private async listActivityPayments(tenantId: number, activityId: number) {
-    const rows = await this.databaseService.query<NeonActivityPaymentRow[]>(
+  private async findJournalRowsWithConnection(connection: PoolConnection, tenantId: number, movementId: number) {
+    const [rows] = await connection.query<NeonJournalRow[]>(
       `SELECT
-         p.id,
-         p.tenant_id,
-         p.activity_id,
-         p.movement_id,
+         m.id,
+         m.tenant_id,
+         m.movement_type,
+         m.movement_date,
          m.account_id,
          a.name AS account_name,
-         m.movement_date AS payment_date,
-         p.paid_amount,
+         m.total_amount,
          m.description,
-         p.created_at
-       FROM saas_neon_activity_payments p
-       INNER JOIN saas_neon_movements m
-         ON m.id = p.movement_id
-        AND m.tenant_id = p.tenant_id
+         m.source_type,
+         m.source_activity_id,
+         CASE
+           WHEN src_act.id IS NULL THEN NULL
+           ELSE CONCAT('#', src_act.activity_number, '/', src_act.activity_year)
+         END AS source_activity_code,
+         src_act.description AS source_activity_description,
+         alloc.id AS allocation_id,
+         alloc.destination_type,
+         alloc.destination_activity_id,
+         CASE
+           WHEN alloc_act.id IS NULL THEN NULL
+           ELSE CONCAT('#', alloc_act.activity_number, '/', alloc_act.activity_year)
+         END AS destination_activity_code,
+         alloc_act.description AS destination_activity_description,
+         alloc.destination_label,
+         alloc.amount AS allocation_amount,
+         CAST(alloc.metadata_json AS CHAR) AS allocation_metadata_json,
+         m.created_at,
+         m.updated_at
+       FROM saas_neon_movements m
        INNER JOIN saas_neon_accounts a
          ON a.id = m.account_id
         AND a.tenant_id = m.tenant_id
-       WHERE p.tenant_id = ?
-         AND p.activity_id = ?
-       ORDER BY m.movement_date DESC, p.id DESC`,
+       LEFT JOIN saas_neon_activities src_act
+         ON src_act.id = m.source_activity_id
+        AND src_act.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_movement_allocations alloc
+         ON alloc.movement_id = m.id
+        AND alloc.tenant_id = m.tenant_id
+       LEFT JOIN saas_neon_activities alloc_act
+         ON alloc_act.id = alloc.destination_activity_id
+        AND alloc_act.tenant_id = alloc.tenant_id
+       WHERE m.id = ?
+         AND m.tenant_id = ?
+         AND m.deleted_at IS NULL
+       ORDER BY alloc.id ASC`,
+      [movementId, tenantId]
+    );
+
+    if (!rows[0]) {
+      throw new BadRequestException("Movimiento no encontrado para este tenant");
+    }
+
+    return rows;
+  }
+
+  private async listActivityPayments(tenantId: number, activityId: number) {
+    const rows = await this.databaseService.query<NeonActivityPaymentRow[]>(
+      `SELECT
+         alloc.id,
+         alloc.tenant_id,
+         alloc.destination_activity_id AS activity_id,
+         alloc.movement_id,
+         m.account_id,
+         a.name AS account_name,
+         m.movement_date AS payment_date,
+         alloc.amount AS paid_amount,
+         m.description,
+         alloc.created_at
+       FROM saas_neon_movement_allocations alloc
+       INNER JOIN saas_neon_movements m
+         ON m.id = alloc.movement_id
+        AND m.tenant_id = alloc.tenant_id
+       INNER JOIN saas_neon_accounts a
+         ON a.id = m.account_id
+        AND a.tenant_id = m.tenant_id
+       WHERE alloc.tenant_id = ?
+         AND alloc.destination_type = 'activity'
+         AND alloc.destination_activity_id = ?
+         AND m.movement_type = 'income'
+         AND m.deleted_at IS NULL
+       ORDER BY m.movement_date DESC, alloc.id DESC`,
       [tenantId, activityId]
     );
 
@@ -1243,6 +1680,10 @@ export class NeonService {
       throw new BadRequestException("Actividad no encontrada");
     }
 
+    const quotedAmount = Number(row.quoted_amount);
+    const collectedAmount = Number(row.collected_amount);
+    const pendingAmount = Number(row.pending_amount);
+
     return {
       id: row.id,
       tenantId: row.tenant_id,
@@ -1253,10 +1694,10 @@ export class NeonService {
       clientId: row.client_id,
       clientName: row.client_name,
       activityType: row.activity_type,
-      commercialStatus: row.commercial_status,
-      quotedAmount: Number(row.quoted_amount),
-      collectedAmount: Number(row.collected_amount),
-      pendingAmount: Number(row.pending_amount),
+      commercialStatus: this.deriveActivityCommercialStatus(row.commercial_status, quotedAmount, collectedAmount, pendingAmount),
+      quotedAmount,
+      collectedAmount,
+      pendingAmount,
       payments,
       createdAt: row.created_at,
       updatedAt: row.updated_at
@@ -1287,5 +1728,100 @@ export class NeonService {
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
+  }
+
+  private mapJournalEntries(rows: NeonJournalRow[]): NeonJournalEntry[] {
+    const items = new Map<number, NeonJournalEntry>();
+
+    for (const row of rows) {
+      if (!items.has(row.id)) {
+        items.set(row.id, {
+          id: row.id,
+          tenantId: row.tenant_id,
+          movementType: row.movement_type,
+          movementDate: row.movement_date,
+          accountId: row.account_id,
+          accountName: row.account_name,
+          totalAmount: Number(row.total_amount),
+          description: row.description,
+          sourceType: row.source_type,
+          sourceActivityId: row.source_activity_id,
+          sourceActivityCode: row.source_activity_code,
+          sourceActivityDescription: row.source_activity_description,
+          allocations: [],
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        });
+      }
+
+      const entry = items.get(row.id)!;
+      if (row.allocation_id) {
+        entry.allocations.push(this.mapJournalAllocation(row));
+      }
+    }
+
+    return Array.from(items.values());
+  }
+
+  private mapJournalAllocation(row: NeonJournalRow): NeonJournalAllocation {
+    return {
+      id: row.allocation_id || 0,
+      destinationType: row.destination_type || "other",
+      destinationActivityId: row.destination_activity_id,
+      destinationActivityCode: row.destination_activity_code,
+      destinationActivityDescription: row.destination_activity_description,
+      destinationLabel: row.destination_label,
+      amount: Number(row.allocation_amount || 0),
+      metadata: this.parseAllocationMetadata(row.allocation_metadata_json)
+    };
+  }
+
+  private parseAllocationMetadata(raw: string | null): Record<string, unknown> | null {
+    if (!raw) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeStoredCommercialStatus(status: NeonCommercialStatus) {
+    if (status === "facturado") {
+      return "pendiente_de_cobrar" as const;
+    }
+
+    return status;
+  }
+
+  private deriveActivityCommercialStatus(
+    storedStatus: NeonCommercialStatus,
+    quotedAmount: number,
+    collectedAmount: number,
+    pendingAmount: number
+  ): NeonCommercialStatus {
+    if (quotedAmount > 0 && collectedAmount > 0 && pendingAmount <= 0) {
+      return "cobrado";
+    }
+
+    if (storedStatus === "pendiente_de_facturar" && collectedAmount <= 0) {
+      return "pendiente_de_facturar";
+    }
+
+    if (storedStatus === "pendiente_de_facturar" && collectedAmount > 0) {
+      return pendingAmount <= 0 ? "cobrado" : "pendiente_de_cobrar";
+    }
+
+    if (storedStatus === "cobrado" && pendingAmount > 0) {
+      return "pendiente_de_cobrar";
+    }
+
+    if (storedStatus === "pendiente_de_cobrar" || storedStatus === "facturado") {
+      return pendingAmount <= 0 && collectedAmount > 0 ? "cobrado" : "pendiente_de_cobrar";
+    }
+
+    return storedStatus;
   }
 }

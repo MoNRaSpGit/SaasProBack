@@ -1,6 +1,8 @@
 import { ModuleRequestUser } from "../../shared/authz/module-auth";
+import { NeonAccountType } from "./dto/create-neon-account.dto";
 import { NeonActivityType, NeonCommercialStatus } from "./dto/create-neon-activity.dto";
 import { NeonCategoryClassification, NeonCategoryMovementType } from "./dto/create-neon-category.dto";
+import { NeonCostCenterType, NeonJournalMovementType } from "./dto/create-neon-journal-entry.dto";
 import { NeonExpenseDestinationType } from "./dto/create-neon-expense.dto";
 
 export type NeonRequestUser = ModuleRequestUser;
@@ -38,9 +40,38 @@ export type NeonAccount = {
   id: number;
   tenantId: number;
   name: string;
-  accountType: "cash" | "bank";
+  accountType: NeonAccountType;
   openingBalance: number;
   currentBalance: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NeonJournalAllocation = {
+  id: number;
+  destinationType: NeonCostCenterType;
+  destinationActivityId: number | null;
+  destinationActivityCode: string | null;
+  destinationActivityDescription: string | null;
+  destinationLabel: string | null;
+  amount: number;
+  metadata: Record<string, unknown> | null;
+};
+
+export type NeonJournalEntry = {
+  id: number;
+  tenantId: number;
+  movementType: NeonJournalMovementType;
+  movementDate: string;
+  accountId: number;
+  accountName: string;
+  totalAmount: number;
+  description: string | null;
+  sourceType: "activity" | "independent";
+  sourceActivityId: number | null;
+  sourceActivityCode: string | null;
+  sourceActivityDescription: string | null;
+  allocations: NeonJournalAllocation[];
   createdAt: string;
   updatedAt: string;
 };

@@ -1,127 +1,171 @@
 # Producto - Neon
 
-Fecha de actualizacion: 2026-05-05
+Fecha de actualizacion: 2026-05-06
 
-## Estado
+## Estado del producto
 
-`neon` esta en incubacion tecnica.
+`neon` queda redefinido bajo el contexto V3 como:
 
-Hoy no es el producto oficial principal del SaaS, pero ya tiene una base real publicada y un primer slice funcional del MVP.
+- libro diario
+- centros de costo
+- cuentas
+- actividades
 
-## Backend
+Ya no debe leerse como una app guiada por flujo operativo.
 
-Endpoints activos:
+Debe leerse como una herramienta real de gestion financiera y operativa para reemplazar Excel.
+
+## Estado backend actual
+
+El backend ya tiene una base funcional alineada al modelo nuevo.
+
+### Endpoints activos del nucleo nuevo
 
 - `GET /api/v1/neon/status`
 - `GET /api/v1/neon/clients`
 - `POST /api/v1/neon/clients`
 - `PATCH /api/v1/neon/clients/:id`
 - `GET /api/v1/neon/accounts`
-- `GET /api/v1/neon/categories`
-- `POST /api/v1/neon/categories`
+- `POST /api/v1/neon/accounts`
 - `GET /api/v1/neon/activities`
 - `GET /api/v1/neon/activities/:id`
 - `POST /api/v1/neon/activities`
 - `PATCH /api/v1/neon/activities/:id`
+- `GET /api/v1/neon/journal`
+- `POST /api/v1/neon/journal`
+
+### Endpoints heredados aun presentes
+
 - `POST /api/v1/neon/activities/:id/payments`
+- `GET /api/v1/neon/categories`
+- `POST /api/v1/neon/categories`
 - `GET /api/v1/neon/expenses`
 - `POST /api/v1/neon/expenses`
 
-Reglas activas:
+## Capabilities activas
 
-- `Bearer`
-- tenant activo
-- modulo `neon` habilitado
-- capability `neon.shell.read`
-- capability `neon.clients.read`
-- capability `neon.clients.write`
-- capability `neon.accounts.read`
-- capability `neon.activities.read`
-- capability `neon.activities.write`
-- capability `neon.categories.read`
-- capability `neon.categories.write`
-- capability `neon.expenses.read`
-- capability `neon.expenses.write`
+- `neon.shell.read`
+- `neon.clients.read`
+- `neon.clients.write`
+- `neon.accounts.read`
+- `neon.accounts.write`
+- `neon.activities.read`
+- `neon.activities.write`
+- `neon.categories.read`
+- `neon.categories.write`
+- `neon.expenses.read`
+- `neon.expenses.write`
+- `neon.journal.read`
+- `neon.journal.write`
 
-Base funcional actual:
+## Base funcional implementada
+
+Hoy ya existe en backend:
 
 - clientes por tenant
+- cuentas por tenant
+- saldos recalculados por movimientos
 - actividades por tenant
-- cuentas base por tenant (`Caja`, `Banco`)
-- pagos de actividad enlazados a cuentas
-- recalculo automatico de `cobrado` y `pendiente`
-- saldo de cuentas calculado por movimientos
-- categorias de gasto por tenant
-- gasto simple con destino y cuenta
+- journal con ingresos y gastos
+- division de movimientos por multiples lineas
+- asignacion a:
+  - actividad
+  - vehiculo
+  - personal
+  - otros
+- kilometraje y litros en allocations de vehiculo
+- cobrado y pendiente de actividades calculados desde ingresos del journal asignados a la actividad
+- estado comercial derivado desde el contexto real de cobro
 
-Migraciones activas del modulo:
+## Lo que queda heredado
+
+Persisten piezas anteriores que siguen vivas por compatibilidad, pero ya no son el centro del producto:
+
+- categorias
+- gastos legacy
+- endpoint viejo de pagos por actividad
+
+No se toman como la forma final del sistema.
+
+## Esquema funcional real hoy
+
+### Cuentas
+
+Soporte actual:
+
+- `cash`
+- `bank`
+
+Pendiente V3:
+
+- `credit`
+
+### Journal
+
+Campos activos hoy:
+
+- movement_type
+- movement_date
+- account_id
+- total_amount
+- description
+
+Con division:
+
+- multiples `allocations`
+- validacion de suma exacta
+
+Pendiente V3 en el journal:
+
+- proveedor
+- documento
+- cantidad
+- unidad de medida
+- moneda
+- tarjeta
+- vencimiento
+
+### Actividades
+
+Ya estan integradas al modelo nuevo.
+
+Logica vigente:
+
+- `facturado` se normaliza a `pendiente_de_cobrar`
+- si el ingreso asignado cubre todo el pendiente, queda en `cobrado`
+
+## Migraciones activas
 
 - `009_saas_neon_core.sql`
 - `010_saas_neon_payments.sql`
 - `011_saas_neon_expenses.sql`
 
-## Frontend
+## Donde quedamos hoy
 
-Frontend asociado:
+El backend ya soporta este corte util:
 
-- `frontend-neon`
+1. cuentas
+2. libro diario simple
+3. centros de costo simples
+4. division por multiples lineas
+5. actividades integradas al modelo nuevo
+6. recalculo de cobrado y pendiente desde journal
 
-Ruta oficial del modulo:
+## Proximos pasos backend
 
-- `/neon`
+Orden recomendado:
 
-Estado del bloque 1:
+1. ampliar `movements` al nivel V3 de salidas
+2. agregar cuenta tipo `credit`
+3. modelar tarjetas y vencimientos
+4. crear reporte de deuda pendiente
+5. limpiar o encapsular endpoints heredados
+6. preparar edicion y borrado logico de movimientos
 
-- login real conectado al SaaS
-- ruta protegida
-- dashboard base
-- saas-admin enlazado
-- shell publicado en produccion
-- credenciales demo de prueba para esta etapa
-- contexto funcional cerrado
+## Referencias funcionales
 
-Estado actual del bloque 2:
-
-- alta de clientes publicada
-- alta de actividades publicada
-- detalle de actividad publicado
-- cuentas base visibles
-- `Registrar pago` publicado
-- pagos parciales activos desde actividad
-- `cobrado` y `pendiente` recalculados automaticamente
-- categorias de gasto publicadas
-- gasto simple publicado
-- home por 4 tarjetas publicado
-- flujo navegable `Actividades -> Gastos -> Ingresos -> Movimientos`
-- resumenes agrupados por actividad en gastos e ingresos
-- login simplificado del frontend con boton unico `Iniciar`
-
-## Regla documental
-
-La estructura general del SaaS se documenta en `backend/docs`.
-
-La documentacion funcional y operativa propia de `neon` vive en:
-
-- `frontend-neon/docs`
-
-Referencia operativa actual del frontend:
-
-- login sin campos visibles, con acceso directo por boton
-- `Gastos` usa clasificacion visible `Empresa` o `Personal`
-- `Ingresos registrados` se agrupa por actividad, no por pago suelto
-- `Movimientos` resume cobrado, gastado y pendiente por actividad
-
-## Siguiente bloque natural
-
-El siguiente bloque de `neon` ya no es infraestructura ni ingresos desde actividad.
-
-El siguiente foco funcional es:
-
-- dividir gasto
-- centros de costo
-- primeros reportes base
-
-La referencia funcional y de MVP de este modulo vive en:
+La documentacion funcional y de producto del frontend asociado vive en:
 
 - `frontend-neon/docs/product-context.md`
 - `frontend-neon/docs/mvp-technical-design.md`
+- `frontend-neon/docs/README.md`
