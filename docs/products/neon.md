@@ -187,8 +187,7 @@ Esto deja listo el flujo pedido por cliente:
 ### Estado de aplicacion
 
 - `012` y `013` forman parte del corte funcional actual
-- `014` queda preparada para cerrar `rental` tambien a nivel base
-- este ultimo punto puede mantenerse en piloto hasta confirmacion final del cliente
+- `014` ya fue aplicada para que `rental` quede soportado tambien a nivel base
 
 ## Mini cierre de piloto
 
@@ -201,6 +200,29 @@ Este corte backend ya cubre la mayor parte del pedido importante del cliente:
 - ingresos sin actividad obligatoria
 - alquileres separados de actividades
 - pagos de tarjeta para deuda pendiente
+- script repetible para resetear el tenant demo con datos de prueba curados
+
+## Datos demo de prueba
+
+Quedo preparado un reseteo repetible del tenant `Neon Demo`.
+
+Script:
+
+- `backend/scripts/reset-neon-demo-pilot-data.js`
+
+Cobertura del set de prueba:
+
+- `5` cuentas sugeridas
+- `3` clientes
+- `3` actividades
+- `4` movimientos
+- casos de:
+  - actividad
+  - vehiculo
+  - personal
+  - alquiler
+
+La idea es dejar un entorno corto, legible y facil de mostrar al cliente.
 
 ## Lo que todavia no se endurece
 

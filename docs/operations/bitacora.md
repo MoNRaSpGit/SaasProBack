@@ -58,6 +58,15 @@ Si dejar:
   - centros de costo
   - actividades
   - vehiculos
+- dataset demo curado para pruebas del cliente
+
+### Ajustes finales del cierre
+
+Tambien quedo cerrado en este bloque:
+
+- `rental` habilitado a nivel base en la tabla de allocations
+- validacion backend relajada para no exigir `cantidad` ni `unidad` en cada gasto operativo
+- script de reset para dejar el tenant demo con datos chicos y consistentes
 
 ### Criterio de este cierre
 

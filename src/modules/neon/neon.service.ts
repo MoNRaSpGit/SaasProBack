@@ -1102,14 +1102,6 @@ export class NeonService {
           if (!providerName) {
             throw new BadRequestException("Falta el proveedor del gasto");
           }
-
-          if (quantity === null || !Number.isFinite(quantity) || quantity <= 0) {
-            throw new BadRequestException("La cantidad del gasto debe ser valida");
-          }
-
-          if (!unitLabel) {
-            throw new BadRequestException("Falta la unidad del gasto");
-          }
         }
 
         if (account.account_type === "credit" && expenseKind !== "credit_settlement") {
