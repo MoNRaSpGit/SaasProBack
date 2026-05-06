@@ -2,7 +2,12 @@ import { ModuleRequestUser } from "../../shared/authz/module-auth";
 import { NeonAccountType } from "./dto/create-neon-account.dto";
 import { NeonActivityType, NeonCommercialStatus } from "./dto/create-neon-activity.dto";
 import { NeonCategoryClassification, NeonCategoryMovementType } from "./dto/create-neon-category.dto";
-import { NeonCostCenterType, NeonJournalMovementType } from "./dto/create-neon-journal-entry.dto";
+import {
+  NeonCostCenterType,
+  NeonExpenseKind,
+  NeonJournalCurrency,
+  NeonJournalMovementType
+} from "./dto/create-neon-journal-entry.dto";
 import { NeonExpenseDestinationType } from "./dto/create-neon-expense.dto";
 
 export type NeonRequestUser = ModuleRequestUser;
@@ -67,6 +72,14 @@ export type NeonJournalEntry = {
   accountName: string;
   totalAmount: number;
   description: string | null;
+  providerName: string | null;
+  documentRef: string | null;
+  quantity: number | null;
+  unitLabel: string | null;
+  currencyCode: NeonJournalCurrency | null;
+  expenseKind: NeonExpenseKind | null;
+  creditCardLabel: string | null;
+  dueDate: string | null;
   sourceType: "activity" | "independent";
   sourceActivityId: number | null;
   sourceActivityCode: string | null;

@@ -1,7 +1,7 @@
 import { Type } from "class-transformer";
 import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateIf } from "class-validator";
 
-export const NEON_EXPENSE_DESTINATION_TYPES = ["activity", "personal", "vehicle", "other"] as const;
+export const NEON_EXPENSE_DESTINATION_TYPES = ["activity", "personal", "vehicle", "rental", "other"] as const;
 export type NeonExpenseDestinationType = (typeof NEON_EXPENSE_DESTINATION_TYPES)[number];
 
 export class CreateNeonExpenseDto {
@@ -37,7 +37,7 @@ export class CreateNeonExpenseDto {
   @Min(1)
   destinationActivityId?: number;
 
-  @ValidateIf((value: CreateNeonExpenseDto) => value.destinationType === "other")
+  @ValidateIf((value: CreateNeonExpenseDto) => value.destinationType !== "activity")
   @IsString()
   @MaxLength(255)
   destinationLabel?: string;

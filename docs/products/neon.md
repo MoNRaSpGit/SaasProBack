@@ -2,24 +2,32 @@
 
 Fecha de actualizacion: 2026-05-06
 
-## Estado del producto
+## Norte funcional vigente
 
-`neon` queda redefinido bajo el contexto V3 como:
+`neon` se lee hoy como un modulo en piloto orientado a `libro diario`.
 
-- libro diario
-- centros de costo
-- cuentas
-- actividades
+El modelo que se esta validando con cliente es:
 
-Ya no debe leerse como una app guiada por flujo operativo.
+- cada `ingreso` o `gasto` nace en el libro diario
+- el movimiento impacta una `cuenta`
+- si es a `credito`, agrega tarjeta y vencimiento
+- despues se reparte a uno o varios `centros de costo`
+- las `actividades` numeradas son un destino posible, no el eje del sistema
+- los `alquileres` existen como flujo separado de las actividades
 
-Debe leerse como una herramienta real de gestion financiera y operativa para reemplazar Excel.
+La meta de este corte no es cerrar arquitectura definitiva.
 
-## Estado backend actual
+La meta es dejar una base funcional para validar:
 
-El backend ya tiene una base funcional alineada al modelo nuevo.
+- si el flujo diario se entiende
+- si los centros de costo reflejan su Excel real
+- si la lectura de reportes va por el camino correcto
 
-### Endpoints activos del nucleo nuevo
+## Estado backend real hoy
+
+El backend ya soporta una base util para ese piloto.
+
+### Endpoints activos del nucleo
 
 - `GET /api/v1/neon/status`
 - `GET /api/v1/neon/clients`
@@ -42,7 +50,11 @@ El backend ya tiene una base funcional alineada al modelo nuevo.
 - `GET /api/v1/neon/expenses`
 - `POST /api/v1/neon/expenses`
 
-## Capabilities activas
+Se mantienen por compatibilidad.
+
+No son la direccion final del producto.
+
+## Capacidades activas
 
 - `neon.shell.read`
 - `neon.clients.read`
@@ -64,108 +76,153 @@ Hoy ya existe en backend:
 
 - clientes por tenant
 - cuentas por tenant
+- cuentas tipo:
+  - `cash`
+  - `bank`
+  - `credit`
 - saldos recalculados por movimientos
 - actividades por tenant
 - journal con ingresos y gastos
-- division de movimientos por multiples lineas
-- asignacion a:
-  - actividad
-  - vehiculo
-  - personal
-  - otros
-- kilometraje y litros en allocations de vehiculo
+- validacion de suma exacta por multiples lineas
+- asignacion a centros de costo:
+  - `activity`
+  - `vehicle`
+  - `personal`
+  - `rental`
+  - `other`
+- kilometraje y litros dentro de metadata de vehiculo
+- soporte V3 de salidas:
+  - proveedor
+  - documento
+  - cantidad
+  - unidad
+  - moneda
+  - detalle
+- soporte de credito:
+  - tarjeta
+  - vencimiento
+- soporte de `expense_kind`:
+  - `operational`
+  - `credit_settlement`
 - cobrado y pendiente de actividades calculados desde ingresos del journal asignados a la actividad
-- estado comercial derivado desde el contexto real de cobro
+- normalizacion comercial:
+  - `facturado` se trata como `pendiente_de_cobrar`
+  - `cobrado` se deriva del dinero realmente ingresado
 
-## Lo que queda heredado
-
-Persisten piezas anteriores que siguen vivas por compatibilidad, pero ya no son el centro del producto:
-
-- categorias
-- gastos legacy
-- endpoint viejo de pagos por actividad
-
-No se toman como la forma final del sistema.
-
-## Esquema funcional real hoy
+## Lectura funcional del modelo
 
 ### Cuentas
 
-Soporte actual:
+Representan de donde sale o entra el dinero:
 
-- `cash`
-- `bank`
+- `Caja $`
+- bancos
+- credito
 
-Pendiente V3:
-
-- `credit`
+El saldo se recalcula desde los movimientos.
 
 ### Journal
 
-Campos activos hoy:
+Es el nucleo real del producto.
 
-- movement_type
-- movement_date
-- account_id
-- total_amount
-- description
+Cada movimiento registra:
 
-Con division:
+- fecha
+- tipo
+- cuenta
+- importe total
+- detalle
 
-- multiples `allocations`
-- validacion de suma exacta
-
-Pendiente V3 en el journal:
+Y en salidas tambien puede registrar:
 
 - proveedor
 - documento
 - cantidad
-- unidad de medida
+- unidad
 - moneda
+- kilometraje o litros cuando aplica por allocation de vehiculo
+
+### Credito
+
+Si la cuenta es `credit`, el movimiento puede guardar:
+
 - tarjeta
 - vencimiento
 
+Ademas ya existe el tratamiento de `pago de tarjeta` para netear deuda.
+
 ### Actividades
 
-Ya estan integradas al modelo nuevo.
+Se mantienen como entidad comercial numerada:
 
-Logica vigente:
+- cliente
+- cotizado
+- estado comercial
 
-- `facturado` se normaliza a `pendiente_de_cobrar`
-- si el ingreso asignado cubre todo el pendiente, queda en `cobrado`
+Pero ya no son el eje contable.
 
-## Migraciones activas
+La actividad recibe dinero y gastos desde el libro diario.
+
+### Alquileres
+
+El backend ya permite tratarlos como centro de costo `rental`.
+
+No obliga numero de actividad.
+
+Esto deja listo el flujo pedido por cliente:
+
+- ingreso por alquiler
+- cuenta de entrada
+- centro `ALQ1`, `ALQ2`, etc.
+
+## Migraciones del bloque Neon
 
 - `009_saas_neon_core.sql`
 - `010_saas_neon_payments.sql`
 - `011_saas_neon_expenses.sql`
+- `012_saas_neon_v3_expense_fields.sql`
+- `013_saas_neon_credit_settlement_kind.sql`
+- `014_saas_neon_add_rental_cost_center.sql`
 
-## Donde quedamos hoy
+### Estado de aplicacion
 
-El backend ya soporta este corte util:
+- `012` y `013` forman parte del corte funcional actual
+- `014` queda preparada para cerrar `rental` tambien a nivel base
+- este ultimo punto puede mantenerse en piloto hasta confirmacion final del cliente
 
-1. cuentas
-2. libro diario simple
-3. centros de costo simples
-4. division por multiples lineas
-5. actividades integradas al modelo nuevo
-6. recalculo de cobrado y pendiente desde journal
+## Mini cierre de piloto
 
-## Proximos pasos backend
+Este corte backend ya cubre la mayor parte del pedido importante del cliente:
 
-Orden recomendado:
+- libro diario como entrada principal
+- cuentas y saldo automatico
+- credito con tarjeta y vencimiento
+- reparto a multiples centros de costo
+- ingresos sin actividad obligatoria
+- alquileres separados de actividades
+- pagos de tarjeta para deuda pendiente
 
-1. ampliar `movements` al nivel V3 de salidas
-2. agregar cuenta tipo `credit`
-3. modelar tarjetas y vencimientos
-4. crear reporte de deuda pendiente
-5. limpiar o encapsular endpoints heredados
-6. preparar edicion y borrado logico de movimientos
+## Lo que todavia no se endurece
 
-## Referencias funcionales
+Queda intencionalmente en estado de piloto:
 
-La documentacion funcional y de producto del frontend asociado vive en:
+- catalogos cerrados y definitivos de medios de pago
+- catalogos cerrados y definitivos de tarjetas
+- entidad propia de alquiler con ficha completa
+- edicion y borrado logico visibles
+- limpieza final de endpoints heredados
 
-- `frontend-neon/docs/product-context.md`
-- `frontend-neon/docs/mvp-technical-design.md`
+## Camino sugerido despues de la prueba
+
+Si el cliente confirma que el flujo va por aca, el siguiente bloque recomendado es:
+
+1. endurecer catalogos base
+2. cerrar alquileres como flujo oficialmente soportado
+3. consolidar reportes definitivos
+4. recien despues limpiar legacy y abrir edicion / borrado logico
+
+## Referencias cruzadas
+
+- `backend/docs/operations/bitacora.md`
 - `frontend-neon/docs/README.md`
+- `frontend-neon/docs/mvp-technical-design.md`

@@ -26,6 +26,7 @@ import {
   CreateNeonJournalAllocationDto,
   CreateNeonJournalEntryDto,
   NeonCostCenterType,
+  NeonExpenseKind,
   NeonJournalMovementType
 } from "./dto/create-neon-journal-entry.dto";
 import { CreateNeonExpenseDto, NeonExpenseDestinationType } from "./dto/create-neon-expense.dto";
@@ -50,7 +51,7 @@ type NeonAccountRow = RowDataPacket & {
   id: number;
   tenant_id: number;
   name: string;
-  account_type: "cash" | "bank";
+  account_type: "cash" | "bank" | "credit";
   opening_balance: string;
   current_balance: string;
   created_at: string;
@@ -128,6 +129,14 @@ type NeonJournalRow = RowDataPacket & {
   account_name: string;
   total_amount: string;
   description: string | null;
+  provider_name: string | null;
+  document_ref: string | null;
+  quantity: string | null;
+  unit_label: string | null;
+  currency_code: "UYU" | "USD" | null;
+  expense_kind: "operational" | "credit_settlement" | null;
+  credit_card_label: string | null;
+  due_date: string | null;
   source_type: "activity" | "independent";
   source_activity_id: number | null;
   source_activity_code: string | null;
@@ -902,7 +911,7 @@ export class NeonService {
         await this.findActivityRowWithConnection(connection, currentUser.tenantId, dto.destinationActivityId);
       }
 
-      if (dto.destinationType === "other" && !destinationLabel) {
+      if (dto.destinationType !== "activity" && !destinationLabel) {
         throw new BadRequestException("Falta la etiqueta del destino");
       }
 
@@ -938,7 +947,7 @@ export class NeonService {
           movementResult.insertId,
           dto.destinationType,
           dto.destinationType === "activity" ? dto.destinationActivityId ?? null : null,
-          dto.destinationType === "other" ? destinationLabel : null,
+          dto.destinationType === "activity" ? null : destinationLabel,
           totalAmount
         ]
       );
@@ -983,8 +992,10 @@ export class NeonService {
 
     if (query.search?.trim()) {
       const likeValue = `%${query.search.trim()}%`;
-      whereParts.push("(m.description LIKE ? OR a.name LIKE ? OR src_act.description LIKE ? OR alloc.destination_label LIKE ?)");
-      values.push(likeValue, likeValue, likeValue, likeValue);
+      whereParts.push(
+        "(m.description LIKE ? OR m.provider_name LIKE ? OR m.document_ref LIKE ? OR a.name LIKE ? OR src_act.description LIKE ? OR alloc.destination_label LIKE ?)"
+      );
+      values.push(likeValue, likeValue, likeValue, likeValue, likeValue, likeValue);
     }
 
     const rows = await this.databaseService.query<NeonJournalRow[]>(
@@ -997,6 +1008,14 @@ export class NeonService {
          a.name AS account_name,
          m.total_amount,
          m.description,
+         m.provider_name,
+         m.document_ref,
+         m.quantity,
+         m.unit_label,
+         m.currency_code,
+         m.expense_kind,
+         m.credit_card_label,
+         m.due_date,
          m.source_type,
          m.source_activity_id,
          CASE
@@ -1053,10 +1072,56 @@ export class NeonService {
 
     const totalAmount = Number(dto.totalAmount.toFixed(2));
     const description = dto.description?.trim() || null;
+    const providerName = dto.providerName?.trim() || null;
+    const documentRef = dto.documentRef?.trim() || null;
+    const quantity = dto.quantity === undefined ? null : Number(dto.quantity.toFixed(2));
+    const unitLabel = dto.unitLabel?.trim() || null;
+    const currencyCode = dto.currencyCode ?? null;
+    const expenseKind: NeonExpenseKind | null = dto.movementType === "expense" ? dto.expenseKind ?? "operational" : null;
+    const creditCardLabel = dto.creditCardLabel?.trim() || null;
+    const dueDate = dto.dueDate || null;
     const allocations = this.normalizeJournalAllocations(dto);
 
     const entry = await this.databaseService.withTransaction(async (connection) => {
-      await this.ensureAccountExistsWithConnection(connection, currentUser.tenantId, dto.accountId);
+      const account = await this.findAccountRowWithConnection(connection, currentUser.tenantId, dto.accountId);
+
+      if (dto.movementType === "expense") {
+        if (!currencyCode) {
+          throw new BadRequestException("Falta la moneda del gasto");
+        }
+
+        if (expenseKind === "credit_settlement") {
+          if (account.account_type === "credit") {
+            throw new BadRequestException("El pago de tarjeta debe salir desde caja o banco");
+          }
+
+          if (!creditCardLabel) {
+            throw new BadRequestException("Falta la tarjeta a cancelar");
+          }
+        } else {
+          if (!providerName) {
+            throw new BadRequestException("Falta el proveedor del gasto");
+          }
+
+          if (quantity === null || !Number.isFinite(quantity) || quantity <= 0) {
+            throw new BadRequestException("La cantidad del gasto debe ser valida");
+          }
+
+          if (!unitLabel) {
+            throw new BadRequestException("Falta la unidad del gasto");
+          }
+        }
+
+        if (account.account_type === "credit" && expenseKind !== "credit_settlement") {
+          if (!creditCardLabel) {
+            throw new BadRequestException("Falta la tarjeta para registrar el gasto a credito");
+          }
+
+          if (!dueDate) {
+            throw new BadRequestException("Falta el vencimiento para registrar el gasto a credito");
+          }
+        }
+      }
 
       let totalAllocatedCents = 0;
       for (const allocation of allocations) {
@@ -1073,7 +1138,8 @@ export class NeonService {
         if (
           (allocation.destinationType === "vehicle" ||
             allocation.destinationType === "other" ||
-            allocation.destinationType === "personal") &&
+            allocation.destinationType === "personal" ||
+            allocation.destinationType === "rental") &&
           !allocation.destinationLabel?.trim()
         ) {
           throw new BadRequestException("Falta la etiqueta del centro de costo");
@@ -1095,10 +1161,18 @@ export class NeonService {
            account_id,
            total_amount,
            description,
+           provider_name,
+           document_ref,
+           quantity,
+           unit_label,
+           currency_code,
+           expense_kind,
+           credit_card_label,
+           due_date,
            source_type,
            source_activity_id
          )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
         [
           currentUser.tenantId,
           dto.movementType,
@@ -1106,6 +1180,14 @@ export class NeonService {
           dto.accountId,
           totalAmount,
           description,
+          dto.movementType === "expense" ? providerName : null,
+          dto.movementType === "expense" ? documentRef : null,
+          dto.movementType === "expense" && expenseKind !== "credit_settlement" ? quantity : null,
+          dto.movementType === "expense" && expenseKind !== "credit_settlement" ? unitLabel : null,
+          dto.movementType === "expense" ? currencyCode : null,
+          expenseKind,
+          dto.movementType === "expense" ? creditCardLabel : null,
+          dto.movementType === "expense" && account.account_type === "credit" && expenseKind !== "credit_settlement" ? dueDate : null,
           sourceType,
           sourceActivityId
         ]
@@ -1324,8 +1406,20 @@ export class NeonService {
   }
 
   private async ensureAccountExistsWithConnection(connection: PoolConnection, tenantId: number, accountId: number) {
+    await this.findAccountRowWithConnection(connection, tenantId, accountId);
+  }
+
+  private async findAccountRowWithConnection(connection: PoolConnection, tenantId: number, accountId: number) {
     const [rows] = await connection.query<RowDataPacket[]>(
-      `SELECT id
+      `SELECT
+         id,
+         tenant_id,
+         name,
+         account_type,
+         opening_balance,
+         opening_balance AS current_balance,
+         created_at,
+         updated_at
        FROM saas_neon_accounts
        WHERE id = ?
          AND tenant_id = ?
@@ -1337,6 +1431,8 @@ export class NeonService {
     if (!rows[0]) {
       throw new BadRequestException("Cuenta no encontrada para este tenant");
     }
+
+    return rows[0] as NeonAccountRow;
   }
 
   private async ensureCategoryExistsWithConnection(
@@ -1527,6 +1623,14 @@ export class NeonService {
          a.name AS account_name,
          m.total_amount,
          m.description,
+         m.provider_name,
+         m.document_ref,
+         m.quantity,
+         m.unit_label,
+         m.currency_code,
+         m.expense_kind,
+         m.credit_card_label,
+         m.due_date,
          m.source_type,
          m.source_activity_id,
          CASE
@@ -1744,6 +1848,14 @@ export class NeonService {
           accountName: row.account_name,
           totalAmount: Number(row.total_amount),
           description: row.description,
+          providerName: row.provider_name,
+          documentRef: row.document_ref,
+          quantity: row.quantity === null ? null : Number(row.quantity),
+          unitLabel: row.unit_label,
+          currencyCode: row.currency_code,
+          expenseKind: row.expense_kind,
+          creditCardLabel: row.credit_card_label,
+          dueDate: row.due_date,
           sourceType: row.source_type,
           sourceActivityId: row.source_activity_id,
           sourceActivityCode: row.source_activity_code,

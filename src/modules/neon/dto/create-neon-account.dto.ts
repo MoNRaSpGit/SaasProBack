@@ -1,7 +1,7 @@
 import { Type } from "class-transformer";
 import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
 
-export const NEON_ACCOUNT_TYPES = ["cash", "bank"] as const;
+export const NEON_ACCOUNT_TYPES = ["cash", "bank", "credit"] as const;
 export type NeonAccountType = (typeof NEON_ACCOUNT_TYPES)[number];
 
 export class CreateNeonAccountDto {

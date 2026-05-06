@@ -7,6 +7,7 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
+  Matches,
   IsString,
   MaxLength,
   Min,
@@ -17,8 +18,14 @@ import {
 export const NEON_JOURNAL_MOVEMENT_TYPES = ["income", "expense"] as const;
 export type NeonJournalMovementType = (typeof NEON_JOURNAL_MOVEMENT_TYPES)[number];
 
-export const NEON_COST_CENTER_TYPES = ["activity", "vehicle", "personal", "other"] as const;
+export const NEON_COST_CENTER_TYPES = ["activity", "vehicle", "personal", "rental", "other"] as const;
 export type NeonCostCenterType = (typeof NEON_COST_CENTER_TYPES)[number];
+
+export const NEON_JOURNAL_CURRENCIES = ["UYU", "USD"] as const;
+export type NeonJournalCurrency = (typeof NEON_JOURNAL_CURRENCIES)[number];
+
+export const NEON_EXPENSE_KINDS = ["operational", "credit_settlement"] as const;
+export type NeonExpenseKind = (typeof NEON_EXPENSE_KINDS)[number];
 
 export class CreateNeonJournalAllocationDto {
   @IsIn(NEON_COST_CENTER_TYPES)
@@ -32,7 +39,10 @@ export class CreateNeonJournalAllocationDto {
 
   @ValidateIf(
     (value: CreateNeonJournalAllocationDto) =>
-      value.destinationType === "vehicle" || value.destinationType === "other" || value.destinationType === "personal"
+      value.destinationType === "vehicle" ||
+      value.destinationType === "other" ||
+      value.destinationType === "personal" ||
+      value.destinationType === "rental"
   )
   @IsString()
   @MaxLength(255)
@@ -79,6 +89,45 @@ export class CreateNeonJournalEntryDto {
   description?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  providerName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  documentRef?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  @Matches(/^[^\d]+$/, { message: "unitLabel must not contain numbers" })
+  unitLabel?: string;
+
+  @IsOptional()
+  @IsIn(NEON_JOURNAL_CURRENCIES)
+  currencyCode?: NeonJournalCurrency;
+
+  @IsOptional()
+  @IsIn(NEON_EXPENSE_KINDS)
+  expenseKind?: NeonExpenseKind;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  creditCardLabel?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dueDate?: string;
+
+  @IsOptional()
   @IsIn(NEON_COST_CENTER_TYPES)
   costCenterType?: NeonCostCenterType;
 
@@ -90,7 +139,10 @@ export class CreateNeonJournalEntryDto {
 
   @ValidateIf(
     (value: CreateNeonJournalEntryDto) =>
-      value.costCenterType === "vehicle" || value.costCenterType === "other" || value.costCenterType === "personal"
+      value.costCenterType === "vehicle" ||
+      value.costCenterType === "other" ||
+      value.costCenterType === "personal" ||
+      value.costCenterType === "rental"
   )
   @IsString()
   @MaxLength(255)
