@@ -1,15 +1,16 @@
 # Archivo - Modulos experimentales
 
-Fecha de actualizacion: 2026-05-05
+Fecha de actualizacion: 2026-05-08
 
 ## Estado
 
-Estos modulos ya no forman parte del producto oficial actual:
+Estos modulos ya no forman parte de los productos activos documentados:
 
 - `pos`
 - `distribuidora`
 - `cafeteria`
 - `almacen`
+- `camiones`
 
 ## Regla
 
@@ -24,4 +25,5 @@ Para el estado actual del SaaS mirar:
 - `../README.md`
 - `../architecture/product-scope.md`
 - `../operations/database-state.md`
-- `../products/camiones.md`
+- `../../frontend-neon/docs/`
+- `../../frontend-agro/docs/`

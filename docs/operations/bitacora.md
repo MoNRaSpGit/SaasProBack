@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-06
+Fecha de actualizacion: 2026-05-08
 
 ## Regla fija
 
@@ -25,75 +25,36 @@ Hoy `SaasPro` mantiene:
 - auth con contexto tenant
 - billing core
 - `SaaS Admin Lite`
-- modulo oficial estable:
-  - `camiones`
-- modulo piloto activo:
+- productos activos:
   - `neon`
-
-## Mini cierre Neon - piloto cliente
-
-Durante esta jornada se dejo `neon` en un corte de validacion con cliente.
-
-### Objetivo del corte
-
-No endurecer aun la arquitectura final.
-
-Si dejar:
-
-- flujo diario entendible
-- centros de costo reconocibles
-- reportes suficientes para que el cliente diga si el camino es correcto
-
-### Lo que quedo alineado
-
-- `libro diario` como nucleo real del modulo
-- `cuentas` como origen o destino del dinero
-- `credito` con tarjeta y vencimiento
-- asignacion de un movimiento a multiples centros de costo
-- `actividades` tratadas como destino comercial posible, no como eje contable
-- `alquileres` separados de actividades
-- primera lectura de reportes por:
-  - cuentas
-  - deuda
-  - centros de costo
-  - actividades
-  - vehiculos
-- dataset demo curado para pruebas del cliente
-
-### Ajustes finales del cierre
-
-Tambien quedo cerrado en este bloque:
-
-- `rental` habilitado a nivel base en la tabla de allocations
-- validacion backend relajada para no exigir `cantidad` ni `unidad` en cada gasto operativo
-- script de reset para dejar el tenant demo con datos chicos y consistentes
-
-### Criterio de este cierre
-
-Se priorizo:
-
-- funcionalidad usable
-- lenguaje parecido al del cliente
-- base de prueba
-
-Se postergo a proposito:
-
-- cierres estructurales definitivos
-- catalogos formales fuertes
-- limpieza final de legacy
-
-## Estado recomendado para manana
-
-Manana se puede retomar desde este punto:
-
-1. escuchar devolucion del cliente
-2. confirmar si el flujo diario refleja su Excel real
-3. detectar que centros o reportes faltan
-4. recien despues endurecer codigo y modelo
+  - `agro`
 
 ## Regla de crecimiento vigente
 
-1. sostener `camiones`
-2. mantener sano el core SaaS
-3. usar `neon` como piloto controlado hasta validacion final
+1. mantener sano el core SaaS
+2. sostener `neon` como producto activo en validacion
+3. sostener `agro` como producto activo en validacion
 4. endurecer solo cuando el cliente confirme direccion
+
+## Regla de bitacora por modulo
+
+Esta bitacora no registra detalle fino de `neon` ni de `agro`.
+
+No va aca informacion como:
+
+- cambios de formularios
+- cambios de textos
+- widgets nuevos
+- decisiones finas de UX
+- "donde quedamos hoy" de un modulo puntual
+
+Eso se registra en:
+
+- `frontend-neon/docs/bitacora.md`
+- `frontend-agro/docs/bitacora.md`
+
+## Proximo paso general
+
+1. mantener sana la base compartida del SaaS
+2. esperar devolucion de cliente en los modulos activos
+3. endurecer primero lo que se confirme como direccion real

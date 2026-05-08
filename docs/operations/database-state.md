@@ -1,13 +1,13 @@
 # Estado actual de base de datos
 
-Fecha de actualizacion: 2026-05-05
+Fecha de actualizacion: 2026-05-08
 
 ## Regla de alcance
 
 Solo se consideran parte del SaaS actual:
 
 - tablas `saas_` activas del core
-- tablas `saas_` de `camiones`
+- tablas `saas_` activas de modulos documentados
 - tablas legacy de auth:
   - `saasPro_users`
   - `saasPro_refresh_tokens`
@@ -24,7 +24,11 @@ Las demas tablas viejas de otros proyectos no se tocan.
 - `saas_tenant_settings`
 - `saas_branches`
 
-### Camiones
+### Agro
+
+- `saas_agro_discovery_responses`
+
+### Camiones historico
 
 - `saas_camiones_clients`
 - `saas_camiones_places`
@@ -43,9 +47,11 @@ Las demas tablas viejas de otros proyectos no se tocan.
 
 ## Estado de modulos
 
-En `saas_tenant_modules` debe quedar solo:
+En `saas_tenant_modules` deben existir los modulos documentados por el core segun el estado vigente del producto.
 
-- `camiones`
+Hoy la referencia oficial para esa lectura es:
+
+- `backend/docs/architecture/product-scope.md`
 
 ## Regla futura
 

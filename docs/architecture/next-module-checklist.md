@@ -1,17 +1,17 @@
 # Siguiente modulo - Checklist de nacimiento
 
-Fecha de actualizacion: 2026-05-05
+Fecha de actualizacion: 2026-05-08
 
 ## Objetivo
 
-Sumar un modulo nuevo sin romper `camiones` ni ensuciar la arquitectura actual.
+Sumar un modulo nuevo sin romper los productos activos ni ensuciar la arquitectura actual.
 
 ## Condicion para empezar
 
 Un modulo nuevo se empieza solo si:
 
-- `camiones` sigue estable
-- backend y frontend actuales siguen sanos
+- `neon` y `agro` siguen sanos en su estado actual
+- backend y frontends activos siguen sanos
 - la necesidad comercial del modulo esta clara
 
 ## Paso 1 - Definir producto
@@ -67,7 +67,7 @@ Base minima:
 - shared minimo
 - documentacion particular del modulo
 
-No agregar el modulo nuevo dentro de `frontend-camiones`.
+No agregar el modulo nuevo dentro de otro frontend activo.
 
 ## Paso 5 - Validacion
 
@@ -81,11 +81,11 @@ Antes de subir:
 
 ## Regla final
 
-La meta no es “meter modulos rapido”.
+La meta no es meter modulos rapido.
 
 La meta es que cada modulo entre:
 
 - limpio
 - desacoplado
 - vendible
-- sin romper el producto ya vivo
+- sin romper los productos ya vivos

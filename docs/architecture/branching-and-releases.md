@@ -1,6 +1,6 @@
 # Ramas, releases y forma de trabajo
 
-Fecha de actualizacion: 2026-05-05
+Fecha de actualizacion: 2026-05-08
 
 ## Regla simple
 
@@ -29,6 +29,10 @@ Una version estable es una que tiene:
 - `build` OK
 - validacion real cuando aplica
 
+Regla adicional:
+
+- si el modulo afectado todavia no tiene rondas de test, se crean antes de considerar PF valido
+
 ## PF vigente
 
 Cuando se diga `subi`, la regla es:
@@ -50,17 +54,17 @@ Lo importante es esto:
 
 ## Rama actual recomendada para el futuro
 
-Para cambios nuevos en `camiones`:
+Para cambios nuevos en productos activos:
 
 - crear rama corta y descriptiva
 
 Ejemplos:
 
-- `feat/camiones-registro-filtros`
-- `fix/camiones-mobile-scroll`
-- `refactor/camiones-form-flow`
+- `feat/neon-libro-diario-filtros`
+- `fix/agro-tabla-scroll`
+- `refactor/agro-home-sections`
 
-Para el siguiente producto:
+Para un producto nuevo:
 
 - `feat/nuevo-modulo-base`
 

@@ -1,6 +1,6 @@
 # Plataforma y reglas base
 
-Fecha de actualizacion: 2026-05-05
+Fecha de actualizacion: 2026-05-08
 
 ## Objetivo
 
@@ -9,16 +9,15 @@ Definir la estructura oficial del SaaS para seguir creciendo sin ruido.
 ## Foto actual
 
 - `backend` = nucleo unico del SaaS
-- `frontend-camiones` = unico frontend oficial activo
-- `frontend-neon` = frontend de modulo en incubacion
-- `camiones` = unico modulo oficial activo
+- `frontend-neon` = frontend activo del modulo `neon`
+- `frontend-agro` = frontend activo del modulo `agro`
+- `neon` y `agro` = productos activos en este corte
 
 ## Regla de arquitectura
 
 - un solo backend SaaS multi-tenant
 - un frontend por producto cuando un modulo madura
 - no se crean frontends por cliente individual
-- no se mezcla un modulo nuevo dentro de `frontend-camiones`
 - cada repo mantiene su propia carpeta `docs/`
 - `backend/docs` conserva la documentacion estructural y compartida
 
