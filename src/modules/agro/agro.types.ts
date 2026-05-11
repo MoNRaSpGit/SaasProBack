@@ -4,6 +4,8 @@ export type AgroRequestUser = ModuleRequestUser;
 
 export const AGRO_DISCOVERY_MODULE_KEY = "agro" as const;
 export const AGRO_DISCOVERY_VERSION = "v1" as const;
+export const AGRO_WORKSPACE_PUBLIC_KEY = "public" as const;
+export const AGRO_WORKSPACE_VERSION = "v1" as const;
 
 export type AgroDiscoveryAnswer = {
   questionId: string;
@@ -19,4 +21,19 @@ export type AgroDiscoveryResponseRecord = {
   answers: AgroDiscoveryAnswer[];
   createdAt: string;
   updatedAt: string;
+};
+
+export type AgroWorkspaceData = {
+  animalMovements: unknown[];
+  accountingEntries: unknown[];
+  rainfallRecords: unknown[];
+  sanitaryRecords: unknown[];
+  monthlyExchangeRates: unknown[];
+};
+
+export type AgroWorkspaceRecord = {
+  workspaceKey: typeof AGRO_WORKSPACE_PUBLIC_KEY;
+  version: typeof AGRO_WORKSPACE_VERSION;
+  data: AgroWorkspaceData;
+  updatedAt: string | null;
 };

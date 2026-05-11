@@ -2,10 +2,15 @@ import { Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { SaveAgroDiscoveryResponseDto } from "./dto/save-agro-discovery-response.dto";
+import { SaveAgroWorkspaceDto } from "./dto/save-agro-workspace.dto";
 import {
   AGRO_DISCOVERY_MODULE_KEY,
   AGRO_DISCOVERY_VERSION,
+  AGRO_WORKSPACE_PUBLIC_KEY,
+  AGRO_WORKSPACE_VERSION,
   AgroDiscoveryResponseRecord,
+  AgroWorkspaceData,
+  AgroWorkspaceRecord,
   AgroRequestUser
 } from "./agro.types";
 
@@ -20,9 +25,61 @@ type AgroDiscoveryRow = RowDataPacket & {
   updated_at: string | Date;
 };
 
+type AgroWorkspaceRow = RowDataPacket & {
+  id: number;
+  workspace_key: string;
+  version: string;
+  workspace_json: string | Buffer | AgroWorkspaceData;
+  updated_at: string | Date;
+};
+
 @Injectable()
 export class AgroService {
   constructor(private readonly databaseService: DatabaseService) {}
+
+  async getPublicWorkspace() {
+    const rows = await this.databaseService.query<AgroWorkspaceRow[]>(
+      `SELECT
+         id,
+         workspace_key,
+         version,
+         workspace_json,
+         updated_at
+       FROM saas_agro_public_workspaces
+       WHERE workspace_key = ?
+       LIMIT 1`,
+      [AGRO_WORKSPACE_PUBLIC_KEY]
+    );
+
+    return rows[0] ? this.mapWorkspaceRow(rows[0]) : this.getEmptyWorkspace();
+  }
+
+  async savePublicWorkspace(dto: SaveAgroWorkspaceDto) {
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_agro_public_workspaces (
+         workspace_key,
+         version,
+         workspace_json
+       ) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         version = VALUES(version),
+         workspace_json = VALUES(workspace_json),
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        AGRO_WORKSPACE_PUBLIC_KEY,
+        AGRO_WORKSPACE_VERSION,
+        JSON.stringify({
+          animalMovements: dto.animalMovements,
+          accountingEntries: dto.accountingEntries,
+          rainfallRecords: dto.rainfallRecords,
+          sanitaryRecords: dto.sanitaryRecords,
+          monthlyExchangeRates: dto.monthlyExchangeRates
+        } satisfies AgroWorkspaceData)
+      ]
+    );
+
+    return this.getPublicWorkspace();
+  }
 
   getStatus(currentUser: AgroRequestUser) {
     return {
@@ -116,6 +173,46 @@ export class AgroService {
       answers: parsedAnswers,
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)
+    };
+  }
+
+  private mapWorkspaceRow(row: AgroWorkspaceRow): AgroWorkspaceRecord {
+    return {
+      workspaceKey: AGRO_WORKSPACE_PUBLIC_KEY,
+      version: AGRO_WORKSPACE_VERSION,
+      data: this.parseWorkspaceJson(row.workspace_json),
+      updatedAt: this.toIsoString(row.updated_at)
+    };
+  }
+
+  private parseWorkspaceJson(value: AgroWorkspaceRow["workspace_json"]): AgroWorkspaceData {
+    const parsedValue = Array.isArray(value)
+      ? value
+      : JSON.parse(Buffer.isBuffer(value) ? value.toString("utf8") : String(value));
+
+    const workspace = parsedValue as Partial<AgroWorkspaceData>;
+
+    return {
+      animalMovements: Array.isArray(workspace.animalMovements) ? workspace.animalMovements : [],
+      accountingEntries: Array.isArray(workspace.accountingEntries) ? workspace.accountingEntries : [],
+      rainfallRecords: Array.isArray(workspace.rainfallRecords) ? workspace.rainfallRecords : [],
+      sanitaryRecords: Array.isArray(workspace.sanitaryRecords) ? workspace.sanitaryRecords : [],
+      monthlyExchangeRates: Array.isArray(workspace.monthlyExchangeRates) ? workspace.monthlyExchangeRates : []
+    };
+  }
+
+  private getEmptyWorkspace(): AgroWorkspaceRecord {
+    return {
+      workspaceKey: AGRO_WORKSPACE_PUBLIC_KEY,
+      version: AGRO_WORKSPACE_VERSION,
+      data: {
+        animalMovements: [],
+        accountingEntries: [],
+        rainfallRecords: [],
+        sanitaryRecords: [],
+        monthlyExchangeRates: []
+      },
+      updatedAt: null
     };
   }
 
