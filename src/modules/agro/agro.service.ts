@@ -38,6 +38,8 @@ export class AgroService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getPublicWorkspace() {
+    await this.ensurePublicWorkspaceTable();
+
     const rows = await this.databaseService.query<AgroWorkspaceRow[]>(
       `SELECT
          id,
@@ -55,6 +57,8 @@ export class AgroService {
   }
 
   async savePublicWorkspace(dto: SaveAgroWorkspaceDto) {
+    await this.ensurePublicWorkspaceTable();
+
     await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_agro_public_workspaces (
          workspace_key,
@@ -214,6 +218,21 @@ export class AgroService {
       },
       updatedAt: null
     };
+  }
+
+  private async ensurePublicWorkspaceTable() {
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_agro_public_workspaces (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         workspace_key VARCHAR(40) NOT NULL,
+         version VARCHAR(20) NOT NULL DEFAULT 'v1',
+         workspace_json JSON NOT NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         UNIQUE KEY uq_saas_agro_public_workspace_key (workspace_key)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
   }
 
   private parseAnswersJson(value: AgroDiscoveryRow["answers_json"]) {
