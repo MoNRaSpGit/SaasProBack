@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-11
 
 ## Regla fija
 
@@ -16,6 +16,27 @@ Cuando se diga `subi`, se interpreta como:
 - `deploy`
 
 solo si el PF paso completo.
+
+## Regla operativa de PF
+
+`PF` significa `Pasos Finales`.
+
+PF no se interpreta solo como tests.
+
+PF incluye:
+
+- chequeo de codigo suelto, basura o ruido
+- chequeo de legacy no deseado
+- validaciones tecnicas
+- validacion real si corresponde
+- documentacion al dia
+
+La regla final es esta:
+
+- primero se cierra PF completo
+- despues recien van `push` y `deploy`
+
+Si falta documentacion relevante, PF no esta cerrado.
 
 ## Situacion general del SaaS
 
@@ -52,6 +73,34 @@ Eso se registra en:
 
 - `frontend-neon/docs/bitacora.md`
 - `frontend-agro/docs/bitacora.md`
+
+## Cambio backend reciente en Agro
+
+En este corte el backend de `agro` dejo de quedar limitado solo a discovery tecnico.
+
+Se agrego soporte real para el frontend operativo mediante:
+
+- tabla `saas_agro_public_workspaces`
+- lectura de workspace publico
+- guardado de workspace publico
+- devolucion de workspace vacio cuando todavia no hay datos
+
+El objetivo de este cambio fue permitir que `frontend-agro` guarde en BDD:
+
+- establecimientos
+- campos
+- animales
+- contabilidad
+- lluvia
+- sanidad
+- tipos de cambio mensuales
+
+Contrato expuesto en este corte:
+
+- `GET /api/v1/agro/workspace/public`
+- `PUT /api/v1/agro/workspace/public`
+
+Este cambio existe para sostener el piloto real del cliente desde backend compartido.
 
 ## Proximo paso general
 

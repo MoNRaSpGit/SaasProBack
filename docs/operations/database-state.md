@@ -1,6 +1,6 @@
 # Estado actual de base de datos
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-11
 
 ## Regla de alcance
 
@@ -27,6 +27,30 @@ Las demas tablas viejas de otros proyectos no se tocan.
 ### Agro
 
 - `saas_agro_discovery_responses`
+- `saas_agro_public_workspaces`
+
+## Uso actual de tabla Agro nueva
+
+`saas_agro_public_workspaces` guarda el workspace publico operativo que consume `frontend-agro`.
+
+Hoy ese workspace concentra:
+
+- establecimientos
+- campos
+- movimientos de animales
+- asientos contables
+- registros de lluvia
+- registros sanitarios
+- tipos de cambio mensuales
+
+La clave usada en este corte es:
+
+- `workspace_key = public`
+
+El contrato actual del backend para esa tabla se expone por:
+
+- `GET /api/v1/agro/workspace/public`
+- `PUT /api/v1/agro/workspace/public`
 
 ### Camiones historico
 

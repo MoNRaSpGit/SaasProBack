@@ -1,6 +1,6 @@
 # Ramas, releases y forma de trabajo
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-11
 
 ## Regla simple
 
@@ -41,6 +41,38 @@ Cuando se diga `subi`, la regla es:
 - `deploy`
 
 pero solo si el PF paso completo.
+
+## Que incluye PF
+
+`PF` significa `Pasos Finales`.
+
+No es solo correr tests.
+
+PF incluye, como minimo:
+
+- revisar que no quede codigo basura
+- revisar que no quede codigo legacy o ruido tecnico innecesario
+- `typecheck`
+- `lint`
+- tests del area afectada
+- `build`
+- validacion real cuando aplica
+- documentacion actualizada
+
+## Orden esperado de PF
+
+El orden practico esperado es:
+
+1. limpiar ruido tecnico o codigo suelto
+2. correr validaciones tecnicas
+3. confirmar que la feature o fix funciona
+4. actualizar documentacion del backend o del modulo afectado
+5. recien despues hacer `push`
+6. recien despues hacer `deploy`
+
+La documentacion forma parte de PF.
+
+No se considera PF cerrado si falta documentar el cambio relevante.
 
 ## Versiones practicas
 
