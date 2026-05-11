@@ -73,6 +73,8 @@ export class AgroService {
         AGRO_WORKSPACE_PUBLIC_KEY,
         AGRO_WORKSPACE_VERSION,
         JSON.stringify({
+          establishments: dto.establishments,
+          fields: dto.fields,
           animalMovements: dto.animalMovements,
           accountingEntries: dto.accountingEntries,
           rainfallRecords: dto.rainfallRecords,
@@ -197,6 +199,8 @@ export class AgroService {
     const workspace = parsedValue as Partial<AgroWorkspaceData>;
 
     return {
+      establishments: Array.isArray(workspace.establishments) ? workspace.establishments : [],
+      fields: Array.isArray(workspace.fields) ? workspace.fields : [],
       animalMovements: Array.isArray(workspace.animalMovements) ? workspace.animalMovements : [],
       accountingEntries: Array.isArray(workspace.accountingEntries) ? workspace.accountingEntries : [],
       rainfallRecords: Array.isArray(workspace.rainfallRecords) ? workspace.rainfallRecords : [],
@@ -210,6 +214,8 @@ export class AgroService {
       workspaceKey: AGRO_WORKSPACE_PUBLIC_KEY,
       version: AGRO_WORKSPACE_VERSION,
       data: {
+        establishments: [],
+        fields: [],
         animalMovements: [],
         accountingEntries: [],
         rainfallRecords: [],

@@ -24,6 +24,8 @@ export type AgroDiscoveryResponseRecord = {
 };
 
 export type AgroWorkspaceData = {
+  establishments: unknown[];
+  fields: unknown[];
   animalMovements: unknown[];
   accountingEntries: unknown[];
   rainfallRecords: unknown[];

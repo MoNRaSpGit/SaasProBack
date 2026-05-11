@@ -8,6 +8,12 @@ export class SaveAgroWorkspaceDto {
   version!: "v1";
 
   @IsArray()
+  establishments!: unknown[];
+
+  @IsArray()
+  fields!: unknown[];
+
+  @IsArray()
   animalMovements!: unknown[];
 
   @IsArray()
