@@ -192,9 +192,10 @@ export class AgroService {
   }
 
   private parseWorkspaceJson(value: AgroWorkspaceRow["workspace_json"]): AgroWorkspaceData {
-    const parsedValue = Array.isArray(value)
-      ? value
-      : JSON.parse(Buffer.isBuffer(value) ? value.toString("utf8") : String(value));
+    const parsedValue =
+      typeof value === "object" && value !== null && !Buffer.isBuffer(value)
+        ? value
+        : JSON.parse(Buffer.isBuffer(value) ? value.toString("utf8") : String(value));
 
     const workspace = parsedValue as Partial<AgroWorkspaceData>;
 
