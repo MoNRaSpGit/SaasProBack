@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsDateString, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 export class UpdateCamionesTripDto {
   @IsOptional()
@@ -20,6 +20,16 @@ export class UpdateCamionesTripDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   kilometers!: number;
+
+  @IsOptional()
+  @IsIn(["confirmed", "pending", "paid"])
+  status?: "confirmed" | "pending" | "paid";
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  collectedAmount?: number;
 
   @IsOptional()
   @IsString()

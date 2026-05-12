@@ -254,6 +254,30 @@ async function main() {
       throw new Error(`List paid trips failed: ${JSON.stringify(listPaidTripsPayload)}`);
     }
 
+    const deleteTripResponse = await fetch(`${baseUrl}/camiones/trips/${createTripPayload.trip.id}`, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    const deleteTripPayload = await readJson(deleteTripResponse);
+    if (!deleteTripResponse.ok || deleteTripPayload.ok !== true) {
+      throw new Error(`Delete paid trip failed: ${JSON.stringify(deleteTripPayload)}`);
+    }
+
+    const listPaidTripsAfterDeleteResponse = await fetch(`${baseUrl}/camiones/trips?status=paid&limit=10`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+    const listPaidTripsAfterDeletePayload = await readJson(listPaidTripsAfterDeleteResponse);
+    if (!listPaidTripsAfterDeleteResponse.ok) {
+      throw new Error(`List paid trips after delete failed: ${JSON.stringify(listPaidTripsAfterDeletePayload)}`);
+    }
+    if ((listPaidTripsAfterDeletePayload.items || []).some((trip: { id: number }) => trip.id === createTripPayload.trip.id)) {
+      throw new Error(`Deleted paid trip still listed: ${JSON.stringify(listPaidTripsAfterDeletePayload)}`);
+    }
+
     const archivePlaceResponse = await fetch(`${baseUrl}/camiones/places/${createPlacePayload.item.id}/archive`, {
       method: "PATCH",
       headers: {
@@ -295,10 +319,12 @@ async function main() {
           listedTripsCount: listTripsPayload.meta?.count,
           updatedTrip: updateTripPayload.trip,
           paidTrip: markPaidPayload.trip,
+          deletedPaidTrip: deleteTripPayload.ok,
           archivedClient: archiveClientPayload.ok,
           archivedPlace: archivePlacePayload.ok,
           listedPaidTripsCount: listPaidTripsPayload.meta?.count,
-          paidTrips: listPaidTripsPayload.items
+          paidTrips: listPaidTripsPayload.items,
+          listedPaidTripsAfterDeleteCount: listPaidTripsAfterDeletePayload.meta?.count
         },
         null,
         2

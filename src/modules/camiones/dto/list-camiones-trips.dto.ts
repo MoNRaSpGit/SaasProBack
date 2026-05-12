@@ -15,6 +15,6 @@ export class ListCamionesTripsDto {
   clientId?: number;
 
   @IsOptional()
-  @IsIn(["pending", "paid", "cancelled"])
-  status?: "pending" | "paid" | "cancelled";
+  @IsIn(["confirmed", "pending", "paid", "cancelled"])
+  status?: "confirmed" | "pending" | "paid" | "cancelled";
 }

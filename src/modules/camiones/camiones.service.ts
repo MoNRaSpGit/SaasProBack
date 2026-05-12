@@ -34,7 +34,8 @@ type CamionesTripRow = RowDataPacket & {
   trip_date: string;
   place: string;
   kilometers: string;
-  status: "pending" | "paid" | "cancelled";
+  status: "confirmed" | "pending" | "paid" | "cancelled";
+  collected_amount: string | null;
   notes: string | null;
   paid_at: string | null;
   created_at: string;
@@ -496,6 +497,7 @@ export class CamionesService {
          t.place,
          t.kilometers,
          t.status,
+         t.collected_amount,
          t.notes,
          t.paid_at,
          t.created_at,
@@ -592,9 +594,10 @@ export class CamionesService {
          place,
          kilometers,
          status,
+         collected_amount,
          notes
        )
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'confirmed', NULL, ?)`,
       [
         currentUser.tenantId,
         client.id,
@@ -619,6 +622,7 @@ export class CamionesService {
          t.place,
          t.kilometers,
          t.status,
+         t.collected_amount,
          t.notes,
          t.paid_at,
          t.created_at,
@@ -675,12 +679,20 @@ export class CamionesService {
       throw new BadRequestException("Falta el destino");
     }
 
+    const normalizedStatus = dto.status ?? "confirmed";
+    const collectedAmount =
+      dto.collectedAmount === undefined || dto.collectedAmount === null ? null : Number(dto.collectedAmount.toFixed(2));
+    const paidAt = normalizedStatus === "paid" ? new Date().toISOString().slice(0, 19).replace("T", " ") : null;
+
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_camiones_trips
        SET trip_date = ?,
            place_id = ?,
            place = ?,
            kilometers = ?,
+           status = ?,
+           collected_amount = ?,
+           paid_at = ?,
            notes = ?
        WHERE id = ?
          AND tenant_id = ?`,
@@ -689,6 +701,9 @@ export class CamionesService {
         resolvedPlaceId,
         resolvedPlaceName,
         Number(dto.kilometers.toFixed(2)),
+        normalizedStatus,
+        collectedAmount,
+        paidAt,
         dto.notes?.trim() || null,
         tripId,
         currentUser.tenantId
@@ -711,6 +726,7 @@ export class CamionesService {
          t.place,
          t.kilometers,
          t.status,
+         t.collected_amount,
          t.notes,
          t.paid_at,
          t.created_at,
@@ -735,10 +751,11 @@ export class CamionesService {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_camiones_trips
        SET status = 'paid',
+           collected_amount = NULL,
            paid_at = CURRENT_TIMESTAMP
        WHERE id = ?
          AND tenant_id = ?
-         AND status = 'pending'`,
+         AND status <> 'paid'`,
       [tripId, currentUser.tenantId]
     );
 
@@ -758,6 +775,7 @@ export class CamionesService {
          t.place,
          t.kilometers,
          t.status,
+         t.collected_amount,
          t.notes,
          t.paid_at,
          t.created_at,
@@ -776,6 +794,22 @@ export class CamionesService {
     return {
       trip: this.mapTrip(rows[0])
     };
+  }
+
+  async deleteTrip(currentUser: CamionesRequestUser, tripId: number) {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_camiones_trips
+       WHERE id = ?
+         AND tenant_id = ?
+         AND status = 'paid'`,
+      [tripId, currentUser.tenantId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Solo se pueden eliminar viajes pagos de este tenant");
+    }
+
+    return { ok: true };
   }
 
   private mapClient(row: CamionesClientRow | undefined) {
@@ -813,6 +847,7 @@ export class CamionesService {
       place: row.place_name || row.place,
       kilometers: Number(row.kilometers),
       status: row.status,
+      collectedAmount: row.collected_amount === null ? null : Number(row.collected_amount),
       notes: row.notes,
       paidAt: row.paid_at,
       createdAt: row.created_at,

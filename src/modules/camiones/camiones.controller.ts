@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { CapabilityGuard } from "../../shared/authz/capability.guard";
 import { RequireCapability } from "../../shared/authz/require-capability.decorator";
 import { CamionesAuthGuard } from "./camiones-auth.guard";
@@ -114,5 +114,12 @@ export class CamionesController {
   @Patch("trips/:id/pay")
   markTripPaid(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) tripId: number) {
     return this.camionesService.markTripPaid(currentUser, tripId);
+  }
+
+  @RequireCapability("camiones.trips.write")
+  @UseGuards(CapabilityGuard)
+  @Delete("trips/:id")
+  deleteTrip(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) tripId: number) {
+    return this.camionesService.deleteTrip(currentUser, tripId);
   }
 }
