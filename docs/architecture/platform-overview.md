@@ -18,8 +18,28 @@ Definir la estructura oficial del backend de `SaasPro` para crecer sin ruido.
 - un solo backend SaaS multi-tenant
 - un frontend por producto cuando el modulo madura
 - no se crean frontends por cliente individual
+- los frontends se construyen por capas separadas cuando el modulo ya tiene complejidad real
 - cada repo mantiene su propia carpeta `docs/`
 - `backend/docs` conserva la documentacion estructural y operativa del backend
+
+## Regla de frontend por capas
+
+Cuando un frontend deja de ser una pantalla minima o entra en flujo operativo real, no se resuelve como una sola pagina gigante.
+
+Regla esperada:
+
+- tipos por un lado
+- datos mock o catálogos por un lado
+- logica o estado por un lado
+- componentes visuales por un lado
+- estilos globales solo para lo verdaderamente global
+- estilos del modulo o feature en archivos separados
+
+Evitar:
+
+- una sola pagina con demasiadas lineas mezclando todo
+- logica, UI y estilos del modulo apretados en un mismo archivo
+- meter estilos de feature dentro de `global.css` si no son globales
 
 ## Responsabilidades del backend
 

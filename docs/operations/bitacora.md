@@ -26,6 +26,23 @@ No registra:
 
 Eso va en la carpeta `docs/` del frontend correspondiente.
 
+## 2026-05-16 - Regla global de frontend por capas
+
+Se deja explicita en arquitectura una regla de trabajo para frontends que ya tienen complejidad real.
+
+Queda establecido:
+
+- no resolver modulos operativos como una sola pagina enorme
+- separar tipos, data, logica, componentes y estilos
+- usar `global.css` solo para lo verdaderamente global
+- mover estilos de feature a archivos propios del modulo
+
+Motivo:
+
+- bajar ruido
+- facilitar mantenimiento
+- evitar mezclar logica, UI y estilos en un mismo archivo grande
+
 ## Situacion general del SaaS
 
 Hoy `SaasPro` mantiene:

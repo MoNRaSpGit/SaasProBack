@@ -55,10 +55,30 @@ Eso va en la carpeta `docs/` del frontend correspondiente.
 - un solo backend SaaS multi-tenant
 - un frontend por producto cuando el modulo madura
 - no se crean frontends por cliente individual
+- los frontends operativos se organizan en capas separadas
 - toda tabla nueva del SaaS usa prefijo `saas_`
 - toda tabla de negocio nueva incluye `tenant_id`
 - las tablas legacy ajenas al SaaS no se tocan
 - todo modulo nuevo nace sobre el core actual
+
+## Regla de capas en frontend
+
+Si un frontend ya tiene flujo real o varias responsabilidades, no se deja en una pagina unica enorme.
+
+Se espera separar como minimo:
+
+- tipos
+- data o mocks
+- logica y estado
+- componentes visuales
+- estilos globales vs estilos propios del modulo
+
+Regla practica:
+
+- `global.css` solo para base realmente global
+- estilos de feature en archivos del modulo
+- evitar mezclar UI, estado y helpers grandes en un solo archivo
+- preferir estructura clara aunque el primer corte sea simple
 
 ## Regla de modulos nuevos
 
