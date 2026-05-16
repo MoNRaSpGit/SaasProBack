@@ -79,6 +79,19 @@ Antes de considerar oficial el modulo:
 - registrar el cambio en `backend/docs/operations/bitacora.md`
 - crear o actualizar la documentacion del frontend del modulo
 
+Estructura minima esperada en `frontend-<modulo>/docs`:
+
+- `README.md`
+- `product/current-state.md`
+- `product/product-context.md`
+- `operations/bitacora.md`
+
+Si aplica:
+
+- `product/client-feedback-<fecha>.md`
+- `product/technical-design.md`
+- `archive/`
+
 ## Paso 6 - Validacion
 
 Antes de subir:

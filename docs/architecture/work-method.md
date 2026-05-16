@@ -92,6 +92,34 @@ La guia operativa vive en [next-module-checklist.md](./next-module-checklist.md)
 - si la decision es duradera, se registra o ajusta en `decisions/`
 - no se deja documentacion relevante para despues
 
+## Estructura documental por repo
+
+La documentacion del workspace se ordena asi:
+
+- `backend/docs` = reglas globales del SaaS, arquitectura compartida, metodo de trabajo, `PF`, operacion del backend y decisiones tecnicas
+- `frontend-<modulo>/docs` = documentacion especifica de ese frontend o producto
+
+Regla practica:
+
+- lo global se escribe una vez en `backend/docs`
+- los frontends no duplican metodo global ni `PF`
+- cada frontend documenta solo su propio estado, contexto, feedback, UX y bitacora
+
+## Estructura esperada dentro de un frontend
+
+Salvo que el modulo sea demasiado chico para justificarlo, la documentacion de un frontend nuevo deberia tender a:
+
+- `docs/README.md`
+- `docs/product/`
+- `docs/operations/`
+- `docs/archive/` si hay material historico que conservar
+
+Lectura recomendada:
+
+- `product/` = estado actual, contexto funcional y feedback del producto
+- `operations/` = bitacora fina del frontend
+- `archive/` = referencias viejas que ya no son la foto vigente
+
 ## Regla de calidad minima
 
 Antes de cerrar un cambio:
