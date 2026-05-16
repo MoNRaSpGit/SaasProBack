@@ -1,60 +1,109 @@
 # SaasPro Backend Docs
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-16
 
-## Fuente oficial
+## Objetivo
 
-Esta carpeta es la fuente oficial de documentacion del SaaS.
+Esta carpeta documenta el backend oficial de `SaasPro`.
 
-La regla actual es:
+Su funcion es dejar claro:
 
-- la documentacion estructural vive en `backend/docs`
-- cada modulo mantiene su propia carpeta `docs/`
-- la bitacora de "que hicimos hoy", "donde quedamos" y decisiones finas del modulo vive en la carpeta `docs/` de ese modulo
-- la documentacion vieja fuera de este repo queda solo como referencia historica
+- que es el backend dentro del SaaS
+- como esta organizada la arquitectura
+- como se trabaja en este repo
+- que significa cerrar un cambio con `PF`
+- cual es el estado operativo actual del backend
+- que decisiones tecnicas siguen vigentes
 
-## Mapa rapido
+## Alcance
 
-### Arquitectura
+`backend/docs` documenta solo backend.
 
-- [Plataforma y reglas base](./architecture/platform-overview.md)
-- [Ramas, releases y forma de trabajo](./architecture/branching-and-releases.md)
-- [Checklist para el siguiente modulo](./architecture/next-module-checklist.md)
-- [Alcance oficial del producto](./architecture/product-scope.md)
+Entra aca informacion sobre:
 
-### Operacion
+- arquitectura SaaS compartida
+- auth, tenant context, permisos y billing
+- endpoints y contratos API
+- reglas de negocio del backend
+- migraciones y estado de base de datos
+- metodo de trabajo y criterio de cierre
+- cambios reales hechos en el backend
 
-- [Bitacora activa](./operations/bitacora.md)
-- [Estado actual de base de datos](./operations/database-state.md)
+No entra aca informacion sobre:
 
-### Archivo
+- CSS
+- componentes visuales
+- layout
+- copy de pantalla
+- UX particular de un frontend
+- cambios finos de producto que viven solo en un frontend
 
-- [Modulos experimentales archivados](./archive/experimental-modules.md)
+Eso se documenta en la carpeta `docs/` del frontend correspondiente.
+
+## Orden recomendado de lectura
+
+1. [Plataforma y reglas base](./architecture/platform-overview.md)
+2. [Alcance oficial del producto](./architecture/product-scope.md)
+3. [Metodo de trabajo](./architecture/work-method.md)
+4. [PF - Pasos finales obligatorios](./architecture/pf-checklist.md)
+5. [Ramas, releases y cortes estables](./architecture/branching-and-releases.md)
+6. [Checklist para el siguiente modulo](./architecture/next-module-checklist.md)
+7. [Inventario operativo del backend](./operations/backend-inventory.md)
+8. [Estado actual de base de datos](./operations/database-state.md)
+9. [Bitacora activa](./operations/bitacora.md)
+10. [Indice de decisiones tecnicas](./decisions/README.md)
+
+## Estructura de esta carpeta
+
+### `architecture/`
+
+Reglas duraderas del backend:
+
+- arquitectura general
+- alcance del producto
+- metodo de trabajo
+- `PF`
+- ramas y releases
+- nacimiento de modulos nuevos
+
+### `operations/`
+
+Estado operativo del backend:
+
+- inventario del repo
+- estado real de base de datos
+- bitacora de cambios del backend
+
+### `decisions/`
+
+Decisiones tecnicas que explican el porque de reglas todavia vigentes.
+
+### `archive/`
+
+Material historico o experimental que no forma parte de la foto oficial actual.
 
 ## Regla de lectura
 
-Si hay contradiccion entre un documento historico y esta carpeta:
+Si hay contradiccion entre notas viejas y `backend/docs`:
 
 - manda `backend/docs`
 
-Si aparece informacion tipo:
+Si hay contradiccion entre una regla estructural y una nota de bitacora:
 
-- "hoy en agro agregamos un input"
-- "en neon quedo pendiente tal ajuste"
-- "el cliente pidio cambiar tal flujo"
+- manda arquitectura
 
-esa informacion no va aca.
+Si el detalle es de un frontend puntual:
 
-Va en la documentacion propia del modulo involucrado.
+- manda la documentacion de ese frontend
 
 ## Estado actual resumido
 
-- productos activos: `neon` y `agro`
-- backend oficial activo: este repo
-- `frontend-neon` y `frontend-agro` son los frontends activos documentados en este corte
+- backend oficial activo: `backend`
+- productos activos documentados: `neon` y `agro`
+- `frontend-neon` y `frontend-agro` son los frontends activos de este corte
 - `main` representa la linea estable oficial
 
-## Docs por modulo
+## Documentacion por frontend
 
 - `neon`: `frontend-neon/docs`
 - `agro`: `frontend-agro/docs`

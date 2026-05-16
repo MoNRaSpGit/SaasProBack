@@ -1,25 +1,37 @@
 # Plataforma y reglas base
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-16
 
 ## Objetivo
 
-Definir la estructura oficial del SaaS para seguir creciendo sin ruido.
+Definir la estructura oficial del backend de `SaasPro` para crecer sin ruido.
 
 ## Foto actual
 
 - `backend` = nucleo unico del SaaS
-- `frontend-neon` = frontend activo del modulo `neon`
-- `frontend-agro` = frontend activo del modulo `agro`
-- `neon` y `agro` = productos activos en este corte
+- `frontend-neon` = frontend activo de `neon`
+- `frontend-agro` = frontend activo de `agro`
+- `neon` y `agro` = productos activos documentados en este corte
 
 ## Regla de arquitectura
 
 - un solo backend SaaS multi-tenant
-- un frontend por producto cuando un modulo madura
+- un frontend por producto cuando el modulo madura
 - no se crean frontends por cliente individual
 - cada repo mantiene su propia carpeta `docs/`
-- `backend/docs` conserva la documentacion estructural y compartida
+- `backend/docs` conserva la documentacion estructural y operativa del backend
+
+## Responsabilidades del backend
+
+El backend concentra:
+
+- auth
+- tenant context
+- permisos y capabilities
+- billing core
+- reglas de negocio compartidas
+- contratos API
+- persistencia y migraciones
 
 ## Nucleo compartido obligatorio
 
@@ -59,9 +71,9 @@ Jerarquia vigente:
 
 Regla actual:
 
-- `admin` opera y administra
-- `operario` opera con permisos mas limitados
 - `staff` conserva control total del SaaS
+- `admin` opera y administra su tenant
+- `operario` opera con permisos mas limitados
 
 ## Billing
 
@@ -78,13 +90,17 @@ Regla actual:
 - gracia de 5 dias
 - decision final manual
 
+## Documentacion relacionada
+
+- metodo de trabajo: [work-method.md](./work-method.md)
+- PF: [pf-checklist.md](./pf-checklist.md)
+- alcance oficial del producto: [product-scope.md](./product-scope.md)
+
 ## Fuente de verdad actual
 
-Cuando haya dudas sobre el producto actual:
+Cuando haya dudas sobre el estado real:
 
-- el backend
-- esta carpeta `backend/docs`
-- la carpeta `docs/` del frontend del modulo involucrado
-- la base de datos actual del SaaS
-
-son la referencia oficial.
+- manda el backend
+- manda `backend/docs`
+- manda la carpeta `docs/` del frontend involucrado para cambios propios de ese frontend
+- manda la base de datos actual del SaaS

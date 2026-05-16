@@ -1,42 +1,30 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-11
+Fecha de actualizacion: 2026-05-16
 
-## Regla fija
+## Objetivo
 
-- `LaClaudia` es solo referencia externa
-- no se modifica codigo ni base de datos de `LaClaudia`
-- todo lo nuevo vive en `SaasPro`
+Registrar cambios reales del backend.
 
-## Regla operativa de subida
+No es un documento de arquitectura ni una bitacora fina de frontend.
 
-Cuando se diga `subi`, se interpreta como:
+## Regla de uso
 
-- `push`
-- `deploy`
+Esta bitacora registra:
 
-solo si el PF paso completo.
+- cambios de backend ya hechos
+- cambios de base de datos
+- cambios de contratos API
+- cambios operativos del core o de modulos backend
 
-## Regla operativa de PF
+No registra:
 
-`PF` significa `Pasos Finales`.
+- cambios visuales de frontend
+- copy
+- UX puntual
+- notas de "donde quedamos hoy" dentro de un frontend
 
-PF no se interpreta solo como tests.
-
-PF incluye:
-
-- chequeo de codigo suelto, basura o ruido
-- chequeo de legacy no deseado
-- validaciones tecnicas
-- validacion real si corresponde
-- documentacion al dia
-
-La regla final es esta:
-
-- primero se cierra PF completo
-- despues recien van `push` y `deploy`
-
-Si falta documentacion relevante, PF no esta cerrado.
+Eso va en la carpeta `docs/` del frontend correspondiente.
 
 ## Situacion general del SaaS
 
@@ -46,37 +34,15 @@ Hoy `SaasPro` mantiene:
 - auth con contexto tenant
 - billing core
 - `SaaS Admin Lite`
-- productos activos:
+- productos activos documentados:
   - `neon`
   - `agro`
 
-## Regla de crecimiento vigente
+## Cambios relevantes del backend
 
-1. mantener sano el core SaaS
-2. sostener `neon` como producto activo en validacion
-3. sostener `agro` como producto activo en validacion
-4. endurecer solo cuando el cliente confirme direccion
+### 2026-05-12 - Agro workspace publico operativo
 
-## Regla de bitacora por modulo
-
-Esta bitacora no registra detalle fino de `neon` ni de `agro`.
-
-No va aca informacion como:
-
-- cambios de formularios
-- cambios de textos
-- widgets nuevos
-- decisiones finas de UX
-- "donde quedamos hoy" de un modulo puntual
-
-Eso se registra en:
-
-- `frontend-neon/docs/bitacora.md`
-- `frontend-agro/docs/bitacora.md`
-
-## Cambio backend reciente en Agro
-
-En este corte el backend de `agro` dejo de quedar limitado solo a discovery tecnico.
+El backend de `agro` dejo de quedar limitado solo a discovery tecnico.
 
 Se agrego soporte real para el frontend operativo mediante:
 
@@ -85,25 +51,41 @@ Se agrego soporte real para el frontend operativo mediante:
 - guardado de workspace publico
 - devolucion de workspace vacio cuando todavia no hay datos
 
-El objetivo de este cambio fue permitir que `frontend-agro` guarde en BDD:
+Objetivo del cambio:
 
-- establecimientos
-- campos
-- animales
-- contabilidad
-- lluvia
-- sanidad
-- tipos de cambio mensuales
+- permitir que `frontend-agro` guarde en BDD establecimientos, campos, animales, contabilidad, lluvia, sanidad y tipos de cambio mensuales
 
-Contrato expuesto en este corte:
+Contrato expuesto:
 
 - `GET /api/v1/agro/workspace/public`
 - `PUT /api/v1/agro/workspace/public`
 
-Este cambio existe para sostener el piloto real del cliente desde backend compartido.
+### 2026-05-12 - Camiones ciclo de cobro mas real
 
-## Proximo paso general
+El backend de `camiones` se actualizo para soportar ciclo de cobro mas real.
 
-1. mantener sana la base compartida del SaaS
-2. esperar devolucion de cliente en los modulos activos
+Cambios de contrato:
+
+- los viajes nuevos ahora nacen en estado `confirmed`
+- `update trip` ahora acepta `status` y `collectedAmount`
+- se mantiene `PATCH /api/v1/camiones/trips/:id/pay`
+- se agrega `DELETE /api/v1/camiones/trips/:id` solo para viajes con estado `paid`
+
+Cambios de base:
+
+- nueva migracion `017_saas_camiones_trip_status_and_collections.sql`
+- nueva columna `saas_camiones_trips.collected_amount`
+- `status` de `saas_camiones_trips` pasa a soportar `confirmed`, `pending`, `paid` y `cancelled`
+- los viajes viejos en `pending` se normalizan a `confirmed`
+
+Cambios operativos:
+
+- nuevo script `apply-camiones-trip-status-and-collections-migration.js`
+- actualizacion de `validate-camiones.ts`
+- el PF funcional de `camiones` ahora valida borrado de viaje pago
+
+## Proximo foco general
+
+1. mantener sano el core compartido
+2. sostener sanos `neon` y `agro`
 3. endurecer primero lo que se confirme como direccion real

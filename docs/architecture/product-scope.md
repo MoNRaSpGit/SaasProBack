@@ -1,11 +1,11 @@
 # Alcance oficial del producto
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-16
 
 ## Estado oficial actual
 
 - backend oficial activo: `backend`
-- productos activos: `neon` y `agro`
+- productos activos documentados: `neon` y `agro`
 - frontend activo de `neon`: `frontend-neon`
 - frontend activo de `agro`: `frontend-agro`
 
@@ -21,6 +21,19 @@ Eso significa:
 - no se documentan otros productos como activos en este corte
 - cualquier modulo futuro entra como modulo nuevo sobre esta base
 
+## Diferencia entre codigo presente y producto activo
+
+Puede existir codigo de otros modulos dentro del backend.
+
+Eso no alcanza para declararlos como productos activos.
+
+Para que un modulo pase a producto activo hace falta:
+
+- decision de producto clara
+- backend funcional
+- frontend propio o estrategia oficial definida
+- documentacion actualizada en `backend/docs`
+
 ## Regla de detalle por modulo
 
 Este documento solo declara la foto global del SaaS.
@@ -32,11 +45,11 @@ No documenta:
 - cortes diarios de producto
 - listas de tareas especificas por modulo
 
-Ese detalle vive en la carpeta `docs/` de cada modulo.
+Ese detalle vive en la carpeta `docs/` del frontend del modulo involucrado.
 
 ## Multi-modulo
 
-El core SaaS sigue soportando conceptualmente multi-modulo por tenant.
+El core SaaS soporta conceptualmente multi-modulo por tenant.
 
 Pero en esta etapa:
 
@@ -50,13 +63,13 @@ Hoy su alcance practico es:
 
 - billing
 - tenants
-- habilitacion de `neon`
-- habilitacion de `agro`
+- habilitacion de modulos
+- soporte operativo del SaaS
 
 ## Regla de crecimiento
 
-No se reabre `pos`, `distribuidora`, `cafeteria`, `almacen` o productos viejos como si siguieran vivos.
+No se reabren productos viejos como si siguieran vivos.
 
-Si alguno vuelve:
+Si un producto vuelve:
 
 - renace como producto nuevo sobre la arquitectura actual

@@ -1,17 +1,17 @@
 # Siguiente modulo - Checklist de nacimiento
 
-Fecha de actualizacion: 2026-05-08
+Fecha de actualizacion: 2026-05-16
 
 ## Objetivo
 
-Sumar un modulo nuevo sin romper los productos activos ni ensuciar la arquitectura actual.
+Sumar un modulo nuevo sin romper los productos activos ni ensuciar la arquitectura vigente.
 
 ## Condicion para empezar
 
 Un modulo nuevo se empieza solo si:
 
 - `neon` y `agro` siguen sanos en su estado actual
-- backend y frontends activos siguen sanos
+- el backend sigue sano
 - la necesidad comercial del modulo esta clara
 
 ## Paso 1 - Definir producto
@@ -39,7 +39,7 @@ Ademas:
 - migracion SQL nueva
 - tablas nuevas con prefijo `saas_`
 - `tenant_id` en toda tabla de negocio
-- guard de modulo sobre helper shared
+- guard de modulo sobre helper shared si aplica
 - capabilities nuevas si hacen falta
 - registrar el producto en `src/shared/saas/product-catalog.ts`
 
@@ -47,7 +47,7 @@ Ademas:
 
 Confirmar:
 
-- `saas-admin` puede habilitar el modulo
+- `saas-admin` puede habilitar el modulo si corresponde
 - auth devuelve bien `modules`, `products` y `preferredFrontend`
 - el modulo respeta tenant, permisos y billing
 
@@ -69,15 +69,24 @@ Base minima:
 
 No agregar el modulo nuevo dentro de otro frontend activo.
 
-## Paso 5 - Validacion
+## Paso 5 - Documentacion
+
+Antes de considerar oficial el modulo:
+
+- actualizar `backend/docs/architecture/product-scope.md` si pasa a producto activo
+- actualizar `backend/docs/operations/backend-inventory.md`
+- actualizar `backend/docs/operations/database-state.md`
+- registrar el cambio en `backend/docs/operations/bitacora.md`
+- crear o actualizar la documentacion del frontend del modulo
+
+## Paso 6 - Validacion
 
 Antes de subir:
 
-- `typecheck`
-- `lint`
-- `test:smoke`
-- test funcional del modulo
-- `build`
+- cerrar `PF`
+- correr validaciones tecnicas aplicables
+- revisar contratos, auth y base
+- confirmar que el modulo entra limpio al corte estable
 
 ## Regla final
 
@@ -88,4 +97,5 @@ La meta es que cada modulo entre:
 - limpio
 - desacoplado
 - vendible
+- documentado
 - sin romper los productos ya vivos

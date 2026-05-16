@@ -1,90 +1,44 @@
-# Ramas, releases y forma de trabajo
+# Ramas, releases y cortes estables
 
-Fecha de actualizacion: 2026-05-11
+Fecha de actualizacion: 2026-05-16
 
 ## Regla simple
 
 - `main` = linea estable oficial
 - el trabajo nuevo sale desde una rama aparte
-- cuando una rama pasa PF y queda sana, vuelve a `main`
+- una rama vuelve a `main` solo cuando pasa `PF`
 
 ## Flujo recomendado
 
 1. partir desde `main`
 2. crear rama nueva para la mejora
 3. trabajar ahi
-4. correr PF completo
-5. si todo da `OK`, integrar a `main`
+4. cerrar `PF`
+5. integrar a `main`
 6. `push` y `deploy` solo desde version validada
 
 ## Que significa estable
 
-Una version estable es una que tiene:
+Una version estable es una que:
 
-- codigo limpio
-- `typecheck` OK
-- `lint` OK
-- `test:smoke` OK
-- test funcional del area afectada OK
-- `build` OK
-- validacion real cuando aplica
+- tiene codigo limpio
+- paso las validaciones tecnicas que aplican
+- no deja deuda evitable
+- tiene documentacion al dia
+- representa un corte entendible del sistema
 
-Regla adicional:
+## Relacion con PF
 
-- si el modulo afectado todavia no tiene rondas de test, se crean antes de considerar PF valido
+`PF` es el criterio formal de cierre antes de subir cambios.
 
-## PF vigente
+La checklist obligatoria vive en [pf-checklist.md](./pf-checklist.md).
 
-Cuando se diga `subi`, la regla es:
+La regla operativa es:
 
-- `push`
-- `deploy`
+- sin `PF`, no hay `push`
+- sin `PF`, no hay `deploy`
 
-pero solo si el PF paso completo.
-
-## Que incluye PF
-
-`PF` significa `Pasos Finales`.
-
-No es solo correr tests.
-
-PF incluye, como minimo:
-
-- revisar que no quede codigo basura
-- revisar que no quede codigo legacy o ruido tecnico innecesario
-- `typecheck`
-- `lint`
-- tests del area afectada
-- `build`
-- validacion real cuando aplica
-- documentacion actualizada
-
-## Orden esperado de PF
-
-El orden practico esperado es:
-
-1. limpiar ruido tecnico o codigo suelto
-2. correr validaciones tecnicas
-3. confirmar que la feature o fix funciona
-4. actualizar documentacion del backend o del modulo afectado
-5. recien despues hacer `push`
-6. recien despues hacer `deploy`
-
-La documentacion forma parte de PF.
-
-No se considera PF cerrado si falta documentar el cambio relevante.
-
-## Versiones practicas
-
-No hace falta pensar cada cambio como `2.0`, `3.0`, etc.
-
-Lo importante es esto:
-
-- `main` siempre representa la mejor base oficial disponible
-- cada mejora fuerte se desarrolla en rama
-- cuando esa rama queda sana, se promueve a `main`
-
-## Rama actual recomendada para el futuro
+## Regla de ramas
 
 Para cambios nuevos en productos activos:
 
@@ -100,6 +54,8 @@ Para un producto nuevo:
 
 - `feat/nuevo-modulo-base`
 
-La regla sigue siendo la misma:
+## Regla final
 
-- nunca ensuciar `main`
+`main` no se usa como espacio de prueba.
+
+`main` representa la mejor base oficial disponible.
