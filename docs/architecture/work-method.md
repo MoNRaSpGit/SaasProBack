@@ -133,3 +133,11 @@ Antes de `push` o `deploy`:
 - se confirma que `PF` realmente cerro
 
 Sin `PF` completo, el cambio no esta listo para subir.
+
+## Regla de interpretacion operativa
+
+Cuando se diga `subilo` o `subi`:
+
+- si `PF` ya cerro, se interpreta como `push` y `deploy` cuando corresponda
+- si el repo o modulo no tiene deploy aplicable en ese corte, se hace solo `push`
+- si `PF` no cerro, no se sube ni se despliega

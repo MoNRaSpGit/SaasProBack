@@ -66,11 +66,19 @@ La documentacion forma parte obligatoria de `PF`.
 
 `PF` cerrado significa:
 
-- cambio listo para subir
+- cambio listo para `push`
+- cambio listo para `deploy` cuando corresponda
 
 `PF` incompleto significa:
 
 - cambio no listo para subir
+
+## Regla de salida
+
+Si despues de cerrar `PF` se pide `subilo` o `subi`:
+
+- la interpretacion operativa es `push`
+- y tambien `deploy` cuando ese repo o modulo lo requiera
 
 ## Regla de excepcion
 
