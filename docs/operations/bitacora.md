@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-16
+Fecha de actualizacion: 2026-05-18
 
 ## Objetivo
 
@@ -56,6 +56,28 @@ Hoy `SaasPro` mantiene:
   - `agro`
 
 ## Cambios relevantes del backend
+
+### 2026-05-18 - Camiones endurece clientes y evita duplicados por escritura
+
+El backend de `camiones` se ajusto para sostener mejor el modelo donde varios viajes cuelgan de un mismo cliente.
+
+Cambio principal:
+
+- la creacion y edicion de clientes ahora normaliza espacios repetidos y mayusculas/minusculas antes de decidir si un cliente ya existe
+
+Consecuencia operativa:
+
+- `Juan`
+- ` JUAN `
+- `Juan   `
+
+se interpretan como el mismo cliente activo del tenant.
+
+Impacto real:
+
+- baja la creacion accidental de clientes duplicados
+- se protege mejor la relacion `client_id -> trips`
+- se actualizo `validate-camiones.ts` para cubrir este caso de normalizacion
 
 ### 2026-05-12 - Agro workspace publico operativo
 

@@ -59,6 +59,32 @@ type CamionesPlaceRow = RowDataPacket & {
 export class CamionesService {
   constructor(private readonly databaseService: DatabaseService) {}
 
+  private normalizeEntityName(value: string) {
+    return value.trim().replace(/\s+/g, " ").toLowerCase();
+  }
+
+  private async findActiveClientByNormalizedName(tenantId: number, name: string) {
+    const rows = await this.databaseService.query<CamionesClientRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         branch_id,
+         name,
+         phone,
+         notes,
+         is_active,
+         created_at,
+         updated_at
+       FROM saas_camiones_clients
+       WHERE tenant_id = ?
+         AND is_active = 1`,
+      [tenantId]
+    );
+
+    const normalizedName = this.normalizeEntityName(name);
+    return rows.find((row) => this.normalizeEntityName(row.name) === normalizedName);
+  }
+
   async listClients(currentUser: CamionesRequestUser, query: ListCamionesClientsDto) {
     const limit = query.limit ?? 50;
     const search = query.search?.trim();
@@ -102,30 +128,13 @@ export class CamionesService {
   }
 
   async createClient(currentUser: CamionesRequestUser, dto: CreateCamionesClientDto) {
-    const name = dto.name.trim();
+    const name = dto.name.trim().replace(/\s+/g, " ");
     const phone = dto.phone?.trim() || null;
     const notes = dto.notes?.trim() || null;
 
-    const existingRows = await this.databaseService.query<CamionesClientRow[]>(
-      `SELECT
-         id,
-         tenant_id,
-         branch_id,
-         name,
-         phone,
-         notes,
-         is_active,
-         created_at,
-         updated_at
-       FROM saas_camiones_clients
-       WHERE tenant_id = ?
-         AND LOWER(name) = LOWER(?)
-       LIMIT 1`,
-      [currentUser.tenantId, name]
-    );
+    const existingClient = await this.findActiveClientByNormalizedName(currentUser.tenantId, name);
 
-    if (existingRows[0]) {
-      const existingClient = existingRows[0];
+    if (existingClient) {
       const nextPhone = phone ?? existingClient.phone;
       const nextNotes = notes ?? existingClient.notes;
 
@@ -200,30 +209,13 @@ export class CamionesService {
   }
 
   async updateClient(currentUser: CamionesRequestUser, clientId: number, dto: UpdateCamionesClientDto) {
-    const name = dto.name.trim();
+    const name = dto.name.trim().replace(/\s+/g, " ");
     const phone = dto.phone?.trim() || null;
     const notes = dto.notes?.trim() || null;
 
-    const duplicateRows = await this.databaseService.query<CamionesClientRow[]>(
-      `SELECT
-         id,
-         tenant_id,
-         branch_id,
-         name,
-         phone,
-         notes,
-         is_active,
-         created_at,
-         updated_at
-       FROM saas_camiones_clients
-       WHERE tenant_id = ?
-         AND LOWER(name) = LOWER(?)
-         AND id <> ?
-       LIMIT 1`,
-      [currentUser.tenantId, name, clientId]
-    );
+    const duplicateClient = await this.findActiveClientByNormalizedName(currentUser.tenantId, name);
 
-    if (duplicateRows[0]) {
+    if (duplicateClient && duplicateClient.id !== clientId) {
       throw new BadRequestException("Ya existe otro cliente con ese nombre");
     }
 

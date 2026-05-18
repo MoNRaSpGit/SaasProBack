@@ -130,6 +130,25 @@ async function main() {
       throw new Error(`Duplicate client phone merge failed: ${JSON.stringify(duplicateClientPayload)}`);
     }
 
+    const normalizedDuplicateClientResponse = await fetch(`${baseUrl}/camiones/clients`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        name: `  cliente   camiones ${suffix.toUpperCase()}  `,
+        phone: "099222000"
+      })
+    });
+    const normalizedDuplicateClientPayload = await readJson(normalizedDuplicateClientResponse);
+    if (!normalizedDuplicateClientResponse.ok || normalizedDuplicateClientPayload.item?.id !== createClientPayload.item.id) {
+      throw new Error(`Normalized duplicate client handling failed: ${JSON.stringify(normalizedDuplicateClientPayload)}`);
+    }
+    if (normalizedDuplicateClientPayload.item?.phone !== "099222000") {
+      throw new Error(`Normalized duplicate client phone merge failed: ${JSON.stringify(normalizedDuplicateClientPayload)}`);
+    }
+
     const listClientsResponse = await fetch(`${baseUrl}/camiones/clients?limit=10`, {
       headers: {
         Authorization: `Bearer ${accessToken}`
