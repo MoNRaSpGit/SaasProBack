@@ -55,6 +55,7 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `apply-neon-rental-cost-center-migration.js`
 - `apply-agro-discovery-migration.js`
 - `apply-agro-public-workspace-migration.js`
+- `apply-alamcen-core-migration.js`
 - `apply-camiones-core-migration.js`
 - `apply-camiones-places-migration.js`
 - `apply-camiones-trip-status-and-collections-migration.js`
@@ -65,6 +66,7 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `smoke-auth-module-access.js`
 - `run-functional-suite.js`
 - `validate-auth-multitenant.ts`
+- `validate-alamcen.ts`
 - `validate-role-capabilities.ts`
 - `validate-saas-admin-lite.ts`
 - `validate-neon-shell.ts`
@@ -85,6 +87,7 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `npm run test:smoke`
 - `npm run test:functional`
 - `npm run test:functional:auth`
+- `npm run test:functional:alamcen`
 - `npm run test:functional:saas-admin`
 - `npm run test:functional:neon`
 - `npm run test:functional:agro`

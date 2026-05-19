@@ -57,6 +57,51 @@ Hoy `SaasPro` mantiene:
 
 ## Cambios relevantes del backend
 
+### 2026-05-19 - Almacen Sprint 1 sobre core SaaS
+
+El módulo `alamcen` dejó de ser solo un scanner demo suelto y pasó a apoyarse mejor en la arquitectura multi-tenant del backend.
+
+Cambios principales:
+
+- `alamcen` se agrega al catálogo oficial de productos SaaS compartidos
+- nuevas capabilities del módulo:
+  - `alamcen.shell.read`
+  - `alamcen.products.read`
+  - `alamcen.products.write`
+  - `alamcen.sales.write`
+  - `alamcen.payments.write`
+  - `alamcen.dashboard.read`
+  - `alamcen.dashboard.write`
+  - `alamcen.stock.read`
+  - `alamcen.stock.write`
+- nuevo guard de autenticación por módulo usando el patrón compartido del SaaS
+- nueva migración `018_saas_alamcen_core.sql`
+
+Contrato backend expuesto en este corte:
+
+- `GET /api/v1/alamcen/status`
+- `GET /api/v1/alamcen/products`
+- `GET /api/v1/alamcen/productos/barcode/:barcode`
+- `POST /api/v1/alamcen/productos/manual`
+- `PATCH /api/v1/alamcen/productos/:productId`
+- `POST /api/v1/alamcen/sales`
+- `POST /api/v1/alamcen/payments`
+- `GET /api/v1/alamcen/dashboard`
+
+Modelo de datos nuevo:
+
+- `saas_alamcen_products`
+- `saas_alamcen_sales`
+- `saas_alamcen_sale_items`
+- `saas_alamcen_payments`
+- `saas_alamcen_dashboard_daily`
+
+Objetivo del cambio:
+
+- empezar a reconstruir el comportamiento de `LaClaudia` dentro del backend único del SaaS
+- sin tocar el proyecto original ni migrar datos legacy
+- dejando la base correcta para scanner, panel y productos
+
 ### 2026-05-18 - Camiones endurece clientes y evita duplicados por escritura
 
 El backend de `camiones` se ajusto para sostener mejor el modelo donde varios viajes cuelgan de un mismo cliente.

@@ -17,6 +17,11 @@ const suite = [
     args: ["scripts/smoke-auth-module-access.js"]
   },
   {
+    name: "alamcen",
+    command: "npx.cmd",
+    args: ["ts-node", "scripts/validate-alamcen.ts"]
+  },
+  {
     name: "camiones",
     command: "npx.cmd",
     args: ["ts-node", "scripts/validate-camiones.ts"]
