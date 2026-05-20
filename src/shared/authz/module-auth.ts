@@ -9,6 +9,7 @@ type AccessJwtPayload = {
   sub: number | string;
   email: string;
   role: string;
+  tenantId?: number;
   type: "access" | "refresh";
 };
 
@@ -84,6 +85,15 @@ export async function authenticateModuleRequest<TUser extends ModuleRequestUser 
     throw new UnauthorizedException("Invalid access token");
   }
 
+  const tokenTenantId =
+    typeof decoded.tenantId === "number" && Number.isFinite(decoded.tenantId) && decoded.tenantId > 0
+      ? decoded.tenantId
+      : null;
+
+  if (!tokenTenantId) {
+    throw new UnauthorizedException("Session expired. Please log in again");
+  }
+
   const rows = await databaseService.query<MembershipRow[]>(
     `SELECT
        m.tenant_id,
@@ -103,8 +113,9 @@ export async function authenticateModuleRequest<TUser extends ModuleRequestUser 
       AND tm.enabled = 1
      WHERE u.id = ?
        AND u.is_active = 1
+       AND m.tenant_id = ?
      ORDER BY m.is_default DESC, m.id ASC`,
-    [userId]
+    [userId, tokenTenantId]
   );
 
   if (!rows[0]) {

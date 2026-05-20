@@ -1,4 +1,5 @@
 const OFFICIAL_FRONTEND_ORIGINS = ["https://monraspgit.github.io"] as const;
+const LOCAL_DEV_FRONTEND_ORIGINS = ["http://localhost:5173", "http://localhost:5174"] as const;
 
 function isPrivateNetworkHostname(hostname: string) {
   if (["localhost", "127.0.0.1"].includes(hostname) || hostname.endsWith(".local")) {
@@ -37,7 +38,7 @@ export function getAllowedCorsOrigins() {
     return [...OFFICIAL_FRONTEND_ORIGINS];
   }
 
-  return [...OFFICIAL_FRONTEND_ORIGINS];
+  return [...OFFICIAL_FRONTEND_ORIGINS, ...LOCAL_DEV_FRONTEND_ORIGINS];
 }
 
 export function isCorsOriginAllowed(origin: string | undefined, allowedOrigins: readonly string[]) {
@@ -45,13 +46,15 @@ export function isCorsOriginAllowed(origin: string | undefined, allowedOrigins: 
     return true;
   }
 
+  const environment = (process.env.NODE_ENV || "development").toLowerCase();
+
   try {
     const parsedOrigin = new URL(origin);
     const isLocalDevOrigin =
       isPrivateNetworkHostname(parsedOrigin.hostname) &&
       ["http:", "https:"].includes(parsedOrigin.protocol);
 
-    if (isLocalDevOrigin) {
+    if (isLocalDevOrigin && environment !== "production") {
       return true;
     }
   } catch {

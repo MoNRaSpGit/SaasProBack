@@ -1,6 +1,6 @@
 # Inventario operativo del backend
 
-Fecha de actualizacion: 2026-05-16
+Fecha de actualizacion: 2026-05-20
 
 ## Objetivo
 
@@ -76,7 +76,11 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 ### Utilidades operativas
 
 - `backfill-camiones-module.js`
+- `create-alamcen-demo-user.js`
+- `create-agro-client-user.js`
+- `create-camiones-current-client-user.js`
 - `create-camiones-demo-user.js`
+- `reset-agro-public-workspace.js`
 - `reset-neon-demo-pilot-data.js`
 
 ## Scripts npm relevantes

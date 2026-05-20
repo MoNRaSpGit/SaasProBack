@@ -49,6 +49,7 @@ type JwtPayload = {
   sub: number;
   email: string;
   role: string;
+  tenantId?: number;
   type: "access" | "refresh";
   jti: string;
 };
@@ -116,7 +117,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const email = dto.email.trim().toLowerCase();
+    const email = this.normalizeAuthIdentifier(dto);
     const existing = await this.findUserByEmail(email);
     if (existing) {
       throw new ConflictException("Email already in use");
@@ -139,7 +140,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const email = dto.email.trim().toLowerCase();
+    const email = this.normalizeAuthIdentifier(dto);
     const user = await this.findUserByEmail(email);
     if (!user) {
       throw new UnauthorizedException("Invalid credentials");
@@ -173,6 +174,7 @@ export class AuthService {
         sub: Number(decoded.sub),
         email: decoded.email,
         role: decoded.role,
+        tenantId: typeof decoded.tenantId === "number" ? decoded.tenantId : undefined,
         type: decoded.type,
         jti: typeof decoded.jti === "string" ? decoded.jti : randomUUID()
       };
@@ -182,6 +184,10 @@ export class AuthService {
 
     if (payload.type !== "refresh" || !payload.sub) {
       throw new UnauthorizedException("Invalid refresh token");
+    }
+
+    if (!payload.tenantId) {
+      throw new UnauthorizedException("Session expired. Please log in again");
     }
 
     const tokenHash = this.hashToken(dto.refreshToken);
@@ -204,7 +210,7 @@ export class AuthService {
     }
 
     await this.db.execute("DELETE FROM saasPro_refresh_tokens WHERE id = ?", [tokenRow.id]);
-    return this.createSession(user);
+    return this.createSession(user, payload.tenantId);
   }
 
   async logout(dto: RefreshDto) {
@@ -217,16 +223,19 @@ export class AuthService {
     return { success: true };
   }
 
-  private async createSession(user: UserRow): Promise<AuthSessionPayload> {
+  private async createSession(user: UserRow, forcedTenantId?: number): Promise<AuthSessionPayload> {
     const accessSecret = this.getRequiredEnv("JWT_ACCESS_SECRET");
     const refreshSecret = this.getRequiredEnv("JWT_REFRESH_SECRET");
     const accessTtl = this.configService.get<string>("JWT_ACCESS_TTL") || "15m";
     const refreshTtl = this.configService.get<string>("JWT_REFRESH_TTL") || "7d";
+    const tenantContext = await this.getTenantContext(user.id, forcedTenantId);
+    const tenantId = tenantContext?.tenant.id;
 
     const accessPayload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tenantId,
       type: "access",
       jti: randomUUID()
     };
@@ -235,6 +244,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role,
+      tenantId,
       type: "refresh",
       jti: randomUUID()
     };
@@ -248,8 +258,6 @@ export class AuthService {
        VALUES (?, ?, ?, NULL)`,
       [user.id, this.hashToken(refreshToken), refreshExpiresAt]
     );
-
-    const tenantContext = await this.getTenantContext(user.id);
 
     return {
       user: {
@@ -362,35 +370,59 @@ export class AuthService {
     });
   }
 
-  private async getTenantContext(userId: number): Promise<AuthSessionPayload["tenantContext"]> {
+  private async getTenantContext(userId: number, preferredTenantId?: number): Promise<AuthSessionPayload["tenantContext"]> {
     const coreTablesAvailable = await this.hasSaasCoreTables();
     if (!coreTablesAvailable) {
       return null;
     }
 
-      const membershipRows = await this.db.query<TenantMembershipRow[]>(
-      `SELECT
-         m.tenant_id,
-         t.name AS tenant_name,
-         t.slug AS tenant_slug,
-         t.status AS tenant_status,
-         m.role AS membership_role,
-         m.status AS membership_status,
-         m.is_default AS membership_is_default,
-         s.billing_status,
-         s.paid_until,
-         s.grace_until,
-         s.blocked_reason
-       FROM saas_tenant_memberships m
-       INNER JOIN saas_tenants t ON t.id = m.tenant_id
-       LEFT JOIN saas_tenant_settings s ON s.tenant_id = t.id
-       WHERE m.user_id = ?
-         AND m.status = 'active'
-         AND t.status = 'active'
-       ORDER BY m.is_default DESC, m.id ASC
-       LIMIT 1`,
-      [userId]
-    );
+    const membershipRows = preferredTenantId
+      ? await this.db.query<TenantMembershipRow[]>(
+          `SELECT
+             m.tenant_id,
+             t.name AS tenant_name,
+             t.slug AS tenant_slug,
+             t.status AS tenant_status,
+             m.role AS membership_role,
+             m.status AS membership_status,
+             m.is_default AS membership_is_default,
+             s.billing_status,
+             s.paid_until,
+             s.grace_until,
+             s.blocked_reason
+           FROM saas_tenant_memberships m
+           INNER JOIN saas_tenants t ON t.id = m.tenant_id
+           LEFT JOIN saas_tenant_settings s ON s.tenant_id = t.id
+           WHERE m.user_id = ?
+             AND m.tenant_id = ?
+             AND m.status = 'active'
+             AND t.status = 'active'
+           LIMIT 1`,
+          [userId, preferredTenantId]
+        )
+      : await this.db.query<TenantMembershipRow[]>(
+          `SELECT
+             m.tenant_id,
+             t.name AS tenant_name,
+             t.slug AS tenant_slug,
+             t.status AS tenant_status,
+             m.role AS membership_role,
+             m.status AS membership_status,
+             m.is_default AS membership_is_default,
+             s.billing_status,
+             s.paid_until,
+             s.grace_until,
+             s.blocked_reason
+           FROM saas_tenant_memberships m
+           INNER JOIN saas_tenants t ON t.id = m.tenant_id
+           LEFT JOIN saas_tenant_settings s ON s.tenant_id = t.id
+           WHERE m.user_id = ?
+             AND m.status = 'active'
+             AND t.status = 'active'
+           ORDER BY m.is_default DESC, m.id ASC
+           LIMIT 1`,
+          [userId]
+        );
 
     const membership = membershipRows[0];
     if (!membership) {
@@ -484,5 +516,16 @@ export class AuthService {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 120);
+  }
+
+  private normalizeAuthIdentifier(dto: { email?: string; username?: string; identifier?: string }) {
+    const rawIdentifier = dto.identifier ?? dto.username ?? dto.email;
+    const normalizedIdentifier = rawIdentifier?.trim().toLowerCase();
+
+    if (!normalizedIdentifier) {
+      throw new UnauthorizedException("Missing login identifier");
+    }
+
+    return normalizedIdentifier.includes("@") ? normalizedIdentifier : `${normalizedIdentifier}@saaspro.local`;
   }
 }

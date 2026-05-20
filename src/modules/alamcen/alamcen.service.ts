@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
 import { AlamcenRequestUser, AlamcenDashboardResponse, AlamcenProductLookupResponse, AlamcenStatusResponse } from "./alamcen.types";
 import { CreateManualProductDto } from "./dto/create-manual-product.dto";

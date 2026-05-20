@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-18
+Fecha de actualizacion: 2026-05-20
 
 ## Objetivo
 
@@ -25,6 +25,91 @@ No registra:
 - notas de "donde quedamos hoy" dentro de un frontend
 
 Eso va en la carpeta `docs/` del frontend correspondiente.
+
+## 2026-05-20 - Auth acepta cuenta corta para agro y cliente La Milagrosa
+
+Se ajusta el auth para soportar login tradicional por cuenta corta sin exigir email literal.
+
+Cambios principales:
+
+- `login` y `register` ahora aceptan `identifier`, `username` o `email`
+- si no llega `@`, el backend normaliza la cuenta a un email canonico interno
+- la password minima baja de `5` a `4`
+- nuevo script `create-agro-client-user.js`
+
+Credencial operativa preparada en este corte:
+
+- cuenta: `lamilagrosa`
+- password: `1994`
+
+Objetivo:
+
+- permitir que el cliente entre con credenciales simples
+- mantener compatibilidad con el auth existente por email
+- asociar el ingreso del cliente actual al workspace publico que hoy ya contiene los datos reales visibles
+
+## 2026-05-20 - Usuario lamilagrosa para camiones sobre tenant real actual
+
+Se agrega una utilidad para crear el usuario `lamilagrosa` sobre el mismo tenant que hoy usa el acceso `cliente actual` de `camiones`.
+
+Cambio principal:
+
+- nuevo script `create-camiones-current-client-user.js`
+
+Comportamiento:
+
+- crea o actualiza `lamilagrosa@saaspro.local`
+- password operativa `1994`
+- deja al usuario como miembro `admin` del tenant `camiones-demo`
+- ese tenant conserva los viajes, clientes y cobros reales ya existentes
+
+Objetivo:
+
+- evitar copias innecesarias de datos
+- separar accesos por cliente manteniendo cada usuario dentro de su propia porcion del SaaS
+
+## 2026-05-20 - Auth multi-tenant mas blindado para sesiones de camiones
+
+Se endurece el auth para reducir el riesgo de cruces de tenant por sesiones viejas, cambios de tenant default o reuso de credenciales entre frontends.
+
+Cambio principal:
+
+- los JWT nuevos ahora incluyen `tenantId`
+
+Comportamiento:
+
+- `login` emite tokens atados al tenant elegido al iniciar sesion
+- `refresh` conserva el mismo tenant del token
+- los guards de modulo validan la membresia contra ese `tenantId`
+- si la membresia ya no existe o no coincide, la sesion deja de ser valida
+- los tokens viejos sin `tenantId` quedan invalidados y fuerzan re-login despues del deploy
+
+Objetivo:
+
+- blindar mejor la separacion entre clientes dentro del SaaS
+- evitar que una sesion derive a otro tenant por cambio de `is_default`
+
+## 2026-05-20 - Script para limpiar workspace publico de agro
+
+Se agrega una utilidad operativa para dejar listo el piloto de `agro` para carga real del cliente sin perder los campos visibles ya cargados.
+
+Cambio principal:
+
+- nuevo script `reset-agro-public-workspace.js`
+
+Comportamiento:
+
+- conserva `fields`
+- conserva los `establishments` referenciados por esos campos
+- borra `animalMovements`
+- borra `accountingEntries`
+- borra `rainfallRecords`
+- borra `sanitaryRecords`
+- borra `monthlyExchangeRates`
+
+Objetivo:
+
+- limpiar el workspace publico sin romper la UI ni los selectores que dependen de `establishmentId`
 
 ## 2026-05-16 - Regla global de frontend por capas
 
@@ -59,12 +144,12 @@ Hoy `SaasPro` mantiene:
 
 ### 2026-05-19 - Almacen Sprint 1 sobre core SaaS
 
-El módulo `alamcen` dejó de ser solo un scanner demo suelto y pasó a apoyarse mejor en la arquitectura multi-tenant del backend.
+El mÃ³dulo `alamcen` dejÃ³ de ser solo un scanner demo suelto y pasÃ³ a apoyarse mejor en la arquitectura multi-tenant del backend.
 
 Cambios principales:
 
-- `alamcen` se agrega al catálogo oficial de productos SaaS compartidos
-- nuevas capabilities del módulo:
+- `alamcen` se agrega al catÃ¡logo oficial de productos SaaS compartidos
+- nuevas capabilities del mÃ³dulo:
   - `alamcen.shell.read`
   - `alamcen.products.read`
   - `alamcen.products.write`
@@ -74,8 +159,8 @@ Cambios principales:
   - `alamcen.dashboard.write`
   - `alamcen.stock.read`
   - `alamcen.stock.write`
-- nuevo guard de autenticación por módulo usando el patrón compartido del SaaS
-- nueva migración `018_saas_alamcen_core.sql`
+- nuevo guard de autenticaciÃ³n por mÃ³dulo usando el patrÃ³n compartido del SaaS
+- nueva migraciÃ³n `018_saas_alamcen_core.sql`
 
 Contrato backend expuesto en este corte:
 
@@ -98,7 +183,7 @@ Modelo de datos nuevo:
 
 Objetivo del cambio:
 
-- empezar a reconstruir el comportamiento de `LaClaudia` dentro del backend único del SaaS
+- empezar a reconstruir el comportamiento de `LaClaudia` dentro del backend Ãºnico del SaaS
 - sin tocar el proyecto original ni migrar datos legacy
 - dejando la base correcta para scanner, panel y productos
 
