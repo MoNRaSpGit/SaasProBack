@@ -2,10 +2,10 @@ const fs = require("fs");
 const mysql = require("mysql2/promise");
 const { hash } = require("bcryptjs");
 
-const CLIENT_IDENTIFIER = "lamilagrosa";
+const CLIENT_IDENTIFIER = "rosendo";
 const CLIENT_EMAIL = `${CLIENT_IDENTIFIER}@saaspro.local`;
-const CLIENT_PASSWORD = "1994";
-const CLIENT_FULL_NAME = "La Milagrosa";
+const CLIENT_PASSWORD = "lamilagrosa";
+const CLIENT_FULL_NAME = "Rosendo";
 const CLIENT_TENANT_NAME = "La Milagrosa";
 const CLIENT_TENANT_SLUG = "lamilagrosa";
 
@@ -137,7 +137,7 @@ async function main() {
           password: CLIENT_PASSWORD,
           tenantId,
           userId,
-          note: "El login puede hacerse con lamilagrosa o con el email canonico."
+          note: "El login puede hacerse con rosendo o con el email canonico."
         },
         null,
         2

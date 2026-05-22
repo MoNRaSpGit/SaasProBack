@@ -52,25 +52,9 @@ async function main() {
       throw new Error("No se encontro el workspace publico de agro.");
     }
 
-    const currentWorkspace = parseWorkspaceJson(row.workspace_json);
-    const preservedFields = Array.isArray(currentWorkspace.fields) ? currentWorkspace.fields : [];
-    const fieldEstablishmentIds = new Set(
-      preservedFields
-        .map((field) => (field && typeof field.establishmentId === "string" ? field.establishmentId : ""))
-        .filter(Boolean)
-    );
-    const preservedEstablishments = Array.isArray(currentWorkspace.establishments)
-      ? currentWorkspace.establishments.filter(
-          (establishment) =>
-            establishment &&
-            typeof establishment.id === "string" &&
-            fieldEstablishmentIds.has(establishment.id)
-        )
-      : [];
-
     const nextWorkspace = {
-      establishments: preservedEstablishments,
-      fields: preservedFields,
+      establishments: [],
+      fields: [],
       animalMovements: [],
       accountingEntries: [],
       rainfallRecords: [],
@@ -91,9 +75,11 @@ async function main() {
         {
           ok: true,
           workspaceKey: WORKSPACE_KEY,
-          preservedEstablishments: preservedEstablishments.length,
-          preservedFields: preservedFields.length,
+          preservedEstablishments: 0,
+          preservedFields: 0,
           cleared: [
+            "establishments",
+            "fields",
             "animalMovements",
             "accountingEntries",
             "rainfallRecords",
