@@ -25,6 +25,22 @@ export class AgroController {
   @UseGuards(AgroAuthGuard)
   @RequireCapability("agro.shell.read")
   @UseGuards(CapabilityGuard)
+  @Get("workspace")
+  getWorkspace(@CurrentAgroUser() currentUser: AgroRequestUser) {
+    return this.agroService.getWorkspace(currentUser);
+  }
+
+  @UseGuards(AgroAuthGuard)
+  @RequireCapability("agro.discovery.write")
+  @UseGuards(CapabilityGuard)
+  @Put("workspace")
+  saveWorkspace(@CurrentAgroUser() currentUser: AgroRequestUser, @Body() dto: SaveAgroWorkspaceDto) {
+    return this.agroService.saveWorkspace(currentUser, dto);
+  }
+
+  @UseGuards(AgroAuthGuard)
+  @RequireCapability("agro.shell.read")
+  @UseGuards(CapabilityGuard)
   @Get("status")
   getStatus(@CurrentAgroUser() currentUser: AgroRequestUser) {
     return this.agroService.getStatus(currentUser);

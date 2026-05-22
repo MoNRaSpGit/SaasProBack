@@ -33,6 +33,10 @@ type AgroWorkspaceRow = RowDataPacket & {
   updated_at: string | Date;
 };
 
+type TenantAgroWorkspaceRow = AgroWorkspaceRow & {
+  tenant_id: number;
+};
+
 @Injectable()
 export class AgroService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -85,6 +89,60 @@ export class AgroService {
     );
 
     return this.getPublicWorkspace();
+  }
+
+  async getWorkspace(currentUser: AgroRequestUser) {
+    await this.ensureTenantWorkspaceTable();
+
+    const rows = await this.databaseService.query<TenantAgroWorkspaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         workspace_key,
+         version,
+         workspace_json,
+         updated_at
+       FROM saas_agro_workspaces
+       WHERE tenant_id = ?
+         AND workspace_key = ?
+       LIMIT 1`,
+      [currentUser.tenantId, AGRO_WORKSPACE_PUBLIC_KEY]
+    );
+
+    return rows[0] ? this.mapWorkspaceRow(rows[0]) : this.getEmptyWorkspace();
+  }
+
+  async saveWorkspace(currentUser: AgroRequestUser, dto: SaveAgroWorkspaceDto) {
+    await this.ensureTenantWorkspaceTable();
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_agro_workspaces (
+         tenant_id,
+         workspace_key,
+         version,
+         workspace_json
+       ) VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         version = VALUES(version),
+         workspace_json = VALUES(workspace_json),
+         updated_at = CURRENT_TIMESTAMP`,
+      [
+        currentUser.tenantId,
+        AGRO_WORKSPACE_PUBLIC_KEY,
+        AGRO_WORKSPACE_VERSION,
+        JSON.stringify({
+          establishments: dto.establishments,
+          fields: dto.fields,
+          animalMovements: dto.animalMovements,
+          accountingEntries: dto.accountingEntries,
+          rainfallRecords: dto.rainfallRecords,
+          sanitaryRecords: dto.sanitaryRecords,
+          monthlyExchangeRates: dto.monthlyExchangeRates
+        } satisfies AgroWorkspaceData)
+      ]
+    );
+
+    return this.getWorkspace(currentUser);
   }
 
   getStatus(currentUser: AgroRequestUser) {
@@ -238,6 +296,23 @@ export class AgroService {
          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
          PRIMARY KEY (id),
          UNIQUE KEY uq_saas_agro_public_workspace_key (workspace_key)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+  }
+
+  private async ensureTenantWorkspaceTable() {
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_agro_workspaces (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         tenant_id BIGINT UNSIGNED NOT NULL,
+         workspace_key VARCHAR(40) NOT NULL,
+         version VARCHAR(20) NOT NULL DEFAULT 'v1',
+         workspace_json JSON NOT NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         UNIQUE KEY uq_saas_agro_workspace_tenant_key (tenant_id, workspace_key),
+         KEY idx_saas_agro_workspace_tenant (tenant_id)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
   }

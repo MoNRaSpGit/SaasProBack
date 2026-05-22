@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-20
+Fecha de actualizacion: 2026-05-22
 
 ## Objetivo
 
@@ -26,6 +26,50 @@ No registra:
 
 Eso va en la carpeta `docs/` del frontend correspondiente.
 
+## 2026-05-22 - Agro suma workspace por tenant y usuario demo aislado
+
+Se agrega una capa real de aislamiento para pruebas de `agro` sin tocar el workspace del cliente real.
+
+Cambios principales:
+
+- nuevos endpoints autenticados:
+  - `GET /api/v1/agro/workspace`
+  - `PUT /api/v1/agro/workspace`
+- nueva tabla `saas_agro_workspaces`
+- nuevo script `create-agro-demo-user.js`
+
+Credencial operativa de demo preparada en este corte:
+
+- cuenta corta real: `agrodemo`
+- password real del usuario demo: `123`
+
+Objetivo:
+
+- separar pruebas del cliente real
+- permitir que `frontend-agro` guarde por `tenantId`
+- evitar cruces entre Rosendo y el entorno demo
+
+## 2026-05-22 - Credencial operativa real de agro y workspace publico en cero
+
+Se ajusta el corte operativo de `agro` para dejarlo listo para carga real del cliente.
+
+Cambios principales:
+
+- el script `create-agro-client-user.js` ahora prepara la cuenta corta `rosendo`
+- la password operativa pasa a ser `lamilagrosa`
+- el script `reset-agro-public-workspace.js` ahora deja vacios tambien `establishments` y `fields`
+
+Credencial operativa preparada en este corte:
+
+- cuenta: `rosendo`
+- password: `lamilagrosa`
+
+Objetivo:
+
+- dejar un acceso simple para el cliente real
+- hacer que `frontend-agro` arranque completamente vacio
+- evitar que queden campos o establecimientos sembrados de cortes anteriores
+
 ## 2026-05-20 - Auth acepta cuenta corta para agro y cliente La Milagrosa
 
 Se ajusta el auth para soportar login tradicional por cuenta corta sin exigir email literal.
@@ -37,7 +81,7 @@ Cambios principales:
 - la password minima baja de `5` a `4`
 - nuevo script `create-agro-client-user.js`
 
-Credencial operativa preparada en este corte:
+Credencial operativa inicial de ese corte:
 
 - cuenta: `lamilagrosa`
 - password: `1994`
@@ -91,7 +135,7 @@ Objetivo:
 
 ## 2026-05-20 - Script para limpiar workspace publico de agro
 
-Se agrega una utilidad operativa para dejar listo el piloto de `agro` para carga real del cliente sin perder los campos visibles ya cargados.
+Se agrega una utilidad operativa para dejar listo el piloto de `agro` para carga real del cliente.
 
 Cambio principal:
 
@@ -99,8 +143,8 @@ Cambio principal:
 
 Comportamiento:
 
-- conserva `fields`
-- conserva los `establishments` referenciados por esos campos
+- en su version actual tambien puede dejar vacios `fields`
+- en su version actual tambien puede dejar vacios `establishments`
 - borra `animalMovements`
 - borra `accountingEntries`
 - borra `rainfallRecords`
@@ -109,7 +153,7 @@ Comportamiento:
 
 Objetivo:
 
-- limpiar el workspace publico sin romper la UI ni los selectores que dependen de `establishmentId`
+- limpiar el workspace publico y permitir arranque en cero del frontend
 
 ## 2026-05-16 - Regla global de frontend por capas
 
@@ -228,6 +272,11 @@ Contrato expuesto:
 
 - `GET /api/v1/agro/workspace/public`
 - `PUT /api/v1/agro/workspace/public`
+
+Situacion actual de ese contrato:
+
+- queda como compatibilidad operativa
+- el frontend autenticado ya usa `GET /api/v1/agro/workspace` y `PUT /api/v1/agro/workspace`
 
 ### 2026-05-12 - Camiones ciclo de cobro mas real
 

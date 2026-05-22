@@ -1,6 +1,6 @@
 # Estado actual de base de datos
 
-Fecha de actualizacion: 2026-05-16
+Fecha de actualizacion: 2026-05-22
 
 ## Objetivo
 
@@ -43,6 +43,7 @@ Las demas tablas viejas de otros proyectos no se tocan.
 
 - `saas_agro_discovery_responses`
 - `saas_agro_public_workspaces`
+- `saas_agro_workspaces`
 
 ## Uso actual destacado
 
@@ -64,10 +65,38 @@ Clave usada en este corte:
 
 - `workspace_key = public`
 
+Comportamiento operativo esperado en este corte:
+
+- el workspace puede devolverse totalmente vacio
+- eso incluye `establishments` y `fields` cuando el cliente arranca desde cero
+
 Contrato asociado:
 
 - `GET /api/v1/agro/workspace/public`
 - `PUT /api/v1/agro/workspace/public`
+
+### `saas_agro_workspaces`
+
+Guarda el workspace autenticado de `agro` por tenant.
+
+Hoy esta tabla concentra:
+
+- establecimientos
+- campos
+- movimientos de animales
+- asientos contables
+- registros de lluvia
+- registros sanitarios
+- tipos de cambio mensuales
+
+Clave operativa:
+
+- `tenant_id + workspace_key`
+
+Contrato asociado:
+
+- `GET /api/v1/agro/workspace`
+- `PUT /api/v1/agro/workspace`
 
 ### `saas_neon_activities`
 
