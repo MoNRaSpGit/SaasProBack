@@ -22,41 +22,36 @@ export class AgroController {
     return this.agroService.savePublicWorkspace(dto);
   }
 
-  @UseGuards(AgroAuthGuard)
+  @UseGuards(AgroAuthGuard, CapabilityGuard)
   @RequireCapability("agro.shell.read")
-  @UseGuards(CapabilityGuard)
   @Get("workspace")
   getWorkspace(@CurrentAgroUser() currentUser: AgroRequestUser) {
     return this.agroService.getWorkspace(currentUser);
   }
 
-  @UseGuards(AgroAuthGuard)
+  @UseGuards(AgroAuthGuard, CapabilityGuard)
   @RequireCapability("agro.discovery.write")
-  @UseGuards(CapabilityGuard)
   @Put("workspace")
   saveWorkspace(@CurrentAgroUser() currentUser: AgroRequestUser, @Body() dto: SaveAgroWorkspaceDto) {
     return this.agroService.saveWorkspace(currentUser, dto);
   }
 
-  @UseGuards(AgroAuthGuard)
+  @UseGuards(AgroAuthGuard, CapabilityGuard)
   @RequireCapability("agro.shell.read")
-  @UseGuards(CapabilityGuard)
   @Get("status")
   getStatus(@CurrentAgroUser() currentUser: AgroRequestUser) {
     return this.agroService.getStatus(currentUser);
   }
 
-  @UseGuards(AgroAuthGuard)
+  @UseGuards(AgroAuthGuard, CapabilityGuard)
   @RequireCapability("agro.discovery.read")
-  @UseGuards(CapabilityGuard)
   @Get("discovery/latest")
   getLatestDiscoveryResponse(@CurrentAgroUser() currentUser: AgroRequestUser) {
     return this.agroService.getLatestDiscoveryResponse(currentUser);
   }
 
-  @UseGuards(AgroAuthGuard)
+  @UseGuards(AgroAuthGuard, CapabilityGuard)
   @RequireCapability("agro.discovery.write")
-  @UseGuards(CapabilityGuard)
   @Post("discovery")
   saveDiscoveryResponse(
     @CurrentAgroUser() currentUser: AgroRequestUser,
