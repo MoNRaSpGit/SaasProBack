@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-05-22
+Fecha de actualizacion: 2026-06-05
 
 ## Objetivo
 
@@ -25,6 +25,29 @@ No registra:
 - notas de "donde quedamos hoy" dentro de un frontend
 
 Eso va en la carpeta `docs/` del frontend correspondiente.
+
+## 2026-06-05 - Rosendo puede fijar su propia contrasena sin perder datos
+
+Se ajusta el corte operativo de `agro` para dejar de depender de una contrasena fija administrada por nosotros.
+
+Cambios principales:
+
+- nuevo endpoint autenticado `POST /api/v1/auth/change-password`
+- `create-agro-client-user.js` deja de reescribir la contrasena si la cuenta `rosendo` ya existe
+- el cambio invalida `refresh_tokens` vigentes del usuario para forzar re-login limpio
+
+Comportamiento operativo:
+
+- `rosendo` mantiene la misma cuenta
+- mantiene el mismo tenant y los mismos datos
+- puede entrar con la contrasena actual y reemplazarla por una propia
+- si el script operativo de `rosendo` se vuelve a correr, conserva la contrasena ya definida por el cliente
+
+Objetivo:
+
+- migrar la cuenta real del cliente desde una clave temporal nuestra a una clave propia
+- evitar perdida de datos o rotura del tenant operativo
+- evitar que un script futuro vuelva a pisar la clave del cliente
 
 ## 2026-05-22 - Agro suma workspace por tenant y usuario demo aislado
 

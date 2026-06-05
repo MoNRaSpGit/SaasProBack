@@ -60,11 +60,10 @@ async function main() {
     } else {
       await connection.query(
         `UPDATE saasPro_users
-         SET password_hash = ?,
-             full_name = ?,
+         SET full_name = ?,
              is_active = 1
          WHERE id = ?`,
-        [passwordHash, CLIENT_FULL_NAME, userId]
+        [CLIENT_FULL_NAME, userId]
       );
     }
 
@@ -137,7 +136,7 @@ async function main() {
           password: CLIENT_PASSWORD,
           tenantId,
           userId,
-          note: "El login puede hacerse con rosendo o con el email canonico."
+          note: "El login puede hacerse con rosendo o con el email canonico. Si el usuario ya existia, este script no reescribe su contrasena."
         },
         null,
         2

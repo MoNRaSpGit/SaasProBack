@@ -6,6 +6,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { JwtPayload as BaseJwtPayload, SignOptions, sign, verify } from "jsonwebtoken";
 import { DatabaseService } from "../../shared/database/database.service";
 import { buildEnabledProductDescriptors } from "../../shared/saas/product-catalog";
+import { ChangePasswordDto } from "./dto/change-password.dto";
 import { LoginDto } from "./dto/login.dto";
 import { RefreshDto } from "./dto/refresh.dto";
 import { RegisterDto } from "./dto/register.dto";
@@ -223,6 +224,32 @@ export class AuthService {
     return { success: true };
   }
 
+  async changePassword(authorization: string | undefined, dto: ChangePasswordDto) {
+    const userId = this.authenticateAccessToken(authorization);
+    const user = await this.findUserById(userId);
+
+    if (!user) {
+      throw new UnauthorizedException("User not available");
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException("User is inactive");
+    }
+
+    const currentPasswordMatches = await compare(dto.currentPassword, user.password_hash);
+    if (!currentPasswordMatches) {
+      throw new UnauthorizedException("Current password is incorrect");
+    }
+
+    const nextPasswordHash = await hash(dto.newPassword, 12);
+    await this.db.execute("UPDATE saasPro_users SET password_hash = ? WHERE id = ?", [nextPasswordHash, user.id]);
+    await this.db.execute("UPDATE saasPro_refresh_tokens SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL", [
+      user.id
+    ]);
+
+    return { success: true };
+  }
+
   private async createSession(user: UserRow, forcedTenantId?: number): Promise<AuthSessionPayload> {
     const accessSecret = this.getRequiredEnv("JWT_ACCESS_SECRET");
     const refreshSecret = this.getRequiredEnv("JWT_REFRESH_SECRET");
@@ -306,6 +333,33 @@ export class AuthService {
       throw new UnauthorizedException(`Missing environment variable: ${key}`);
     }
     return value;
+  }
+
+  private authenticateAccessToken(authorization: string | undefined) {
+    if (!authorization?.startsWith("Bearer ")) {
+      throw new UnauthorizedException("Missing bearer token");
+    }
+
+    const token = authorization.slice("Bearer ".length).trim();
+    const accessSecret = this.getRequiredEnv("JWT_ACCESS_SECRET");
+
+    let decoded: BaseJwtPayload | string;
+    try {
+      decoded = verify(token, accessSecret);
+    } catch {
+      throw new UnauthorizedException("Invalid access token");
+    }
+
+    if (typeof decoded === "string" || !isAuthJwtPayload(decoded) || decoded.type !== "access") {
+      throw new UnauthorizedException("Invalid access token");
+    }
+
+    const userId = Number(decoded.sub);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      throw new UnauthorizedException("Invalid access token");
+    }
+
+    return userId;
   }
 
   private async findUserByEmail(email: string) {
