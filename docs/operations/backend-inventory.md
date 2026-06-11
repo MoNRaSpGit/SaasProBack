@@ -1,6 +1,6 @@
 # Inventario operativo del backend
 
-Fecha de actualizacion: 2026-05-22
+Fecha de actualizacion: 2026-06-11
 
 ## Objetivo
 
@@ -79,6 +79,7 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `create-alamcen-demo-user.js`
 - `create-agro-client-user.js`
 - `create-agro-demo-user.js`
+- `seed-agro-demo-workspace.js`
 - `create-camiones-current-client-user.js`
 - `create-camiones-demo-user.js`
 - `reset-agro-public-workspace.js`

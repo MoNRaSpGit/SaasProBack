@@ -1,6 +1,6 @@
 # Bitacora activa
 
-Fecha de actualizacion: 2026-06-05
+Fecha de actualizacion: 2026-06-11
 
 ## Objetivo
 
@@ -25,6 +25,28 @@ No registra:
 - notas de "donde quedamos hoy" dentro de un frontend
 
 Eso va en la carpeta `docs/` del frontend correspondiente.
+
+## 2026-06-11 - Demo de agro alineado con filtros mensuales y seed consistente
+
+Se ajusta el entorno demo de `agro` para acompañar la nueva lectura operativa mensual del frontend sin tocar el tenant real del cliente.
+
+Cambios principales:
+
+- `create-agro-demo-user.js` alinea la password operativa del demo con `demo12345`
+- nuevo script `seed-agro-demo-workspace.js`
+- el seed queda armado con datos ficticios consistentes para validar cortes mensuales y acumulado del ejercicio
+
+Comportamiento operativo:
+
+- el tenant `agro-demo` sigue aislado del cliente real
+- junio 2026 queda sin movimientos operativos para validar una planilla mensual en cero
+- el acumulado del ejercicio queda trazable por suma mensual
+- el script devuelve un bloque `expectedChecks` para auditar rapidamente los valores esperados del demo
+
+Objetivo:
+
+- probar filtros por mes visible y acumulado sin mezclar datos reales
+- evitar inconsistencias entre la planilla mensual y los acumulados del demo
 
 ## 2026-06-05 - Rosendo puede fijar su propia contrasena sin perder datos
 

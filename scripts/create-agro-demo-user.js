@@ -4,7 +4,7 @@ const { hash } = require("bcryptjs");
 
 const DEMO_IDENTIFIER = "agrodemo";
 const DEMO_EMAIL = `${DEMO_IDENTIFIER}@saaspro.local`;
-const DEMO_PASSWORD = "123";
+const DEMO_PASSWORD = "demo12345";
 const DEMO_FULL_NAME = "Agro Demo";
 const DEMO_TENANT_NAME = "Agro Demo";
 const DEMO_TENANT_SLUG = "agro-demo";
