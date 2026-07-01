@@ -147,6 +147,51 @@ describe("backend smoke", () => {
     expect(typeof meta.timestamp).toBe("string");
   });
 
+  it("falls back to Render release metadata when explicit release env is absent", () => {
+    const previousReleaseSha = process.env.RELEASE_SHA;
+    const previousReleaseCreatedAt = process.env.RELEASE_CREATED_AT;
+    const previousRenderGitCommit = process.env.RENDER_GIT_COMMIT;
+    const previousRenderDeployCreatedAt = process.env.RENDER_DEPLOY_CREATED_AT;
+
+    delete process.env.RELEASE_SHA;
+    delete process.env.RELEASE_CREATED_AT;
+    process.env.RENDER_GIT_COMMIT = "render123";
+    process.env.RENDER_DEPLOY_CREATED_AT = "2026-07-01T10:30:00Z";
+
+    const controller = new HealthController({
+      checkConnectionDetailed: async () => ({ ok: true })
+    } as any);
+
+    expect(controller.getHealthMeta()).toMatchObject({
+      releaseSha: "render123",
+      releaseCreatedAt: "2026-07-01T10:30:00Z"
+    });
+
+    if (previousReleaseSha === undefined) {
+      delete process.env.RELEASE_SHA;
+    } else {
+      process.env.RELEASE_SHA = previousReleaseSha;
+    }
+
+    if (previousReleaseCreatedAt === undefined) {
+      delete process.env.RELEASE_CREATED_AT;
+    } else {
+      process.env.RELEASE_CREATED_AT = previousReleaseCreatedAt;
+    }
+
+    if (previousRenderGitCommit === undefined) {
+      delete process.env.RENDER_GIT_COMMIT;
+    } else {
+      process.env.RENDER_GIT_COMMIT = previousRenderGitCommit;
+    }
+
+    if (previousRenderDeployCreatedAt === undefined) {
+      delete process.env.RENDER_DEPLOY_CREATED_AT;
+    } else {
+      process.env.RENDER_DEPLOY_CREATED_AT = previousRenderDeployCreatedAt;
+    }
+  });
+
   it("uses stricter cors defaults by environment", () => {
     const previousNodeEnv = process.env.NODE_ENV;
     const previousAllowedOrigins = process.env.ALLOWED_ORIGINS;
