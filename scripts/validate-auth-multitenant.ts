@@ -68,7 +68,7 @@ async function main() {
   const suffix = buildUniqueSuffix();
   const tenantName = `Tenant Demo ${suffix}`;
   const email = `multi-${suffix}@saaspro.test`;
-  const password = "demo12345";
+  const password = "test-only-password";
   const fullName = `Usuario Demo ${suffix}`;
 
   const app = await NestFactory.create(AppModule, { logger: false });

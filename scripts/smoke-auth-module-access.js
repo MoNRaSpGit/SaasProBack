@@ -1,7 +1,14 @@
 const DEFAULT_API_BASE_URL = process.env.SMOKE_API_BASE_URL || "https://saasproback.onrender.com";
 const DEFAULT_EMAIL = process.env.SMOKE_EMAIL || "camiones.demo@saaspro.com";
-const DEFAULT_PASSWORD = process.env.SMOKE_PASSWORD || "camiones123";
 const DEFAULT_MODULE = process.env.SMOKE_MODULE || "camiones";
+
+function getRequiredEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Falta configurar ${name} en el entorno.`);
+  }
+  return value;
+}
 
 async function readJson(response) {
   const payload = await response.json().catch(() => ({}));
@@ -19,12 +26,13 @@ async function readJson(response) {
 }
 
 async function main() {
+  const defaultPassword = getRequiredEnv("SMOKE_PASSWORD");
   const loginResponse = await fetch(`${DEFAULT_API_BASE_URL}/api/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email: DEFAULT_EMAIL,
-      password: DEFAULT_PASSWORD
+      password: defaultPassword
     })
   });
 

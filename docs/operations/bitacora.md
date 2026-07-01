@@ -32,7 +32,7 @@ Se ajusta el entorno demo de `agro` para acompañar la nueva lectura operativa m
 
 Cambios principales:
 
-- `create-agro-demo-user.js` alinea la password operativa del demo con `demo12345`
+- `create-agro-demo-user.js` alinea la password operativa del demo usando `AGRO_DEMO_PASSWORD`
 - nuevo script `seed-agro-demo-workspace.js`
 - el seed queda armado con datos ficticios consistentes para validar cortes mensuales y acumulado del ejercicio
 
@@ -86,7 +86,7 @@ Cambios principales:
 Credencial operativa de demo preparada en este corte:
 
 - cuenta corta real: `agrodemo`
-- password real del usuario demo: `123`
+- password real del usuario demo: gestionada fuera de Git
 
 Objetivo:
 
@@ -101,13 +101,13 @@ Se ajusta el corte operativo de `agro` para dejarlo listo para carga real del cl
 Cambios principales:
 
 - el script `create-agro-client-user.js` ahora prepara la cuenta corta `rosendo`
-- la password operativa pasa a ser `lamilagrosa`
+- la password operativa pasa a gestionarse fuera de Git
 - el script `reset-agro-public-workspace.js` ahora deja vacios tambien `establishments` y `fields`
 
 Credencial operativa preparada en este corte:
 
 - cuenta: `rosendo`
-- password: `lamilagrosa`
+- password: gestionada fuera de Git mediante `AGRO_CLIENT_PASSWORD`
 
 Objetivo:
 
@@ -129,7 +129,7 @@ Cambios principales:
 Credencial operativa inicial de ese corte:
 
 - cuenta: `lamilagrosa`
-- password: `1994`
+- password: gestionada fuera de Git mediante `CAMIONES_CLIENT_PASSWORD`
 
 Objetivo:
 
@@ -148,7 +148,7 @@ Cambio principal:
 Comportamiento:
 
 - crea o actualiza `lamilagrosa@saaspro.local`
-- password operativa `1994`
+- password operativa gestionada fuera de Git mediante `CAMIONES_CLIENT_PASSWORD`
 - deja al usuario como miembro `admin` del tenant `camiones-demo`
 - ese tenant conserva los viajes, clientes y cobros reales ya existentes
 

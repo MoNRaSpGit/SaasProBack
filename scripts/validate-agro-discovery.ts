@@ -55,7 +55,7 @@ async function main() {
 
   const suffix = buildUniqueSuffix();
   const email = `agro-${suffix}@saaspro.test`;
-  const password = "demo12345";
+  const password = "test-only-password";
   const fullName = `Agro Demo ${suffix}`;
   const tenantName = `Agro Tenant ${suffix}`;
 

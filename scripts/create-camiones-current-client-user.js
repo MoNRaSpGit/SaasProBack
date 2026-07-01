@@ -4,9 +4,16 @@ const { hash } = require("bcryptjs");
 
 const CLIENT_IDENTIFIER = "lamilagrosa";
 const CLIENT_EMAIL = `${CLIENT_IDENTIFIER}@saaspro.local`;
-const CLIENT_PASSWORD = "1994";
 const CLIENT_FULL_NAME = "La Milagrosa";
 const TARGET_TENANT_SLUG = "camiones-demo";
+
+function getRequiredEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Falta configurar ${name} en .env o en el entorno.`);
+  }
+  return value;
+}
 
 function loadEnvFile() {
   const envText = fs.readFileSync(".env", "utf8");
@@ -33,7 +40,8 @@ function loadEnvFile() {
 async function main() {
   loadEnvFile();
 
-  const passwordHash = await hash(CLIENT_PASSWORD, 12);
+  const clientPassword = getRequiredEnv("CAMIONES_CLIENT_PASSWORD");
+  const passwordHash = await hash(clientPassword, 12);
   const connection = await mysql.createConnection({ uri: process.env.DATABASE_URL });
 
   try {
@@ -112,7 +120,7 @@ async function main() {
           ok: true,
           identifier: CLIENT_IDENTIFIER,
           email: CLIENT_EMAIL,
-          password: CLIENT_PASSWORD,
+          passwordConfigured: true,
           tenantId: tenant.id,
           tenantName: tenant.name,
           userId,

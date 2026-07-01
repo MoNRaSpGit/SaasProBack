@@ -4,12 +4,19 @@ const { hash } = require("bcryptjs");
 
 const DEMO_IDENTIFIER = "agrodemo";
 const DEMO_EMAIL = `${DEMO_IDENTIFIER}@saaspro.local`;
-const DEMO_PASSWORD = "demo12345";
 const DEMO_FULL_NAME = "Agro Demo";
 const DEMO_TENANT_NAME = "Agro Demo";
 const DEMO_TENANT_SLUG = "agro-demo";
 const WORKSPACE_KEY = "public";
 const WORKSPACE_VERSION = "v1";
+
+function getRequiredEnv(name) {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`Falta configurar ${name} en .env o en el entorno.`);
+  }
+  return value;
+}
 
 function loadEnvFile() {
   const envText = fs.readFileSync(".env", "utf8");
@@ -48,7 +55,8 @@ function createEmptyWorkspace() {
 async function main() {
   loadEnvFile();
 
-  const passwordHash = await hash(DEMO_PASSWORD, 12);
+  const demoPassword = getRequiredEnv("AGRO_DEMO_PASSWORD");
+  const passwordHash = await hash(demoPassword, 12);
   const connection = await mysql.createConnection({ uri: process.env.DATABASE_URL });
 
   try {
@@ -172,7 +180,7 @@ async function main() {
           ok: true,
           identifier: DEMO_IDENTIFIER,
           email: DEMO_EMAIL,
-          password: DEMO_PASSWORD,
+          passwordConfigured: true,
           tenantId,
           userId,
           note: "Demo aislado para agro con workspace propio por tenant."
