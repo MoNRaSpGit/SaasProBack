@@ -40,7 +40,7 @@ async function readJson(response: Response) {
 async function main() {
   const suffix = buildUniqueSuffix();
   const email = `saas-admin-${suffix}@saaspro.test`;
-  const password = "test-only-password";
+  const password = "demo12345";
   const fullName = `SaaS Admin ${suffix}`;
   const tenantName = `SaaS Admin Tenant ${suffix}`;
 

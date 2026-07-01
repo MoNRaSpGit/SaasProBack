@@ -55,7 +55,7 @@ async function main() {
 
   const suffix = buildUniqueSuffix();
   const email = `neon-${suffix}@saaspro.test`;
-  const password = "test-only-password";
+  const password = "demo12345";
   const fullName = `Neon Demo ${suffix}`;
   const tenantName = `Neon Tenant ${suffix}`;
 

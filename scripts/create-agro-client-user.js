@@ -4,17 +4,10 @@ const { hash } = require("bcryptjs");
 
 const CLIENT_IDENTIFIER = "rosendo";
 const CLIENT_EMAIL = `${CLIENT_IDENTIFIER}@saaspro.local`;
+const CLIENT_PASSWORD = "lamilagrosa";
 const CLIENT_FULL_NAME = "Rosendo";
 const CLIENT_TENANT_NAME = "La Milagrosa";
 const CLIENT_TENANT_SLUG = "lamilagrosa";
-
-function getRequiredEnv(name) {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`Falta configurar ${name} en .env o en el entorno.`);
-  }
-  return value;
-}
 
 function loadEnvFile() {
   const envText = fs.readFileSync(".env", "utf8");
@@ -41,8 +34,7 @@ function loadEnvFile() {
 async function main() {
   loadEnvFile();
 
-  const clientPassword = getRequiredEnv("AGRO_CLIENT_PASSWORD");
-  const passwordHash = await hash(clientPassword, 12);
+  const passwordHash = await hash(CLIENT_PASSWORD, 12);
   const connection = await mysql.createConnection({ uri: process.env.DATABASE_URL });
 
   try {
@@ -141,7 +133,7 @@ async function main() {
           ok: true,
           identifier: CLIENT_IDENTIFIER,
           email: CLIENT_EMAIL,
-          passwordConfigured: true,
+          password: CLIENT_PASSWORD,
           tenantId,
           userId,
           note: "El login puede hacerse con rosendo o con el email canonico. Si el usuario ya existia, este script no reescribe su contrasena."

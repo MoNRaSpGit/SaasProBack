@@ -49,7 +49,7 @@ async function main() {
 
   const suffix = buildUniqueSuffix();
   const email = `rbac-${suffix}@saaspro.test`;
-  const password = "test-only-password";
+  const password = "demo12345";
   const fullName = `RBAC Demo ${suffix}`;
   const tenantName = `RBAC Tenant ${suffix}`;
 
