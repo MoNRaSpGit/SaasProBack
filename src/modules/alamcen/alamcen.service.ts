@@ -77,6 +77,17 @@ type CachedProductLookup = {
   product: AlamcenProductLookupResponse | null;
 };
 
+type BarcodeLookupServerMetrics = {
+  cacheHit: boolean;
+  cacheExpired: boolean;
+  normalizedQueryMs: number;
+  fallbackQueryMs: number;
+  mapMs: number;
+  cacheWriteMs: number;
+  totalMs: number;
+  resolvedBy: "cache" | "barcode_normalized" | "barcode" | "miss";
+};
+
 function roundMoney(value: number | string | null | undefined) {
   return Number(Number(value || 0).toFixed(2));
 }
@@ -264,7 +275,7 @@ export class AlamcenService {
       throw new BadRequestException("El codigo de barras es obligatorio.");
     }
 
-    const product = await this.findProductByBarcode(currentUser.tenantId, normalizedBarcode);
+    const { product, metrics } = await this.findProductByBarcodeDetailed(currentUser.tenantId, normalizedBarcode);
     const durationMs = Date.now() - startedAt;
 
     console.log(
@@ -275,7 +286,8 @@ export class AlamcenService {
         tenantId: currentUser.tenantId,
         found: Boolean(product),
         barcodeLength: normalizedBarcode.length,
-        durationMs
+        durationMs,
+        breakdown: metrics
       })
     );
 
@@ -589,16 +601,46 @@ export class AlamcenService {
   }
 
   private async findProductByBarcode(tenantId: number, barcode: string) {
+    const { product } = await this.findProductByBarcodeDetailed(tenantId, barcode);
+    return product;
+  }
+
+  private async findProductByBarcodeDetailed(tenantId: number, barcode: string) {
+    const startedAt = Date.now();
     const cacheKey = this.buildProductLookupCacheKey(tenantId, barcode);
     const cachedEntry = this.productLookupCache.get(cacheKey);
     if (cachedEntry) {
       if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
-        return cachedEntry.product;
+        return {
+          product: cachedEntry.product,
+          metrics: {
+            cacheHit: true,
+            cacheExpired: false,
+            normalizedQueryMs: 0,
+            fallbackQueryMs: 0,
+            mapMs: 0,
+            cacheWriteMs: 0,
+            totalMs: Date.now() - startedAt,
+            resolvedBy: "cache"
+          } satisfies BarcodeLookupServerMetrics
+        };
       }
 
       this.productLookupCache.delete(cacheKey);
     }
 
+    const metrics: BarcodeLookupServerMetrics = {
+      cacheHit: false,
+      cacheExpired: Boolean(cachedEntry),
+      normalizedQueryMs: 0,
+      fallbackQueryMs: 0,
+      mapMs: 0,
+      cacheWriteMs: 0,
+      totalMs: 0,
+      resolvedBy: "miss"
+    };
+
+    let queryStartedAt = Date.now();
     const rows = await this.databaseService.query<AlamcenScannerLookupRow[]>(
       `SELECT
          id,
@@ -616,16 +658,24 @@ export class AlamcenService {
        LIMIT 1`,
       [tenantId, barcode]
     );
+    metrics.normalizedQueryMs = Date.now() - queryStartedAt;
 
+    let mapStartedAt = Date.now();
     const normalizedMatch = rows[0] ? this.mapScannerLookupRow(rows[0]) : null;
+    metrics.mapMs += Date.now() - mapStartedAt;
     if (normalizedMatch) {
+      const cacheWriteStartedAt = Date.now();
       this.setProductLookupCache(cacheKey, normalizedMatch);
       if (normalizedMatch.barcode && normalizedMatch.barcode !== barcode) {
         this.setProductLookupCache(this.buildProductLookupCacheKey(tenantId, normalizedMatch.barcode), normalizedMatch);
       }
-      return normalizedMatch;
+      metrics.cacheWriteMs = Date.now() - cacheWriteStartedAt;
+      metrics.totalMs = Date.now() - startedAt;
+      metrics.resolvedBy = "barcode_normalized";
+      return { product: normalizedMatch, metrics };
     }
 
+    queryStartedAt = Date.now();
     const fallbackRows = await this.databaseService.query<AlamcenScannerLookupRow[]>(
       `SELECT
          id,
@@ -643,14 +693,21 @@ export class AlamcenService {
        LIMIT 1`,
       [tenantId, barcode]
     );
+    metrics.fallbackQueryMs = Date.now() - queryStartedAt;
 
+    mapStartedAt = Date.now();
     const fallbackMatch = fallbackRows[0] ? this.mapScannerLookupRow(fallbackRows[0]) : null;
+    metrics.mapMs += Date.now() - mapStartedAt;
+    const cacheWriteStartedAt = Date.now();
     this.setProductLookupCache(cacheKey, fallbackMatch);
     if (fallbackMatch) {
       this.cacheProductLookup(fallbackMatch, tenantId);
+      metrics.resolvedBy = "barcode";
     }
+    metrics.cacheWriteMs = Date.now() - cacheWriteStartedAt;
+    metrics.totalMs = Date.now() - startedAt;
 
-    return fallbackMatch;
+    return { product: fallbackMatch, metrics };
   }
 
   private async findProductRowById(tenantId: number, productId: number) {
