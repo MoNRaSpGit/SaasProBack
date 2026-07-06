@@ -14,6 +14,6 @@ export class CreateScrumTaskDto {
   @Min(1)
   estimatedMinutes!: number;
 
-  @IsIn(["green", "yellow", "red"])
-  difficulty!: "green" | "yellow" | "red";
+  @IsIn(["green", "yellow", "red", "blue"])
+  difficulty!: "green" | "yellow" | "red" | "blue";
 }
