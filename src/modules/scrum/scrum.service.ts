@@ -8,6 +8,7 @@ import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 type ScrumTaskRow = RowDataPacket & {
   id: number;
   title: string;
+  description: string | null;
   estimated_minutes: number;
   difficulty: "green" | "yellow" | "red";
   status: "todo" | "in_progress" | "done";
@@ -26,14 +27,6 @@ type ScrumClientRow = RowDataPacket & {
   created_at: Date | string;
   updated_at: Date | string;
 };
-
-function toIso(value: Date | string | null) {
-  if (!value) {
-    return null;
-  }
-
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
-}
 
 function toDateOnly(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
@@ -70,13 +63,14 @@ export class ScrumService {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_scrum_tasks (
          title,
+         description,
          estimated_minutes,
          difficulty,
          status,
          started_at,
          completed_at
-       ) VALUES (?, ?, ?, 'todo', NULL, NULL)`,
-      [dto.title.trim(), Math.round(dto.estimatedMinutes), dto.difficulty]
+       ) VALUES (?, ?, ?, ?, 'todo', NULL, NULL)`,
+      [dto.title.trim(), dto.description?.trim() || null, Math.round(dto.estimatedMinutes), dto.difficulty]
     );
 
     return {
@@ -169,6 +163,7 @@ export class ScrumService {
       `SELECT
          id,
          title,
+         description,
          estimated_minutes,
          difficulty,
          status,
@@ -185,6 +180,7 @@ export class ScrumService {
     return rows.map((row) => ({
       id: Number(row.id),
       title: row.title,
+      description: row.description,
       estimatedMinutes: Number(row.estimated_minutes),
       difficulty: row.difficulty,
       status: row.status,
@@ -221,6 +217,7 @@ export class ScrumService {
       `SELECT
          id,
          title,
+         description,
          estimated_minutes,
          difficulty,
          status,
@@ -242,6 +239,7 @@ export class ScrumService {
     return {
       id: Number(row.id),
       title: row.title,
+      description: row.description,
       estimatedMinutes: Number(row.estimated_minutes),
       difficulty: row.difficulty,
       status: row.status,
@@ -303,6 +301,7 @@ export class ScrumService {
       `CREATE TABLE IF NOT EXISTS saas_scrum_tasks (
          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
          title VARCHAR(180) NOT NULL,
+         description VARCHAR(500) NULL,
          estimated_minutes INT UNSIGNED NOT NULL,
          difficulty ENUM('green', 'yellow', 'red') NOT NULL,
          status ENUM('todo', 'in_progress', 'done') NOT NULL DEFAULT 'todo',
@@ -313,6 +312,18 @@ export class ScrumService {
          PRIMARY KEY (id)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    const descriptionColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'saas_scrum_tasks'
+         AND column_name = 'description'`
+    );
+
+    if (Number(descriptionColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_scrum_tasks ADD COLUMN description VARCHAR(500) NULL AFTER title`);
+    }
 
     await this.databaseService.execute(
       `CREATE TABLE IF NOT EXISTS saas_scrum_clients (

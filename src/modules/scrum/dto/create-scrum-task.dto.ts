@@ -1,9 +1,14 @@
-import { IsIn, IsNumber, IsString, MaxLength, Min } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 export class CreateScrumTaskDto {
   @IsString()
   @MaxLength(180)
   title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string;
 
   @IsNumber()
   @Min(1)
