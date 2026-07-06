@@ -20,6 +20,7 @@ type TenantListRow = RowDataPacket & {
   primary_user_email: string | null;
   primary_user_full_name: string | null;
   primary_membership_role: string | null;
+  primary_user_last_login_at: string | null;
   module_key: SaasAdminModuleKey | null;
 };
 
@@ -47,6 +48,8 @@ type TenantListItem = {
     email: string;
     fullName: string | null;
     membershipRole: string | null;
+    lastLoginAt: string | null;
+    lastLoginAtUy: string | null;
   } | null;
   modules: string[];
   products: Array<{
@@ -60,6 +63,36 @@ type TenantListItem = {
 @Injectable()
 export class SaasAdminService {
   constructor(private readonly databaseService: DatabaseService) {}
+
+  private formatUruguayDateTime(rawValue: string | null) {
+    if (!rawValue) {
+      return null;
+    }
+
+    const value = String(rawValue).trim();
+    if (!value) {
+      return null;
+    }
+
+    const parsed = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+      ? new Date(value.replace(" ", "T") + "Z")
+      : new Date(value);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return new Intl.DateTimeFormat("es-UY", {
+      timeZone: "America/Montevideo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(parsed);
+  }
 
   async listTenants() {
     const rows = await this.databaseService.query<TenantListRow[]>(
@@ -77,6 +110,7 @@ export class SaasAdminService {
          u.email AS primary_user_email,
          u.full_name AS primary_user_full_name,
          m.role AS primary_membership_role,
+         u.last_login_at AS primary_user_last_login_at,
          tm.module_key
        FROM saas_tenants t
        LEFT JOIN saas_tenant_settings s
@@ -123,7 +157,9 @@ export class SaasAdminService {
             ? {
                 email: row.primary_user_email,
                 fullName: row.primary_user_full_name,
-                membershipRole: row.primary_membership_role
+                membershipRole: row.primary_membership_role,
+                lastLoginAt: row.primary_user_last_login_at,
+                lastLoginAtUy: this.formatUruguayDateTime(row.primary_user_last_login_at)
               }
             : null,
           modules: [] as string[],
