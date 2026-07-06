@@ -238,12 +238,27 @@ export class AlamcenService {
   }
 
   async getProductByBarcode(currentUser: AlamcenRequestUser, barcode: string) {
+    const startedAt = Date.now();
     const normalizedBarcode = normalizeBarcode(barcode);
     if (!normalizedBarcode) {
       throw new BadRequestException("El codigo de barras es obligatorio.");
     }
 
     const row = await this.findProductRowByBarcode(currentUser.tenantId, normalizedBarcode);
+    const durationMs = Date.now() - startedAt;
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        timestamp: new Date().toISOString(),
+        context: "alamcen-barcode-lookup",
+        tenantId: currentUser.tenantId,
+        found: Boolean(row),
+        barcodeLength: normalizedBarcode.length,
+        durationMs
+      })
+    );
+
     return row ? this.mapProductRow(row) : null;
   }
 
