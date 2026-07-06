@@ -18,6 +18,7 @@ type UserRow = RowDataPacket & {
   full_name: string | null;
   role: "owner" | "admin" | "member";
   is_active: number;
+  last_login_at: string | null;
 };
 
 type RefreshTokenRow = RowDataPacket & {
@@ -156,6 +157,7 @@ export class AuthService {
       throw new UnauthorizedException("User is inactive");
     }
 
+    await this.db.execute("UPDATE saasPro_users SET last_login_at = NOW() WHERE id = ?", [user.id]);
     return this.createSession(user);
   }
 
@@ -365,6 +367,7 @@ export class AuthService {
   private async findUserByEmail(email: string) {
     const rows = await this.db.query<UserRow[]>(
       `SELECT id, email, password_hash, full_name, role, is_active
+             , last_login_at
        FROM saasPro_users
        WHERE email = ?
        LIMIT 1`,
@@ -376,6 +379,7 @@ export class AuthService {
   private async findUserById(id: number) {
     const rows = await this.db.query<UserRow[]>(
       `SELECT id, email, password_hash, full_name, role, is_active
+             , last_login_at
        FROM saasPro_users
        WHERE id = ?
        LIMIT 1`,
