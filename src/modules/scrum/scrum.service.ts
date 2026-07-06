@@ -75,6 +75,8 @@ export class ScrumService {
     const today = getMontevideoDateKey(new Date());
     const dailyTaskKey = isDailyTask ? `daily-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : null;
 
+    const estimatedMinutes = Number.isFinite(dto.estimatedMinutes) ? Math.max(0, Math.round(dto.estimatedMinutes || 0)) : 0;
+
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_scrum_tasks (
          title,
@@ -90,7 +92,7 @@ export class ScrumService {
       [
         dto.title.trim(),
         dto.description?.trim() || null,
-        Math.round(dto.estimatedMinutes),
+        estimatedMinutes,
         dto.difficulty,
         dailyTaskKey,
         today

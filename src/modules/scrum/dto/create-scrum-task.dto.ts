@@ -10,9 +10,10 @@ export class CreateScrumTaskDto {
   @MaxLength(500)
   description?: string;
 
+  @IsOptional()
   @IsNumber()
-  @Min(1)
-  estimatedMinutes!: number;
+  @Min(0)
+  estimatedMinutes?: number;
 
   @IsIn(["green", "yellow", "red", "blue"])
   difficulty!: "green" | "yellow" | "red" | "blue";
