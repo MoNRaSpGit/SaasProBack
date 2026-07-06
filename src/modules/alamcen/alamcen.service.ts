@@ -27,6 +27,17 @@ type AlamcenProductRow = RowDataPacket & {
   updated_at: string | Date;
 };
 
+type AlamcenScannerLookupRow = RowDataPacket & {
+  id: number;
+  legacy_product_id: number | null;
+  name: string;
+  barcode: string;
+  barcode_normalized: string;
+  sale_price: string | number;
+  image_url: string | null;
+  status: "active" | "inactive" | "out_of_stock" | "archived";
+};
+
 type SaleRow = RowDataPacket & {
   id: number;
   total_amount: string | number;
@@ -63,7 +74,7 @@ const PRODUCT_LOOKUP_CACHE_MAX_ENTRIES = 1000;
 
 type CachedProductLookup = {
   cachedAt: number;
-  row: AlamcenProductRow | null;
+  product: AlamcenProductLookupResponse | null;
 };
 
 function roundMoney(value: number | string | null | undefined) {
@@ -253,7 +264,7 @@ export class AlamcenService {
       throw new BadRequestException("El codigo de barras es obligatorio.");
     }
 
-    const row = await this.findProductRowByBarcode(currentUser.tenantId, normalizedBarcode);
+    const product = await this.findProductByBarcode(currentUser.tenantId, normalizedBarcode);
     const durationMs = Date.now() - startedAt;
 
     console.log(
@@ -262,13 +273,13 @@ export class AlamcenService {
         timestamp: new Date().toISOString(),
         context: "alamcen-barcode-lookup",
         tenantId: currentUser.tenantId,
-        found: Boolean(row),
+        found: Boolean(product),
         barcodeLength: normalizedBarcode.length,
         durationMs
       })
     );
 
-    return row ? this.mapProductRow(row) : null;
+    return product;
   }
 
   async createManualProduct(currentUser: AlamcenRequestUser, payload: CreateManualProductDto) {
@@ -277,9 +288,9 @@ export class AlamcenService {
       throw new BadRequestException("El codigo de barras es obligatorio.");
     }
 
-    const existingProduct = await this.findProductRowByBarcode(currentUser.tenantId, barcode);
+    const existingProduct = await this.findProductByBarcode(currentUser.tenantId, barcode);
     if (existingProduct) {
-      return this.mapProductRow(existingProduct);
+      return existingProduct;
     }
 
     try {
@@ -304,14 +315,14 @@ export class AlamcenService {
         throw new BadRequestException("No se pudo recuperar el producto manual creado.");
       }
 
-      this.cacheProductRow(created);
+      this.cacheProductLookup(this.mapProductRow(created), currentUser.tenantId);
       return this.mapProductRow(created);
     } catch (error) {
       const dbError = error as { code?: string };
       if (dbError.code === "ER_DUP_ENTRY") {
-        const duplicatedProduct = await this.findProductRowByBarcode(currentUser.tenantId, barcode);
+        const duplicatedProduct = await this.findProductByBarcode(currentUser.tenantId, barcode);
         if (duplicatedProduct) {
-          return this.mapProductRow(duplicatedProduct);
+          return duplicatedProduct;
         }
 
         throw new ConflictException("El codigo de barras ya existe.");
@@ -351,7 +362,7 @@ export class AlamcenService {
       throw new NotFoundException("No encontramos el producto actualizado.");
     }
 
-    this.cacheProductRow(updated);
+    this.cacheProductLookup(this.mapProductRow(updated), currentUser.tenantId);
     return this.mapProductRow(updated);
   }
 
@@ -577,44 +588,36 @@ export class AlamcenService {
     };
   }
 
-  private async findProductRowByBarcode(tenantId: number, barcode: string) {
+  private async findProductByBarcode(tenantId: number, barcode: string) {
     const cacheKey = this.buildProductLookupCacheKey(tenantId, barcode);
     const cachedEntry = this.productLookupCache.get(cacheKey);
     if (cachedEntry) {
       if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
-        return cachedEntry.row;
+        return cachedEntry.product;
       }
 
       this.productLookupCache.delete(cacheKey);
     }
 
-    const rows = await this.databaseService.query<AlamcenProductRow[]>(
+    const rows = await this.databaseService.query<AlamcenScannerLookupRow[]>(
       `SELECT
          id,
-         tenant_id,
          legacy_product_id,
          name,
-         description,
          barcode,
          barcode_normalized,
          sale_price,
-         list_price,
-         stock_current,
-         category,
          image_url,
-         status,
-         created_at,
-         updated_at
+         status
        FROM saas_alamcen_products
        WHERE tenant_id = ?
          AND deleted_at IS NULL
          AND barcode_normalized = ?
-       ORDER BY (status = 'active') DESC, id ASC
        LIMIT 1`,
       [tenantId, barcode]
     );
 
-    const normalizedMatch = rows[0] ?? null;
+    const normalizedMatch = rows[0] ? this.mapScannerLookupRow(rows[0]) : null;
     if (normalizedMatch) {
       this.setProductLookupCache(cacheKey, normalizedMatch);
       if (normalizedMatch.barcode && normalizedMatch.barcode !== barcode) {
@@ -623,36 +626,28 @@ export class AlamcenService {
       return normalizedMatch;
     }
 
-    const fallbackRows = await this.databaseService.query<AlamcenProductRow[]>(
+    const fallbackRows = await this.databaseService.query<AlamcenScannerLookupRow[]>(
       `SELECT
          id,
-         tenant_id,
          legacy_product_id,
          name,
-         description,
          barcode,
          barcode_normalized,
          sale_price,
-         list_price,
-         stock_current,
-         category,
          image_url,
-         status,
-         created_at,
-         updated_at
+         status
        FROM saas_alamcen_products
        WHERE tenant_id = ?
          AND deleted_at IS NULL
          AND barcode = ?
-       ORDER BY (status = 'active') DESC, id ASC
        LIMIT 1`,
       [tenantId, barcode]
     );
 
-    const fallbackMatch = fallbackRows[0] ?? null;
+    const fallbackMatch = fallbackRows[0] ? this.mapScannerLookupRow(fallbackRows[0]) : null;
     this.setProductLookupCache(cacheKey, fallbackMatch);
     if (fallbackMatch) {
-      this.cacheProductRow(fallbackMatch);
+      this.cacheProductLookup(fallbackMatch, tenantId);
     }
 
     return fallbackMatch;
@@ -708,6 +703,30 @@ export class AlamcenService {
       imagen: row.image_url,
       createdAt: toCanonicalIsoUtc(row.created_at) || undefined,
       updatedAt: toCanonicalIsoUtc(row.updated_at) || undefined
+    };
+  }
+
+  private mapScannerLookupRow(row: AlamcenScannerLookupRow): AlamcenProductLookupResponse {
+    return {
+      id: Number(row.id),
+      legacyProductoId: row.legacy_product_id == null ? null : Number(row.legacy_product_id),
+      nombre: row.name,
+      descripcion: null,
+      barcode: row.barcode,
+      barcodeNormalized: row.barcode_normalized,
+      precioVenta: roundMoney(row.sale_price),
+      precioLista: null,
+      stockActual: 0,
+      categoria: null,
+      categoriaCompact: null,
+      categoriaId: null,
+      supplierId: null,
+      subcategoria: null,
+      tieneImagen: Boolean(row.image_url),
+      estado: mapProductStatus(row.status),
+      imagen: row.image_url,
+      createdAt: undefined,
+      updatedAt: undefined
     };
   }
 
@@ -887,10 +906,10 @@ export class AlamcenService {
     return `${tenantId}::${normalizeBarcode(barcode)}`;
   }
 
-  private setProductLookupCache(cacheKey: string, row: AlamcenProductRow | null) {
+  private setProductLookupCache(cacheKey: string, product: AlamcenProductLookupResponse | null) {
     this.productLookupCache.set(cacheKey, {
       cachedAt: Date.now(),
-      row
+      product
     });
 
     if (this.productLookupCache.size <= PRODUCT_LOOKUP_CACHE_MAX_ENTRIES) {
@@ -903,10 +922,20 @@ export class AlamcenService {
     }
   }
 
-  private cacheProductRow(row: AlamcenProductRow) {
-    this.setProductLookupCache(this.buildProductLookupCacheKey(Number(row.tenant_id), row.barcode_normalized), row);
-    if (row.barcode && row.barcode !== row.barcode_normalized) {
-      this.setProductLookupCache(this.buildProductLookupCacheKey(Number(row.tenant_id), row.barcode), row);
+  private cacheProductLookup(product: AlamcenProductLookupResponse, tenantId?: number) {
+    const resolvedTenantId = Number(tenantId || 0);
+    if (!resolvedTenantId) {
+      return;
+    }
+
+    const primaryBarcode = product.barcodeNormalized || product.barcode;
+    if (!primaryBarcode) {
+      return;
+    }
+
+    this.setProductLookupCache(this.buildProductLookupCacheKey(resolvedTenantId, primaryBarcode), product);
+    if (product.barcode && product.barcode !== primaryBarcode) {
+      this.setProductLookupCache(this.buildProductLookupCacheKey(resolvedTenantId, product.barcode), product);
     }
   }
 }
