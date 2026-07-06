@@ -61,6 +61,10 @@ function normalizeTaskDuration(durationUnit?: "days" | "weeks" | "months", durat
     throw new BadRequestException("Los dias no pueden superar 6. Usa semanas.");
   }
 
+  if (safeUnit === "weeks" && safeValue > 4) {
+    throw new BadRequestException("Las semanas no pueden superar 4. Usa meses.");
+  }
+
   return {
     durationUnit: safeUnit,
     durationValue: safeValue
@@ -108,7 +112,7 @@ export class ScrumService {
          status,
          started_at,
          completed_at
-       ) VALUES (?, ?, ?, ?, ?, ?, 'todo', NULL, NULL)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'todo', NULL, NULL)`,
       [
         dto.title.trim(),
         dto.description?.trim() || null,
