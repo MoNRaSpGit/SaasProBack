@@ -56,6 +56,13 @@ export class AlamcenController {
     return this.alamcenService.updateProduct(currentUser, Number(productId), payload);
   }
 
+  @RequireCapability("alamcen.products.write")
+  @UseGuards(CapabilityGuard)
+  @Post("cache/product-lookup/reset")
+  resetProductLookupCache(@CurrentAlamcenUser() currentUser: AlamcenRequestUser) {
+    return this.alamcenService.resetProductLookupCache(currentUser);
+  }
+
   @RequireCapability("alamcen.sales.write")
   @UseGuards(CapabilityGuard)
   @Post("sales")

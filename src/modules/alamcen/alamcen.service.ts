@@ -355,6 +355,24 @@ export class AlamcenService {
     return this.mapProductRow(updated);
   }
 
+  resetProductLookupCache(currentUser: AlamcenRequestUser) {
+    let clearedEntries = 0;
+
+    for (const key of Array.from(this.productLookupCache.keys())) {
+      if (!key.startsWith(`${currentUser.tenantId}::`)) {
+        continue;
+      }
+
+      this.productLookupCache.delete(key);
+      clearedEntries += 1;
+    }
+
+    return {
+      ok: true as const,
+      clearedEntries
+    };
+  }
+
   async createSale(currentUser: AlamcenRequestUser, payload: CreateAlamcenSaleDto) {
     const normalizedItems = payload.items.map((item) => {
       const nombre = normalizeText(item.nombre, 180);
