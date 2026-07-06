@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from "./shared/http/cors";
 import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
@@ -8,6 +9,17 @@ import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const allowedOrigins = getAllowedCorsOrigins();
+
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    const originHeader = request.headers.origin;
+    const origin = typeof originHeader === "string" ? originHeader : undefined;
+
+    if (isCorsOriginAllowed(origin, allowedOrigins)) {
+      response.setHeader("Timing-Allow-Origin", origin || "*");
+    }
+
+    next();
+  });
 
   app.enableCors({
     origin: (
@@ -25,7 +37,8 @@ async function bootstrap() {
     allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id"],
     exposedHeaders: ["X-Request-Id"],
     credentials: false,
-    optionsSuccessStatus: 204
+    optionsSuccessStatus: 204,
+    maxAge: 600
   });
   app.setGlobalPrefix("api/v1");
   app.useGlobalPipes(
