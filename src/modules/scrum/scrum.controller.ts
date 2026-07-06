@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from 
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
+import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { ScrumService } from "./scrum.service";
 
 @Controller("scrum")
@@ -21,6 +22,11 @@ export class ScrumController {
   @Patch("tasks/:id/status")
   updateTaskStatus(@Param("id", ParseIntPipe) taskId: number, @Body() dto: UpdateScrumTaskStatusDto) {
     return this.scrumService.updateTaskStatus(taskId, dto);
+  }
+
+  @Patch("tasks/:id/duration")
+  updateTaskDuration(@Param("id", ParseIntPipe) taskId: number, @Body() dto: UpdateScrumTaskDurationDto) {
+    return this.scrumService.updateTaskDuration(taskId, dto);
   }
 
   @Delete("tasks/:id")

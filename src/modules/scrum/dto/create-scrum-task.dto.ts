@@ -15,6 +15,15 @@ export class CreateScrumTaskDto {
   @Min(0)
   estimatedMinutes?: number;
 
+  @IsOptional()
+  @IsIn(["days", "weeks", "months"])
+  durationUnit?: "days" | "weeks" | "months";
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  durationValue?: number;
+
   @IsIn(["green", "yellow", "red", "blue"])
   difficulty!: "green" | "yellow" | "red" | "blue";
 }

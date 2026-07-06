@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
+import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 
 type ScrumTaskRow = RowDataPacket & {
@@ -10,6 +11,8 @@ type ScrumTaskRow = RowDataPacket & {
   title: string;
   description: string | null;
   estimated_minutes: number;
+  duration_unit: "days" | "weeks" | "months";
+  duration_value: number;
   difficulty: "green" | "yellow" | "red" | "blue";
   daily_task_key: string | null;
   task_day: Date | string;
@@ -50,6 +53,20 @@ function addBillingCycle(dateValue: string, frequency: "monthly" | "semiannual")
   return nextDate.toISOString().slice(0, 10);
 }
 
+function normalizeTaskDuration(durationUnit?: "days" | "weeks" | "months", durationValue?: number) {
+  const safeUnit = durationUnit || "days";
+  const safeValue = Number.isFinite(durationValue) ? Math.max(1, Math.round(durationValue || 1)) : 1;
+
+  if (safeUnit === "days" && safeValue > 6) {
+    throw new BadRequestException("Los dias no pueden superar 6. Usa semanas.");
+  }
+
+  return {
+    durationUnit: safeUnit,
+    durationValue: safeValue
+  };
+}
+
 @Injectable()
 export class ScrumService {
   private ensureTablesPromise: Promise<void> | null = null;
@@ -74,6 +91,7 @@ export class ScrumService {
     const isDailyTask = dto.difficulty === "blue";
     const today = getMontevideoDateKey(new Date());
     const dailyTaskKey = isDailyTask ? `daily-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : null;
+    const duration = normalizeTaskDuration(dto.durationUnit, dto.durationValue);
 
     const estimatedMinutes = Number.isFinite(dto.estimatedMinutes) ? Math.max(0, Math.round(dto.estimatedMinutes || 0)) : 0;
 
@@ -82,6 +100,8 @@ export class ScrumService {
          title,
          description,
          estimated_minutes,
+         duration_unit,
+         duration_value,
          difficulty,
          daily_task_key,
          task_day,
@@ -93,6 +113,8 @@ export class ScrumService {
         dto.title.trim(),
         dto.description?.trim() || null,
         estimatedMinutes,
+        duration.durationUnit,
+        duration.durationValue,
         dto.difficulty,
         dailyTaskKey,
         today
@@ -121,6 +143,25 @@ export class ScrumService {
         dto.completedAt ? new Date(dto.completedAt) : null,
         taskId
       ]
+    );
+
+    return {
+      ok: true,
+      item: await this.getTaskById(taskId)
+    };
+  }
+
+  async updateTaskDuration(taskId: number, dto: UpdateScrumTaskDurationDto) {
+    await this.ensureTables();
+    await this.assertTaskExists(taskId);
+    const duration = normalizeTaskDuration(dto.durationUnit, dto.durationValue);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_scrum_tasks
+       SET duration_unit = ?,
+           duration_value = ?
+       WHERE id = ?`,
+      [duration.durationUnit, duration.durationValue, taskId]
     );
 
     return {
@@ -198,6 +239,8 @@ export class ScrumService {
          title,
          description,
          estimated_minutes,
+         duration_unit,
+         duration_value,
          difficulty,
          daily_task_key,
          task_day,
@@ -217,6 +260,8 @@ export class ScrumService {
       title: row.title,
       description: row.description,
       estimatedMinutes: Number(row.estimated_minutes),
+      durationUnit: row.duration_unit,
+      durationValue: Number(row.duration_value),
       difficulty: row.difficulty,
       dailyTaskKey: row.daily_task_key,
       status: row.status,
@@ -255,6 +300,8 @@ export class ScrumService {
          title,
          description,
          estimated_minutes,
+         duration_unit,
+         duration_value,
          difficulty,
          daily_task_key,
          task_day,
@@ -279,6 +326,8 @@ export class ScrumService {
       title: row.title,
       description: row.description,
       estimatedMinutes: Number(row.estimated_minutes),
+      durationUnit: row.duration_unit,
+      durationValue: Number(row.duration_value),
       difficulty: row.difficulty,
       dailyTaskKey: row.daily_task_key,
       status: row.status,
@@ -334,6 +383,8 @@ export class ScrumService {
           title: string;
           description: string | null;
           estimated_minutes: number;
+          duration_unit: "days" | "weeks" | "months";
+          duration_value: number;
           latest_task_day: Date | string;
         }
       >
@@ -343,10 +394,12 @@ export class ScrumService {
          title,
          description,
          estimated_minutes,
+         duration_unit,
+         duration_value,
          MAX(task_day) AS latest_task_day
        FROM saas_scrum_tasks
        WHERE daily_task_key IS NOT NULL
-       GROUP BY daily_task_key, title, description, estimated_minutes`
+       GROUP BY daily_task_key, title, description, estimated_minutes, duration_unit, duration_value`
     );
 
     for (const row of rows) {
@@ -359,14 +412,24 @@ export class ScrumService {
            title,
            description,
            estimated_minutes,
+           duration_unit,
+           duration_value,
            difficulty,
            daily_task_key,
            task_day,
            status,
            started_at,
            completed_at
-         ) VALUES (?, ?, ?, 'blue', ?, ?, 'todo', NULL, NULL)`,
-        [row.title, row.description, Number(row.estimated_minutes), row.daily_task_key, today]
+         ) VALUES (?, ?, ?, ?, ?, 'blue', ?, ?, 'todo', NULL, NULL)`,
+        [
+          row.title,
+          row.description,
+          Number(row.estimated_minutes),
+          row.duration_unit,
+          Number(row.duration_value),
+          row.daily_task_key,
+          today
+        ]
       );
     }
   }
@@ -388,6 +451,8 @@ export class ScrumService {
          title VARCHAR(180) NOT NULL,
          description VARCHAR(500) NULL,
          estimated_minutes INT UNSIGNED NOT NULL,
+         duration_unit ENUM('days', 'weeks', 'months') NOT NULL DEFAULT 'days',
+         duration_value INT UNSIGNED NOT NULL DEFAULT 1,
          difficulty ENUM('green', 'yellow', 'red', 'blue') NOT NULL,
          daily_task_key VARCHAR(80) NULL,
          task_day DATE NOT NULL,
@@ -410,6 +475,34 @@ export class ScrumService {
 
     if (Number(descriptionColumn[0]?.total || 0) === 0) {
       await this.databaseService.execute(`ALTER TABLE saas_scrum_tasks ADD COLUMN description VARCHAR(500) NULL AFTER title`);
+    }
+
+    const durationUnitColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'saas_scrum_tasks'
+         AND column_name = 'duration_unit'`
+    );
+
+    if (Number(durationUnitColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_scrum_tasks ADD COLUMN duration_unit ENUM('days', 'weeks', 'months') NOT NULL DEFAULT 'days' AFTER estimated_minutes`
+      );
+    }
+
+    const durationValueColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'saas_scrum_tasks'
+         AND column_name = 'duration_value'`
+    );
+
+    if (Number(durationValueColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_scrum_tasks ADD COLUMN duration_value INT UNSIGNED NOT NULL DEFAULT 1 AFTER duration_unit`
+      );
     }
 
     const dailyTaskKeyColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
