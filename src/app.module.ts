@@ -5,6 +5,7 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
 import { NeonModule } from "./modules/neon/neon.module";
+import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
 import { AuthzModule } from "./shared/authz/authz.module";
 import { DatabaseModule } from "./shared/database/database.module";
@@ -22,7 +23,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     AlamcenModule,
     CamionesModule,
     NeonModule,
-    AgroModule
+    AgroModule,
+    ScrumModule
   ],
   controllers: [HealthController],
   providers: []
