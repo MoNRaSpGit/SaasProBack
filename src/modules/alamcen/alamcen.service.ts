@@ -58,6 +58,13 @@ type RankingRow = RowDataPacket & {
 const STORE_UTC_OFFSET_HOURS = 3;
 const DEFAULT_MOVEMENT_LIMIT = 20;
 const DEFAULT_RANKING_LIMIT = 10;
+const PRODUCT_LOOKUP_CACHE_TTL_MS = 1000 * 60 * 10;
+const PRODUCT_LOOKUP_CACHE_MAX_ENTRIES = 1000;
+
+type CachedProductLookup = {
+  cachedAt: number;
+  row: AlamcenProductRow | null;
+};
 
 function roundMoney(value: number | string | null | undefined) {
   return Number(Number(value || 0).toFixed(2));
@@ -152,6 +159,8 @@ function buildBusinessDateRangeUtc(dateLabel: string) {
 
 @Injectable()
 export class AlamcenService {
+  private readonly productLookupCache = new Map<string, CachedProductLookup>();
+
   constructor(private readonly databaseService: DatabaseService) {}
 
   getStatus(currentUser: AlamcenRequestUser): AlamcenStatusResponse {
@@ -295,6 +304,7 @@ export class AlamcenService {
         throw new BadRequestException("No se pudo recuperar el producto manual creado.");
       }
 
+      this.cacheProductRow(created);
       return this.mapProductRow(created);
     } catch (error) {
       const dbError = error as { code?: string };
@@ -341,6 +351,7 @@ export class AlamcenService {
       throw new NotFoundException("No encontramos el producto actualizado.");
     }
 
+    this.cacheProductRow(updated);
     return this.mapProductRow(updated);
   }
 
@@ -549,6 +560,16 @@ export class AlamcenService {
   }
 
   private async findProductRowByBarcode(tenantId: number, barcode: string) {
+    const cacheKey = this.buildProductLookupCacheKey(tenantId, barcode);
+    const cachedEntry = this.productLookupCache.get(cacheKey);
+    if (cachedEntry) {
+      if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
+        return cachedEntry.row;
+      }
+
+      this.productLookupCache.delete(cacheKey);
+    }
+
     const rows = await this.databaseService.query<AlamcenProductRow[]>(
       `SELECT
          id,
@@ -569,13 +590,54 @@ export class AlamcenService {
        FROM saas_alamcen_products
        WHERE tenant_id = ?
          AND deleted_at IS NULL
-         AND (barcode_normalized = ? OR barcode = ?)
+         AND barcode_normalized = ?
        ORDER BY (status = 'active') DESC, id ASC
        LIMIT 1`,
-      [tenantId, barcode, barcode]
+      [tenantId, barcode]
     );
 
-    return rows[0] ?? null;
+    const normalizedMatch = rows[0] ?? null;
+    if (normalizedMatch) {
+      this.setProductLookupCache(cacheKey, normalizedMatch);
+      if (normalizedMatch.barcode && normalizedMatch.barcode !== barcode) {
+        this.setProductLookupCache(this.buildProductLookupCacheKey(tenantId, normalizedMatch.barcode), normalizedMatch);
+      }
+      return normalizedMatch;
+    }
+
+    const fallbackRows = await this.databaseService.query<AlamcenProductRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         legacy_product_id,
+         name,
+         description,
+         barcode,
+         barcode_normalized,
+         sale_price,
+         list_price,
+         stock_current,
+         category,
+         image_url,
+         status,
+         created_at,
+         updated_at
+       FROM saas_alamcen_products
+       WHERE tenant_id = ?
+         AND deleted_at IS NULL
+         AND barcode = ?
+       ORDER BY (status = 'active') DESC, id ASC
+       LIMIT 1`,
+      [tenantId, barcode]
+    );
+
+    const fallbackMatch = fallbackRows[0] ?? null;
+    this.setProductLookupCache(cacheKey, fallbackMatch);
+    if (fallbackMatch) {
+      this.cacheProductRow(fallbackMatch);
+    }
+
+    return fallbackMatch;
   }
 
   private async findProductRowById(tenantId: number, productId: number) {
@@ -801,5 +863,32 @@ export class AlamcenService {
     return [...saleMovements, ...paymentMovements].sort(
       (left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
     );
+  }
+
+  private buildProductLookupCacheKey(tenantId: number, barcode: string) {
+    return `${tenantId}::${normalizeBarcode(barcode)}`;
+  }
+
+  private setProductLookupCache(cacheKey: string, row: AlamcenProductRow | null) {
+    this.productLookupCache.set(cacheKey, {
+      cachedAt: Date.now(),
+      row
+    });
+
+    if (this.productLookupCache.size <= PRODUCT_LOOKUP_CACHE_MAX_ENTRIES) {
+      return;
+    }
+
+    const oldestKey = this.productLookupCache.keys().next().value;
+    if (oldestKey) {
+      this.productLookupCache.delete(oldestKey);
+    }
+  }
+
+  private cacheProductRow(row: AlamcenProductRow) {
+    this.setProductLookupCache(this.buildProductLookupCacheKey(Number(row.tenant_id), row.barcode_normalized), row);
+    if (row.barcode && row.barcode !== row.barcode_normalized) {
+      this.setProductLookupCache(this.buildProductLookupCacheKey(Number(row.tenant_id), row.barcode), row);
+    }
   }
 }
