@@ -1,4 +1,4 @@
-import { IsIn, IsInt, Min } from "class-validator";
+import { IsIn, IsInt, IsOptional, Min } from "class-validator";
 
 export class UpdateScrumTaskDurationDto {
   @IsIn(["days", "weeks", "months"])
@@ -7,4 +7,8 @@ export class UpdateScrumTaskDurationDto {
   @IsInt()
   @Min(1)
   durationValue!: number;
+
+  @IsOptional()
+  @IsIn(["green", "yellow", "red", "blue"])
+  difficulty?: "green" | "yellow" | "red" | "blue";
 }

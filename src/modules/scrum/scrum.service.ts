@@ -3,6 +3,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
+import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 
@@ -166,6 +167,23 @@ export class ScrumService {
            duration_value = ?
        WHERE id = ?`,
       [duration.durationUnit, duration.durationValue, taskId]
+    );
+
+    return {
+      ok: true,
+      item: await this.getTaskById(taskId)
+    };
+  }
+
+  async updateTaskDifficulty(taskId: number, dto: UpdateScrumTaskDifficultyDto) {
+    await this.ensureTables();
+    await this.assertTaskExists(taskId);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_scrum_tasks
+       SET difficulty = ?
+       WHERE id = ?`,
+      [dto.difficulty, taskId]
     );
 
     return {

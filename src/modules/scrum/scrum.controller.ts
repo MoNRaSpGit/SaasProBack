@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
+import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { ScrumService } from "./scrum.service";
@@ -27,6 +28,11 @@ export class ScrumController {
   @Patch("tasks/:id/duration")
   updateTaskDuration(@Param("id", ParseIntPipe) taskId: number, @Body() dto: UpdateScrumTaskDurationDto) {
     return this.scrumService.updateTaskDuration(taskId, dto);
+  }
+
+  @Patch("tasks/:id/difficulty")
+  updateTaskDifficulty(@Param("id", ParseIntPipe) taskId: number, @Body() dto: UpdateScrumTaskDifficultyDto) {
+    return this.scrumService.updateTaskDifficulty(taskId, dto);
   }
 
   @Delete("tasks/:id")
