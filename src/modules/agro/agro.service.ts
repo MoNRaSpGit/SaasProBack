@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { SaveAgroDiscoveryResponseDto } from "./dto/save-agro-discovery-response.dto";
@@ -115,6 +115,24 @@ export class AgroService {
   async saveWorkspace(currentUser: AgroRequestUser, dto: SaveAgroWorkspaceDto) {
     await this.ensureTenantWorkspaceTable();
 
+    const currentRows = await this.databaseService.query<TenantAgroWorkspaceRow[]>(
+      `SELECT
+         id,
+         tenant_id,
+         workspace_key,
+         version,
+         workspace_json,
+         updated_at
+       FROM saas_agro_workspaces
+       WHERE tenant_id = ?
+         AND workspace_key = ?
+       LIMIT 1`,
+      [currentUser.tenantId, AGRO_WORKSPACE_PUBLIC_KEY]
+    );
+    const currentWorkspace = currentRows[0] ? this.parseWorkspaceJson(currentRows[0].workspace_json) : null;
+    const nextWorkspace = this.createWorkspaceDataFromDto(dto);
+    this.assertWorkspaceSaveIsNotAccidentalWipe(currentWorkspace, nextWorkspace);
+
     await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_agro_workspaces (
          tenant_id,
@@ -130,15 +148,7 @@ export class AgroService {
         currentUser.tenantId,
         AGRO_WORKSPACE_PUBLIC_KEY,
         AGRO_WORKSPACE_VERSION,
-        JSON.stringify({
-          establishments: dto.establishments,
-          fields: dto.fields,
-          animalMovements: dto.animalMovements,
-          accountingEntries: dto.accountingEntries,
-          rainfallRecords: dto.rainfallRecords,
-          sanitaryRecords: dto.sanitaryRecords,
-          monthlyExchangeRates: dto.monthlyExchangeRates
-        } satisfies AgroWorkspaceData)
+        JSON.stringify(nextWorkspace)
       ]
     );
 
@@ -266,6 +276,55 @@ export class AgroService {
       sanitaryRecords: Array.isArray(workspace.sanitaryRecords) ? workspace.sanitaryRecords : [],
       monthlyExchangeRates: Array.isArray(workspace.monthlyExchangeRates) ? workspace.monthlyExchangeRates : []
     };
+  }
+
+  private createWorkspaceDataFromDto(dto: SaveAgroWorkspaceDto): AgroWorkspaceData {
+    return {
+      establishments: dto.establishments,
+      fields: dto.fields,
+      animalMovements: dto.animalMovements,
+      accountingEntries: dto.accountingEntries,
+      rainfallRecords: dto.rainfallRecords,
+      sanitaryRecords: dto.sanitaryRecords,
+      monthlyExchangeRates: dto.monthlyExchangeRates
+    };
+  }
+
+  private assertWorkspaceSaveIsNotAccidentalWipe(currentWorkspace: AgroWorkspaceData | null, nextWorkspace: AgroWorkspaceData) {
+    if (!currentWorkspace) {
+      return;
+    }
+
+    const currentCount = this.countWorkspaceRecords(currentWorkspace);
+    const nextCount = this.countWorkspaceRecords(nextWorkspace);
+
+    if (currentCount < 10) {
+      return;
+    }
+
+    const nextHasNoCoreData =
+      nextWorkspace.establishments.length === 0 &&
+      nextWorkspace.fields.length === 0 &&
+      nextWorkspace.animalMovements.length === 0;
+    const nextLostAlmostEverything = nextCount <= 2 && currentCount - nextCount >= 10;
+
+    if (nextHasNoCoreData || nextLostAlmostEverything) {
+      throw new BadRequestException(
+        "Se bloqueo un guardado de Agro porque parecia vaciar informacion existente. Actualiza la app e intenta de nuevo."
+      );
+    }
+  }
+
+  private countWorkspaceRecords(workspace: AgroWorkspaceData) {
+    return (
+      workspace.establishments.length +
+      workspace.fields.length +
+      workspace.animalMovements.length +
+      workspace.accountingEntries.length +
+      workspace.rainfallRecords.length +
+      workspace.sanitaryRecords.length +
+      workspace.monthlyExchangeRates.length
+    );
   }
 
   private getEmptyWorkspace(): AgroWorkspaceRecord {
