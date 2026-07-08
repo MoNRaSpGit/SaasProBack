@@ -301,6 +301,8 @@ export class AlamcenService {
       throw new BadRequestException("El codigo de barras es obligatorio.");
     }
 
+    const manualName = normalizeText(payload.name, 180) || "S/N";
+
     const existingProduct = await this.findProductByBarcode(currentUser.tenantId, barcode);
     if (existingProduct) {
       return existingProduct;
@@ -320,7 +322,7 @@ export class AlamcenService {
            status,
            source
          ) VALUES (?, ?, ?, ?, ?, 0, ?, NULL, 'active', 'manual')`,
-        [currentUser.tenantId, "Producto Manual", barcode, barcode, payload.price, "manual"]
+        [currentUser.tenantId, manualName, barcode, barcode, payload.price, "manual"]
       );
 
       const created = await this.findProductRowById(currentUser.tenantId, Number(result.insertId));
