@@ -397,6 +397,7 @@ export class AlamcenService {
   }
 
   async createSale(currentUser: AlamcenRequestUser, payload: CreateAlamcenSaleDto) {
+    const businessDate = getStoreDateLabel();
     const normalizedItems = payload.items.map((item) => {
       const nombre = normalizeText(item.nombre, 180);
       if (!nombre) {
@@ -470,6 +471,19 @@ export class AlamcenService {
             ]
           );
         }
+
+        await connection.execute<ResultSetHeader>(
+          `INSERT INTO saas_alamcen_dashboard_daily (
+             tenant_id,
+             business_date,
+             initial_cash,
+             sales_total
+           ) VALUES (?, ?, 0, ?)
+           ON DUPLICATE KEY UPDATE
+             sales_total = sales_total + VALUES(sales_total),
+             updated_at = CURRENT_TIMESTAMP`,
+          [currentUser.tenantId, businessDate, totalAmount]
+        );
 
         return createdSaleId;
       });
@@ -830,14 +844,9 @@ export class AlamcenService {
 
   private async getBestSalesDayTotal(tenantId: number) {
     const rows = await this.databaseService.query<Array<RowDataPacket & { best_total: string | number }>>(
-      `SELECT COALESCE(MAX(day_total), 0) AS best_total
-       FROM (
-         SELECT DATE(DATE_SUB(created_at, INTERVAL ${STORE_UTC_OFFSET_HOURS} HOUR)) AS business_date, SUM(total_amount) AS day_total
-         FROM saas_alamcen_sales
-         WHERE tenant_id = ?
-           AND status = 'confirmed'
-         GROUP BY DATE(DATE_SUB(created_at, INTERVAL ${STORE_UTC_OFFSET_HOURS} HOUR))
-       ) grouped_days`,
+      `SELECT COALESCE(MAX(sales_total), 0) AS best_total
+       FROM saas_alamcen_dashboard_daily
+       WHERE tenant_id = ?`,
       [tenantId]
     );
 
