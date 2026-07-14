@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AlamcenModule } from "./modules/alamcen/alamcen.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
+import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
 import { NeonModule } from "./modules/neon/neon.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
@@ -24,7 +25,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     CamionesModule,
     NeonModule,
     AgroModule,
-    ScrumModule
+    ScrumModule,
+    CarnetModule
   ],
   controllers: [HealthController],
   providers: []
