@@ -12,6 +12,8 @@ type CarnetPlayerRow = RowDataPacket & {
   id: number;
   name: string;
   expiry_date: string | Date;
+  sex: "masculino" | "femenino" | null;
+  sales_count: number | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
@@ -41,6 +43,8 @@ type CarnetEventItemRow = RowDataPacket & {
 
 @Injectable()
 export class CarnetService {
+  private tablesReady: Promise<void> | null = null;
+
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getStatus(): Promise<CarnetStatus> {
@@ -68,6 +72,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
@@ -154,6 +160,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
@@ -226,19 +234,23 @@ export class CarnetService {
 
     const name = dto.name.trim();
     const expiryDate = this.normalizeDate(dto.expiryDate);
+    const sex = dto.sex;
 
     const duplicateRows = await this.databaseService.query<CarnetPlayerRow[]>(
       `SELECT
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
        WHERE LOWER(name) = LOWER(?)
          AND expiry_date = ?
+         AND sex = ?
        LIMIT 1`,
-      [name, expiryDate]
+      [name, expiryDate, sex]
     );
 
     if (duplicateRows[0]) {
@@ -248,9 +260,11 @@ export class CarnetService {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_carnet_players (
          name,
-         expiry_date
-       ) VALUES (?, ?)`,
-      [name, expiryDate]
+         expiry_date,
+         sex,
+         sales_count
+       ) VALUES (?, ?, ?, ?)`,
+      [name, expiryDate, sex, dto.sales ?? null]
     );
 
     const rows = await this.databaseService.query<CarnetPlayerRow[]>(
@@ -258,6 +272,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
@@ -331,6 +347,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
@@ -346,20 +364,25 @@ export class CarnetService {
     const currentPlayer = currentRows[0];
     const nextName = dto.name?.trim() || currentPlayer.name;
     const nextExpiryDate = dto.expiryDate ? this.normalizeDate(dto.expiryDate) : this.toIsoDate(currentPlayer.expiry_date);
+    const nextSex = dto.sex ?? (currentPlayer.sex ?? "masculino");
+    const nextSales = dto.sales ?? currentPlayer.sales_count;
 
     const duplicateRows = await this.databaseService.query<CarnetPlayerRow[]>(
       `SELECT
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
        WHERE LOWER(name) = LOWER(?)
          AND expiry_date = ?
+         AND sex = ?
          AND id <> ?
        LIMIT 1`,
-      [nextName, nextExpiryDate, playerId]
+      [nextName, nextExpiryDate, nextSex, playerId]
     );
 
     if (duplicateRows[0]) {
@@ -369,9 +392,11 @@ export class CarnetService {
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_carnet_players
        SET name = ?,
-           expiry_date = ?
+           expiry_date = ?,
+           sex = ?,
+           sales_count = ?
        WHERE id = ?`,
-      [nextName, nextExpiryDate, playerId]
+      [nextName, nextExpiryDate, nextSex, nextSales, playerId]
     );
 
     const rows = await this.databaseService.query<CarnetPlayerRow[]>(
@@ -379,6 +404,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
@@ -398,6 +425,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players
@@ -436,6 +465,8 @@ export class CarnetService {
       id: row.id,
       name: row.name,
       expiryDate: this.toIsoDate(row.expiry_date),
+      sex: (row.sex ?? "masculino") as "masculino" | "femenino",
+      sales: row.sales_count === null ? null : Number(row.sales_count),
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)
     };
@@ -464,8 +495,14 @@ export class CarnetService {
   }
 
   private async ensureTables() {
-    await this.ensurePlayerTable();
-    await this.ensureEventTables();
+    if (!this.tablesReady) {
+      this.tablesReady = (async () => {
+        await this.ensurePlayerTable();
+        await this.ensureEventTables();
+      })();
+    }
+
+    await this.tablesReady;
   }
 
   private async ensurePlayerTable() {
@@ -474,13 +511,43 @@ export class CarnetService {
          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
          name VARCHAR(120) NOT NULL,
          expiry_date DATE NOT NULL,
+         sex VARCHAR(20) NOT NULL DEFAULT 'masculino',
+         sales_count INT NULL DEFAULT NULL,
          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
          PRIMARY KEY (id),
          KEY idx_saas_carnet_players_expiry_date (expiry_date),
-         KEY idx_saas_carnet_players_name (name)
+         KEY idx_saas_carnet_players_name (name),
+         KEY idx_saas_carnet_players_sex (sex)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    const hasSexColumn = await this.hasColumn("saas_carnet_players", "sex");
+    if (!hasSexColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_players
+         ADD COLUMN sex VARCHAR(20) NULL DEFAULT NULL`
+      );
+    }
+
+    await this.databaseService.execute(
+      `UPDATE saas_carnet_players
+       SET sex = 'masculino'
+       WHERE sex IS NULL OR sex = ''`
+    );
+
+    await this.databaseService.execute(
+      `ALTER TABLE saas_carnet_players
+       MODIFY COLUMN sex VARCHAR(20) NOT NULL DEFAULT 'masculino'`
+    );
+
+    const hasSalesColumn = await this.hasColumn("saas_carnet_players", "sales_count");
+    if (!hasSalesColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_players
+         ADD COLUMN sales_count INT NULL DEFAULT NULL`
+      );
+    }
   }
 
   private async ensureEventTables() {
@@ -577,6 +644,8 @@ export class CarnetService {
          id,
          name,
          expiry_date,
+         sex,
+         sales_count,
          created_at,
          updated_at
        FROM saas_carnet_players

@@ -1,4 +1,4 @@
-import { IsDateString, IsString, MaxLength, MinLength } from "class-validator";
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
 
 export class CreateCarnetPlayerDto {
   @IsString()
@@ -8,4 +8,13 @@ export class CreateCarnetPlayerDto {
 
   @IsDateString()
   expiryDate!: string;
+
+  @IsString()
+  @IsIn(["masculino", "femenino"])
+  sex!: "masculino" | "femenino";
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  sales?: number;
 }

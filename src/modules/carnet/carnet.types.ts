@@ -1,7 +1,11 @@
+export type CarnetSex = "masculino" | "femenino";
+
 export type CarnetPlayer = {
   id: number;
   name: string;
   expiryDate: string;
+  sex: CarnetSex;
+  sales: number | null;
   createdAt: string;
   updatedAt: string;
 };
