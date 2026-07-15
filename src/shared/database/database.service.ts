@@ -65,8 +65,7 @@ export class DatabaseService implements OnModuleDestroy {
   }
 
   async checkConnection() {
-    const [rows] = await this.pool.query("SELECT 1 AS ok");
-    return rows;
+    return this.withTransientRetry(() => this.pool.query("SELECT 1 AS ok"));
   }
 
   private normalizeValues(values: Array<SqlValue | undefined>) {
@@ -74,12 +73,12 @@ export class DatabaseService implements OnModuleDestroy {
   }
 
   async query<T extends RowDataPacket[]>(sql: string, values: Array<SqlValue | undefined> = []) {
-    const [rows] = await this.pool.query<T>(sql, this.normalizeValues(values));
+    const [rows] = await this.withTransientRetry(() => this.pool.query<T>(sql, this.normalizeValues(values)));
     return rows;
   }
 
   async execute<T extends QueryResult>(sql: string, values: Array<SqlValue | undefined> = []) {
-    const [result] = await this.pool.execute<T>(sql, this.normalizeValues(values));
+    const [result] = await this.withTransientRetry(() => this.pool.execute<T>(sql, this.normalizeValues(values)));
     return result;
   }
 
@@ -121,5 +120,20 @@ export class DatabaseService implements OnModuleDestroy {
 
   async onModuleDestroy() {
     await this.pool.end();
+  }
+
+  private async withTransientRetry<T>(operation: () => Promise<T>, attempt = 0): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      const err = error as { code?: string };
+      const transientCodes = new Set(["ECONNRESET", "PROTOCOL_CONNECTION_LOST", "ETIMEDOUT", "EPIPE"]);
+
+      if (attempt === 0 && transientCodes.has(err.code ?? "")) {
+        return this.withTransientRetry(operation, 1);
+      }
+
+      throw error;
+    }
   }
 }
