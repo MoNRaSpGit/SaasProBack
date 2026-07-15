@@ -1,9 +1,12 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
+import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
 import { UpdateCarnetPlayerDto } from "./dto/update-carnet-player.dto";
-import { CarnetPlayer, CarnetStatus } from "./carnet.types";
+import { UpsertCarnetEventPlayerDto } from "./dto/upsert-carnet-event-player.dto";
+import { CarnetEvent, CarnetEventDetail, CarnetEventRankingItem, CarnetPlayer, CarnetStatus } from "./carnet.types";
 
 type CarnetPlayerRow = RowDataPacket & {
   id: number;
@@ -13,18 +16,43 @@ type CarnetPlayerRow = RowDataPacket & {
   updated_at: string | Date;
 };
 
+type CarnetEventRow = RowDataPacket & {
+  id: number;
+  name: string;
+  end_date: string | Date | null;
+  created_at: string | Date;
+  updated_at: string | Date;
+  players_count: number;
+  total_sales: number;
+};
+
+type CarnetEventItemRow = RowDataPacket & {
+  id: number;
+  event_id: number;
+  player_id: number;
+  sales_count: number;
+  created_at: string | Date;
+  updated_at: string | Date;
+  player_name: string;
+  player_expiry_date: string | Date;
+  player_created_at: string | Date;
+  player_updated_at: string | Date;
+};
+
 @Injectable()
 export class CarnetService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getStatus(): Promise<CarnetStatus> {
-    await this.ensureTable();
+    await this.ensureTables();
     const count = await this.countPlayers();
+    const eventsCount = await this.countEvents();
 
     return {
       module: "carnet",
       status: "ok",
       playersCount: count,
+      eventsCount,
       backend: {
         database: "connected",
         currentTimestamp: new Date().toISOString()
@@ -33,7 +61,7 @@ export class CarnetService {
   }
 
   async listPlayers() {
-    await this.ensureTable();
+    await this.ensureTables();
 
     const rows = await this.databaseService.query<CarnetPlayerRow[]>(
       `SELECT
@@ -54,8 +82,147 @@ export class CarnetService {
     };
   }
 
+  async listEvents() {
+    await this.ensureTables();
+
+    const rows = await this.databaseService.query<CarnetEventRow[]>(
+      `SELECT
+         e.id,
+         e.name,
+         e.end_date,
+         e.created_at,
+         e.updated_at,
+         COUNT(ep.id) AS players_count,
+         COALESCE(SUM(ep.sales_count), 0) AS total_sales
+       FROM saas_carnet_events e
+       LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
+       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       ORDER BY e.created_at DESC`
+    );
+
+    return {
+      items: rows.map((row) => this.mapEvent(row))
+    };
+  }
+
+  async getEvent(eventId: number): Promise<{ item: CarnetEventDetail }> {
+    await this.ensureTables();
+
+    const eventRows = await this.databaseService.query<CarnetEventRow[]>(
+      `SELECT
+         e.id,
+         e.name,
+         e.end_date,
+         e.created_at,
+         e.updated_at,
+         COUNT(ep.id) AS players_count,
+         COALESCE(SUM(ep.sales_count), 0) AS total_sales
+       FROM saas_carnet_events e
+       LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
+       WHERE e.id = ?
+       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       LIMIT 1`,
+      [eventId]
+    );
+
+    const eventRow = eventRows[0];
+    if (!eventRow) {
+      throw new BadRequestException("Evento no encontrado");
+    }
+
+    const rankingRows = await this.databaseService.query<CarnetEventItemRow[]>(
+      `SELECT
+         ep.id,
+         ep.event_id,
+         ep.player_id,
+         ep.sales_count,
+         ep.created_at,
+         ep.updated_at,
+         p.name AS player_name,
+         p.expiry_date AS player_expiry_date,
+         p.created_at AS player_created_at,
+         p.updated_at AS player_updated_at
+       FROM saas_carnet_event_players ep
+       INNER JOIN saas_carnet_players p ON p.id = ep.player_id
+       WHERE ep.event_id = ?
+       ORDER BY ep.sales_count DESC, p.name ASC, ep.updated_at DESC`,
+      [eventId]
+    );
+
+    const playersRows = await this.databaseService.query<CarnetPlayerRow[]>(
+      `SELECT
+         id,
+         name,
+         expiry_date,
+         created_at,
+         updated_at
+       FROM saas_carnet_players
+       ORDER BY name ASC`
+    );
+
+    return {
+      item: {
+        event: this.mapEvent(eventRow),
+        players: playersRows.map((row) => this.mapPlayer(row)),
+        ranking: rankingRows.map((row, index) => this.mapEventRankingItem(row, index + 1))
+      }
+    };
+  }
+
+  async createEvent(dto: CreateCarnetEventDto) {
+    await this.ensureTables();
+
+    const name = dto.name.trim();
+    if (!name) {
+      throw new BadRequestException("El nombre del evento es obligatorio");
+    }
+
+    const duplicateRows = await this.databaseService.query<CarnetEventRow[]>(
+      `SELECT
+         e.id,
+         e.name,
+         e.end_date,
+         e.created_at,
+         e.updated_at,
+         COUNT(ep.id) AS players_count,
+         COALESCE(SUM(ep.sales_count), 0) AS total_sales
+       FROM saas_carnet_events e
+       LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
+       WHERE LOWER(e.name) = LOWER(?)
+       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       LIMIT 1`,
+      [name]
+    );
+
+    if (duplicateRows[0]) {
+      return { item: this.mapEvent(duplicateRows[0]) };
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_carnet_events (name, end_date) VALUES (?, ?)`,
+      [name, this.normalizeDate(dto.endDate)]
+    );
+
+    const rows = await this.databaseService.query<CarnetEventRow[]>(
+      `SELECT
+         e.id,
+         e.name,
+         e.end_date,
+         e.created_at,
+         e.updated_at,
+         0 AS players_count,
+         0 AS total_sales
+       FROM saas_carnet_events e
+       WHERE e.id = ?
+       LIMIT 1`,
+      [result.insertId]
+    );
+
+    return { item: this.mapEvent(rows[0]) };
+  }
+
   async createPlayer(dto: CreateCarnetPlayerDto) {
-    await this.ensureTable();
+    await this.ensureTables();
 
     const name = dto.name.trim();
     const expiryDate = this.normalizeDate(dto.expiryDate);
@@ -102,8 +269,62 @@ export class CarnetService {
     return { item: this.mapPlayer(rows[0]) };
   }
 
+  async upsertEventPlayer(eventId: number, dto: UpsertCarnetEventPlayerDto) {
+    await this.ensureTables();
+
+    const event = await this.findEventById(eventId);
+    if (!event) {
+      throw new BadRequestException("Evento no encontrado");
+    }
+
+    const player = await this.findPlayerById(dto.playerId);
+    if (!player) {
+      throw new BadRequestException("Jugador no encontrado");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_carnet_event_players (
+         event_id,
+         player_id,
+         sales_count
+       ) VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         sales_count = VALUES(sales_count)`,
+      [eventId, dto.playerId, dto.sales]
+    );
+
+    return this.getEvent(eventId);
+  }
+
+  async updateEventPlayer(eventId: number, playerId: number, dto: UpdateCarnetEventPlayerDto) {
+    await this.ensureTables();
+
+    const event = await this.findEventById(eventId);
+    if (!event) {
+      throw new BadRequestException("Evento no encontrado");
+    }
+
+    const player = await this.findPlayerById(playerId);
+    if (!player) {
+      throw new BadRequestException("Jugador no encontrado");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_carnet_event_players
+       SET sales_count = ?
+       WHERE event_id = ? AND player_id = ?`,
+      [dto.sales, eventId, playerId]
+    );
+
+    if (!result.affectedRows) {
+      throw new BadRequestException("El jugador no esta cargado en este evento");
+    }
+
+    return this.getEvent(eventId);
+  }
+
   async updatePlayer(playerId: number, dto: UpdateCarnetPlayerDto) {
-    await this.ensureTable();
+    await this.ensureTables();
 
     const currentRows = await this.databaseService.query<CarnetPlayerRow[]>(
       `SELECT
@@ -170,7 +391,7 @@ export class CarnetService {
   }
 
   async deletePlayer(playerId: number) {
-    await this.ensureTable();
+    await this.ensureTables();
 
     const currentRows = await this.databaseService.query<CarnetPlayerRow[]>(
       `SELECT
@@ -190,6 +411,12 @@ export class CarnetService {
     }
 
     const player = this.mapPlayer(currentRows[0]);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_carnet_event_players
+       WHERE player_id = ?`,
+      [playerId]
+    );
 
     await this.databaseService.execute<ResultSetHeader>(
       `DELETE FROM saas_carnet_players
@@ -214,7 +441,34 @@ export class CarnetService {
     };
   }
 
-  private async ensureTable() {
+  private mapEvent(row: CarnetEventRow): CarnetEvent {
+    return {
+      id: row.id,
+      name: row.name,
+      endDate: this.toIsoDateNullable(row.end_date),
+      createdAt: this.toIsoString(row.created_at),
+      updatedAt: this.toIsoString(row.updated_at),
+      playersCount: Number(row.players_count || 0),
+      totalSales: Number(row.total_sales || 0)
+    };
+  }
+
+  private mapEventRankingItem(row: CarnetEventItemRow, position: number): CarnetEventRankingItem {
+    return {
+      id: row.id,
+      playerId: row.player_id,
+      playerName: row.player_name,
+      sales: Number(row.sales_count || 0),
+      position
+    };
+  }
+
+  private async ensureTables() {
+    await this.ensurePlayerTable();
+    await this.ensureEventTables();
+  }
+
+  private async ensurePlayerTable() {
     await this.databaseService.execute(
       `CREATE TABLE IF NOT EXISTS saas_carnet_players (
          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -229,6 +483,55 @@ export class CarnetService {
     );
   }
 
+  private async ensureEventTables() {
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_carnet_events (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         name VARCHAR(120) NOT NULL,
+         end_date DATE NOT NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         UNIQUE KEY uq_saas_carnet_events_name (name)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+
+    const hasEndDateColumn = await this.hasColumn("saas_carnet_events", "end_date");
+
+    if (!hasEndDateColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_events
+         ADD COLUMN end_date DATE NULL`
+      );
+    }
+
+    await this.databaseService.execute(
+      `UPDATE saas_carnet_events
+       SET end_date = CURRENT_DATE
+       WHERE end_date IS NULL`
+    );
+
+    await this.databaseService.execute(
+      `ALTER TABLE saas_carnet_events
+       MODIFY COLUMN end_date DATE NOT NULL`
+    );
+
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_carnet_event_players (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         event_id BIGINT UNSIGNED NOT NULL,
+         player_id BIGINT UNSIGNED NOT NULL,
+         sales_count INT NOT NULL DEFAULT 0,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         UNIQUE KEY uq_saas_carnet_event_players_event_player (event_id, player_id),
+         KEY idx_saas_carnet_event_players_event_sales (event_id, sales_count),
+         KEY idx_saas_carnet_event_players_player (player_id)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+  }
+
   private async countPlayers() {
     const rows = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
       `SELECT COUNT(*) AS total
@@ -236,6 +539,66 @@ export class CarnetService {
     );
 
     return Number(rows[0]?.total || 0);
+  }
+
+  private async countEvents() {
+    const rows = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM saas_carnet_events`
+    );
+
+    return Number(rows[0]?.total || 0);
+  }
+
+  private async findEventById(eventId: number) {
+    const rows = await this.databaseService.query<CarnetEventRow[]>(
+      `SELECT
+         e.id,
+         e.name,
+         e.end_date,
+         e.created_at,
+         e.updated_at,
+         COUNT(ep.id) AS players_count,
+         COALESCE(SUM(ep.sales_count), 0) AS total_sales
+       FROM saas_carnet_events e
+       LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
+       WHERE e.id = ?
+       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       LIMIT 1`,
+      [eventId]
+    );
+
+    return rows[0] ? this.mapEvent(rows[0]) : null;
+  }
+
+  private async findPlayerById(playerId: number) {
+    const rows = await this.databaseService.query<CarnetPlayerRow[]>(
+      `SELECT
+         id,
+         name,
+         expiry_date,
+         created_at,
+         updated_at
+       FROM saas_carnet_players
+       WHERE id = ?
+       LIMIT 1`,
+      [playerId]
+    );
+
+    return rows[0] ? this.mapPlayer(rows[0]) : null;
+  }
+
+  private async hasColumn(tableName: string, columnName: string) {
+    const rows = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [tableName, columnName]
+    );
+
+    return Number(rows[0]?.total || 0) > 0;
   }
 
   private normalizeDate(value: string) {
@@ -268,5 +631,13 @@ export class CarnetService {
     }
 
     return value;
+  }
+
+  private toIsoDateNullable(value: string | Date | null) {
+    if (!value) {
+      return null;
+    }
+
+    return this.toIsoDate(value);
   }
 }
