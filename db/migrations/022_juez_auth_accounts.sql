@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS juez_accounts (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  email VARCHAR(191) NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  full_name VARCHAR(120) NULL,
+  city VARCHAR(120) NULL,
+  roles_json TEXT NOT NULL,
+  account_role ENUM('admin', 'juez') NOT NULL DEFAULT 'juez',
+  is_verified TINYINT(1) NOT NULL DEFAULT 0,
+  verification_token_hash VARCHAR(255) NULL,
+  verification_expires_at DATETIME NULL,
+  verified_at DATETIME NULL,
+  last_login_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_juez_accounts_email (email),
+  KEY idx_juez_accounts_token_hash (verification_token_hash),
+  KEY idx_juez_accounts_verified (is_verified, verified_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
