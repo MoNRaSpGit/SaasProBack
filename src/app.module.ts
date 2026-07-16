@@ -5,7 +5,7 @@ import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
 import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
-import { JuezAuthModule } from "./modules/juez-auth/juez-auth.module";
+import { JuezModule } from "./modules/juez/juez.module";
 import { NeonModule } from "./modules/neon/neon.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
@@ -28,7 +28,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     AgroModule,
     ScrumModule,
     CarnetModule,
-    JuezAuthModule
+    JuezModule
   ],
   controllers: [HealthController],
   providers: []
