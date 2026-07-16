@@ -460,7 +460,10 @@ export class ScrumService {
 
   private async ensureTables() {
     if (!this.ensureTablesPromise) {
-      this.ensureTablesPromise = this.createTables();
+      this.ensureTablesPromise = this.createTables().catch((error) => {
+        this.ensureTablesPromise = null;
+        throw error;
+      });
     }
 
     await this.ensureTablesPromise;

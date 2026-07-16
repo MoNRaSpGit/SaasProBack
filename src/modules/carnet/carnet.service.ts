@@ -499,7 +499,10 @@ export class CarnetService {
       this.tablesReady = (async () => {
         await this.ensurePlayerTable();
         await this.ensureEventTables();
-      })();
+      })().catch((error) => {
+        this.tablesReady = null;
+        throw error;
+      });
     }
 
     await this.tablesReady;
