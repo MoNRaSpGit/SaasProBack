@@ -1,6 +1,6 @@
 # Inventario operativo del backend
 
-Fecha de actualizacion: 2026-06-11
+Fecha de actualizacion: 2026-07-16
 
 ## Objetivo
 
@@ -15,20 +15,30 @@ Dar un mapa rapido del backend real para orientarse sin recorrer todo el repo a 
 
 ## Modulos presentes en `src/modules`
 
+Ver [decision-008](../decisions/decision-008-frontend-dedicado-sin-tenant-para-productos-nuevos.md)
+para la explicacion completa de los dos patrones. Cada modulo se marca aca con el patron
+que usa.
+
 ### Core operativo
 
-- `auth`
-- `saas-admin`
+- `auth` (patron legacy - emite y valida JWT/tenant para los modulos que lo usan)
+- `saas-admin` (patron legacy)
 
-### Productos activos documentados
+### Productos activos documentados (patron legacy - multi-tenant compartido)
 
 - `neon`
 - `agro`
 
-### Modulos presentes fuera del alcance oficial actual
+### Modulos con datos reales fuera del alcance oficial actual (patron legacy)
 
 - `camiones`
 - `alamcen`
+
+### Modulos con frontend dedicado (patron nuevo - sin tenant, tablas propias)
+
+- `carnet` - frontend `frontend-carnet`, tablas `saas_carnet_*`, sin auth
+- `scrum` - frontend `frontend-scrum`, tablas `saas_scrum_*`, sin auth
+- `juez-auth` - tablas propias de cuentas juez, sin el sistema de tenant compartido
 
 ## Shared relevante
 

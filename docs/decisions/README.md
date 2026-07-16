@@ -37,3 +37,4 @@ Eso va en bitacoras o en la documentacion del frontend correspondiente.
 - [Decision 005 - Cobro, gracia y bloqueo del tenant](./decision-005-cobro-gracia-y-bloqueo.md)
 - [Decision 006 - Panel interno SaaS Lite](./decision-006-panel-interno-saas-lite.md)
 - [Decision 007 - Frontends por producto sobre backend unico](./decision-007-frontends-por-producto.md)
+- [Decision 008 - Frontend dedicado sin tenant para productos nuevos](./decision-008-frontend-dedicado-sin-tenant-para-productos-nuevos.md)

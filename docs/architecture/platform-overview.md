@@ -15,12 +15,28 @@ Definir la estructura oficial del backend de `SaasPro` para crecer sin ruido.
 
 ## Regla de arquitectura
 
-- un solo backend SaaS multi-tenant
-- un frontend por producto cuando el modulo madura
-- no se crean frontends por cliente individual
+- un solo backend SaaS
+- una sola base de datos, con tablas propias por modulo (`saas_<modulo>_*`)
+- un frontend dedicado por cliente o variante real (no un frontend generico reusado)
 - los frontends se construyen por capas separadas cuando el modulo ya tiene complejidad real
 - cada repo mantiene su propia carpeta `docs/`
 - `backend/docs` conserva la documentacion estructural y operativa del backend
+
+## Dos patrones de producto conviven hoy
+
+Ver [decision-008](../decisions/decision-008-frontend-dedicado-sin-tenant-para-productos-nuevos.md)
+para el detalle completo. Resumen:
+
+- **Patron legacy (multi-tenant compartido)**: `agro`, `neon`, `alamcen`, `camiones`,
+  `saas-admin`. Login con JWT, `saas_tenants` / `saas_tenant_memberships` /
+  `saas_tenant_modules`, tablas de negocio con `tenant_id`. Pensado para que un mismo
+  frontend sirva a varios clientes con datos aislados por fila. No se toca ni se migra.
+- **Patron nuevo (frontend dedicado, sin tenant)**: `carnet`, `scrum`, `juez-auth`, y todo
+  producto que se arme de aca en adelante. Un frontend por cliente o variante, tablas
+  propias del modulo sin `tenant_id`, sin pasar por el login/tenant compartido. El
+  aislamiento de datos es por tabla, no por fila.
+
+Todo modulo nuevo sigue el patron dedicado salvo decision explicita en contrario.
 
 ## Regla de frontend por capas
 
@@ -115,6 +131,7 @@ Regla actual:
 - metodo de trabajo: [work-method.md](./work-method.md)
 - PF: [pf-checklist.md](./pf-checklist.md)
 - alcance oficial del producto: [product-scope.md](./product-scope.md)
+- pivot a frontend dedicado sin tenant: [decision-008](../decisions/decision-008-frontend-dedicado-sin-tenant-para-productos-nuevos.md)
 
 ## Fuente de verdad actual
 
