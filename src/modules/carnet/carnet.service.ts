@@ -13,6 +13,8 @@ type CarnetPlayerRow = RowDataPacket & {
   name: string;
   expiry_date: string | Date;
   sex: "masculino" | "femenino" | null;
+  cedula: string | null;
+  birth_date: string | Date | null;
   sales_count: number | null;
   created_at: string | Date;
   updated_at: string | Date;
@@ -73,6 +75,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -161,6 +165,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -242,6 +248,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -262,9 +270,18 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count
-       ) VALUES (?, ?, ?, ?)`,
-      [name, expiryDate, sex, dto.sales ?? null]
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        expiryDate,
+        sex,
+        dto.cedula.trim(),
+        this.normalizeDate(dto.birthDate, "Fecha de nacimiento invalida"),
+        dto.sales ?? null
+      ]
     );
 
     const rows = await this.databaseService.query<CarnetPlayerRow[]>(
@@ -273,6 +290,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -348,6 +367,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -365,6 +386,10 @@ export class CarnetService {
     const nextName = dto.name?.trim() || currentPlayer.name;
     const nextExpiryDate = dto.expiryDate ? this.normalizeDate(dto.expiryDate) : this.toIsoDate(currentPlayer.expiry_date);
     const nextSex = dto.sex ?? (currentPlayer.sex ?? "masculino");
+    const nextCedula = dto.cedula?.trim() ?? currentPlayer.cedula;
+    const nextBirthDate = dto.birthDate
+      ? this.normalizeDate(dto.birthDate, "Fecha de nacimiento invalida")
+      : this.toIsoDateNullable(currentPlayer.birth_date);
     const nextSales = dto.sales ?? currentPlayer.sales_count;
 
     const duplicateRows = await this.databaseService.query<CarnetPlayerRow[]>(
@@ -373,6 +398,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -394,9 +421,11 @@ export class CarnetService {
        SET name = ?,
            expiry_date = ?,
            sex = ?,
+           cedula = ?,
+           birth_date = ?,
            sales_count = ?
        WHERE id = ?`,
-      [nextName, nextExpiryDate, nextSex, nextSales, playerId]
+      [nextName, nextExpiryDate, nextSex, nextCedula, nextBirthDate, nextSales, playerId]
     );
 
     const rows = await this.databaseService.query<CarnetPlayerRow[]>(
@@ -405,6 +434,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -426,6 +457,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -466,6 +499,8 @@ export class CarnetService {
       name: row.name,
       expiryDate: this.toIsoDate(row.expiry_date),
       sex: (row.sex ?? "masculino") as "masculino" | "femenino",
+      cedula: row.cedula,
+      birthDate: this.toIsoDateNullable(row.birth_date),
       sales: row.sales_count === null ? null : Number(row.sales_count),
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)
@@ -549,6 +584,22 @@ export class CarnetService {
       await this.databaseService.execute(
         `ALTER TABLE saas_carnet_players
          ADD COLUMN sales_count INT NULL DEFAULT NULL`
+      );
+    }
+
+    const hasCedulaColumn = await this.hasColumn("saas_carnet_players", "cedula");
+    if (!hasCedulaColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_players
+         ADD COLUMN cedula VARCHAR(20) NULL DEFAULT NULL`
+      );
+    }
+
+    const hasBirthDateColumn = await this.hasColumn("saas_carnet_players", "birth_date");
+    if (!hasBirthDateColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_players
+         ADD COLUMN birth_date DATE NULL DEFAULT NULL`
       );
     }
   }
@@ -648,6 +699,8 @@ export class CarnetService {
          name,
          expiry_date,
          sex,
+         cedula,
+         birth_date,
          sales_count,
          created_at,
          updated_at
@@ -673,10 +726,10 @@ export class CarnetService {
     return Number(rows[0]?.total || 0) > 0;
   }
 
-  private normalizeDate(value: string) {
+  private normalizeDate(value: string, errorMessage = "Fecha de vencimiento invalida") {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
-      throw new BadRequestException("Fecha de vencimiento invalida");
+      throw new BadRequestException(errorMessage);
     }
 
     return this.toMysqlDate(date);

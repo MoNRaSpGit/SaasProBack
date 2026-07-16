@@ -17,6 +17,16 @@ export class UpdateCarnetPlayerDto {
   sex?: "masculino" | "femenino";
 
   @IsOptional()
+  @IsString()
+  @MinLength(6)
+  @MaxLength(20)
+  cedula?: string;
+
+  @IsOptional()
+  @IsDateString()
+  birthDate?: string;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   sales?: number;

@@ -5,6 +5,8 @@ export type CarnetPlayer = {
   name: string;
   expiryDate: string;
   sex: CarnetSex;
+  cedula: string | null;
+  birthDate: string | null;
   sales: number | null;
   createdAt: string;
   updatedAt: string;

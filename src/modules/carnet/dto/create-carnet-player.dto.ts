@@ -13,6 +13,14 @@ export class CreateCarnetPlayerDto {
   @IsIn(["masculino", "femenino"])
   sex!: "masculino" | "femenino";
 
+  @IsString()
+  @MinLength(6)
+  @MaxLength(20)
+  cedula!: string;
+
+  @IsDateString()
+  birthDate!: string;
+
   @IsOptional()
   @IsInt()
   @Min(0)
