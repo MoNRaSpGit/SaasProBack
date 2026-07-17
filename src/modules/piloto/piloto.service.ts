@@ -2,7 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
-import { PilotoProduct } from "./piloto.types";
+import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
+import { PilotoProduct, PilotoSale } from "./piloto.types";
 
 type PilotoProductRow = RowDataPacket & {
   id: number;
@@ -124,6 +125,65 @@ export class PilotoService {
     );
 
     return { item: this.mapProduct(rows[0]) };
+  }
+
+  async createSale(dto: CreatePilotoSaleDto): Promise<{ item: PilotoSale }> {
+    const paymentMethod = dto.paymentMethod ?? "efectivo";
+    const normalizedItems = dto.items.map((item) => {
+      const lineTotal = Math.round(item.price * item.quantity * 100) / 100;
+      return {
+        productId: item.productId ?? null,
+        name: item.name.trim(),
+        unitPrice: item.price,
+        quantity: item.quantity,
+        lineTotal,
+        imageUrl: item.imageUrl ?? null
+      };
+    });
+
+    const totalAmount = Math.round(normalizedItems.reduce((total, item) => total + item.lineTotal, 0) * 100) / 100;
+    const itemsCount = normalizedItems.reduce((total, item) => total + item.quantity, 0);
+
+    const saleId = await this.databaseService.withTransaction(async (connection) => {
+      const [saleResult] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_piloto_sales (
+           total_amount,
+           items_count,
+           payment_method,
+           status
+         ) VALUES (?, ?, ?, 'confirmed')`,
+        [totalAmount, itemsCount, paymentMethod]
+      );
+
+      const createdSaleId = Number(saleResult.insertId);
+
+      for (const item of normalizedItems) {
+        await connection.execute<ResultSetHeader>(
+          `INSERT INTO saas_piloto_sale_items (
+             sale_id,
+             product_id,
+             product_name,
+             unit_price,
+             quantity,
+             line_total,
+             image_url
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [createdSaleId, item.productId, item.name, item.unitPrice, item.quantity, item.lineTotal, item.imageUrl]
+        );
+      }
+
+      return createdSaleId;
+    });
+
+    return {
+      item: {
+        id: saleId,
+        totalAmount,
+        itemsCount,
+        paymentMethod,
+        createdAt: new Date().toISOString()
+      }
+    };
   }
 
   private mapProduct(row: PilotoProductRow): PilotoProduct {

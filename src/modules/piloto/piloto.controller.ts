@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
+import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
 import { PilotoService } from "./piloto.service";
 
 @Controller("piloto")
@@ -19,5 +20,10 @@ export class PilotoController {
   @Post("products")
   createProduct(@Body() dto: CreatePilotoProductDto) {
     return this.pilotoService.createProduct(dto);
+  }
+
+  @Post("sales")
+  createSale(@Body() dto: CreatePilotoSaleDto) {
+    return this.pilotoService.createSale(dto);
   }
 }
