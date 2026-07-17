@@ -483,25 +483,37 @@ export class ScrumService {
           estimated_minutes: number;
           duration_unit: "days" | "weeks" | "months";
           duration_value: number;
-          latest_task_day: Date | string;
+          task_day: Date | string;
+          status: "todo" | "in_progress" | "done";
         }
       >
     >(
       `SELECT
-         daily_task_key,
-         title,
-         description,
-         estimated_minutes,
-         duration_unit,
-         duration_value,
-         MAX(task_day) AS latest_task_day
-       FROM saas_scrum_tasks
-       WHERE daily_task_key IS NOT NULL
-       GROUP BY daily_task_key, title, description, estimated_minutes, duration_unit, duration_value`
+         t1.daily_task_key,
+         t1.title,
+         t1.description,
+         t1.estimated_minutes,
+         t1.duration_unit,
+         t1.duration_value,
+         t1.task_day,
+         t1.status
+       FROM saas_scrum_tasks t1
+       INNER JOIN (
+         SELECT daily_task_key, MAX(id) AS latest_id
+         FROM saas_scrum_tasks
+         WHERE daily_task_key IS NOT NULL
+         GROUP BY daily_task_key
+       ) latest ON latest.daily_task_key = t1.daily_task_key AND latest.latest_id = t1.id`
     );
 
     for (const row of rows) {
-      if (toDateOnly(row.latest_task_day) >= today) {
+      if (toDateOnly(row.task_day) >= today) {
+        continue;
+      }
+
+      // Si la instancia de ayer quedo sin terminar, no se genera una nueva copia:
+      // se deja tal cual esta hasta que el usuario la complete.
+      if (row.status !== "done") {
         continue;
       }
 
