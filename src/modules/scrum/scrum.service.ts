@@ -3,6 +3,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
+import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
@@ -30,8 +31,16 @@ type ScrumClientRow = RowDataPacket & {
   amount: string | number;
   frequency: "monthly" | "semiannual";
   next_payment_at: Date | string;
+  debt_amount: string | number | null;
   created_at: Date | string;
   updated_at: Date | string;
+};
+
+type ScrumClientDebtPaymentRow = RowDataPacket & {
+  id: number;
+  client_id: number;
+  amount: string | number;
+  paid_at: Date | string;
 };
 
 function toDateOnly(value: Date | string) {
@@ -216,9 +225,16 @@ export class ScrumService {
          name,
          amount,
          frequency,
-         next_payment_at
-       ) VALUES (?, ?, ?, ?)`,
-      [dto.name.trim(), Math.round(dto.amount), dto.frequency, dto.nextPaymentAt]
+         next_payment_at,
+         debt_amount
+       ) VALUES (?, ?, ?, ?, ?)`,
+      [
+        dto.name.trim(),
+        Math.round(dto.amount),
+        dto.frequency,
+        dto.nextPaymentAt,
+        dto.debtAmount !== undefined ? Math.round(dto.debtAmount) : null
+      ]
     );
 
     return {
@@ -237,6 +253,25 @@ export class ScrumService {
        SET next_payment_at = ?
        WHERE id = ?`,
       [nextPaymentAt, clientId]
+    );
+
+    return {
+      ok: true,
+      item: await this.getClientById(clientId)
+    };
+  }
+
+  async registerClientDebtPayment(clientId: number, dto: RegisterScrumClientDebtPaymentDto) {
+    await this.ensureTables();
+    const currentClient = await this.getClientById(clientId);
+
+    if (currentClient.debtAmount === null) {
+      throw new BadRequestException("Este cliente no tiene deuda cargada.");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_scrum_client_debt_payments (client_id, amount) VALUES (?, ?)`,
+      [clientId, dto.amount]
     );
 
     return {
@@ -301,19 +336,32 @@ export class ScrumService {
          amount,
          frequency,
          next_payment_at,
+         debt_amount,
          created_at,
          updated_at
        FROM saas_scrum_clients
        ORDER BY id DESC`
     );
 
-    return rows.map((row) => ({
-      id: Number(row.id),
-      name: row.name,
-      amount: Number(row.amount),
-      frequency: row.frequency,
-      nextPaymentAt: toDateOnly(row.next_payment_at)
-    }));
+    if (!rows.length) {
+      return [];
+    }
+
+    const paymentRows = await this.databaseService.query<ScrumClientDebtPaymentRow[]>(
+      `SELECT id, client_id, amount, paid_at
+       FROM saas_scrum_client_debt_payments
+       ORDER BY paid_at ASC, id ASC`
+    );
+
+    const paymentsByClientId = new Map<number, ScrumClientDebtPaymentRow[]>();
+    for (const paymentRow of paymentRows) {
+      const clientId = Number(paymentRow.client_id);
+      const list = paymentsByClientId.get(clientId) ?? [];
+      list.push(paymentRow);
+      paymentsByClientId.set(clientId, list);
+    }
+
+    return rows.map((row) => this.mapClient(row, paymentsByClientId.get(Number(row.id)) ?? []));
   }
 
   private async getTaskById(taskId: number) {
@@ -368,6 +416,7 @@ export class ScrumService {
          amount,
          frequency,
          next_payment_at,
+         debt_amount,
          created_at,
          updated_at
        FROM saas_scrum_clients
@@ -381,12 +430,37 @@ export class ScrumService {
       throw new NotFoundException("Client not found");
     }
 
+    const paymentRows = await this.databaseService.query<ScrumClientDebtPaymentRow[]>(
+      `SELECT id, client_id, amount, paid_at
+       FROM saas_scrum_client_debt_payments
+       WHERE client_id = ?
+       ORDER BY paid_at ASC, id ASC`,
+      [clientId]
+    );
+
+    return this.mapClient(row, paymentRows);
+  }
+
+  private mapClient(row: ScrumClientRow, paymentRows: ScrumClientDebtPaymentRow[]) {
+    const debtAmount = row.debt_amount === null || row.debt_amount === undefined ? null : Number(row.debt_amount);
+    const debtPayments = paymentRows.map((paymentRow) => ({
+      id: Number(paymentRow.id),
+      amount: Number(paymentRow.amount),
+      paidAt: new Date(paymentRow.paid_at).toISOString()
+    }));
+    const debtPaidAmount = debtPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const debtRemaining = debtAmount === null ? null : Math.max(0, Math.round((debtAmount - debtPaidAmount) * 100) / 100);
+
     return {
       id: Number(row.id),
       name: row.name,
       amount: Number(row.amount),
       frequency: row.frequency,
-      nextPaymentAt: toDateOnly(row.next_payment_at)
+      nextPaymentAt: toDateOnly(row.next_payment_at),
+      debtAmount,
+      debtPaidAmount,
+      debtRemaining,
+      debtPayments
     };
   }
 
@@ -580,6 +654,32 @@ export class ScrumService {
          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
          PRIMARY KEY (id)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+
+    const debtAmountColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.columns
+       WHERE table_schema = DATABASE()
+         AND table_name = 'saas_scrum_clients'
+         AND column_name = 'debt_amount'`
+    );
+
+    if (Number(debtAmountColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_scrum_clients ADD COLUMN debt_amount DECIMAL(12, 2) NULL AFTER frequency`);
+    }
+
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_scrum_client_debt_payments (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         client_id BIGINT UNSIGNED NOT NULL,
+         amount DECIMAL(12, 2) NOT NULL,
+         paid_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         KEY idx_saas_scrum_client_debt_payments_client (client_id),
+         CONSTRAINT fk_saas_scrum_client_debt_payments_client
+           FOREIGN KEY (client_id) REFERENCES saas_scrum_clients (id)
+           ON DELETE CASCADE
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
   }

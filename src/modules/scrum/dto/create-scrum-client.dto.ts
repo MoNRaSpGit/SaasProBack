@@ -1,4 +1,4 @@
-import { IsIn, IsISO8601, IsNumber, IsString, MaxLength, Min } from "class-validator";
+import { IsIn, IsISO8601, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 export class CreateScrumClientDto {
   @IsString()
@@ -14,4 +14,9 @@ export class CreateScrumClientDto {
 
   @IsISO8601()
   nextPaymentAt!: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  debtAmount?: number;
 }

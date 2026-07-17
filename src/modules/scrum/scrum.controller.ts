@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
+import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
@@ -48,6 +49,11 @@ export class ScrumController {
   @Patch("clients/:id/payment")
   registerClientPayment(@Param("id", ParseIntPipe) clientId: number) {
     return this.scrumService.registerClientPayment(clientId);
+  }
+
+  @Patch("clients/:id/debt-payment")
+  registerClientDebtPayment(@Param("id", ParseIntPipe) clientId: number, @Body() dto: RegisterScrumClientDebtPaymentDto) {
+    return this.scrumService.registerClientDebtPayment(clientId, dto);
   }
 
   @Delete("clients/:id")
