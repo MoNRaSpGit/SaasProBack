@@ -26,4 +26,9 @@ export class PilotoController {
   createSale(@Body() dto: CreatePilotoSaleDto) {
     return this.pilotoService.createSale(dto);
   }
+
+  @Post("cache/product-lookup/reset")
+  resetProductLookupCache() {
+    return this.pilotoService.resetProductLookupCache();
+  }
 }

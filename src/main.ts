@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import compression from "compression";
 import { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from "./shared/http/cors";
@@ -9,6 +10,8 @@ import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const allowedOrigins = getAllowedCorsOrigins();
+
+  app.use(compression());
 
   app.use((request: Request, response: Response, next: NextFunction) => {
     const originHeader = request.headers.origin;

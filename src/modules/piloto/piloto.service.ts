@@ -35,14 +35,32 @@ function normalizeBarcode(value: string) {
     .replace(/\s+/g, "");
 }
 
+type CachedProductLookup = {
+  cachedAt: number;
+  product: PilotoProduct;
+};
+
+const PRODUCT_LOOKUP_CACHE_TTL_MS = 1000 * 60 * 10;
+const PRODUCT_LOOKUP_CACHE_MAX_ENTRIES = 1000;
+
 @Injectable()
 export class PilotoService {
+  private readonly productLookupCache = new Map<string, CachedProductLookup>();
+
   constructor(private readonly databaseService: DatabaseService) {}
 
   async findByBarcode(barcode: string): Promise<{ item: PilotoProduct }> {
     const normalizedBarcode = normalizeBarcode(barcode);
     if (!normalizedBarcode) {
       throw new BadRequestException("Codigo de barras invalido");
+    }
+
+    const cachedEntry = this.productLookupCache.get(normalizedBarcode);
+    if (cachedEntry) {
+      if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
+        return { item: cachedEntry.product };
+      }
+      this.productLookupCache.delete(normalizedBarcode);
     }
 
     const rows = await this.databaseService.query<PilotoProductRow[]>(
@@ -57,7 +75,27 @@ export class PilotoService {
       throw new NotFoundException("Producto no encontrado");
     }
 
-    return { item: this.mapProduct(rows[0]) };
+    const product = this.mapProduct(rows[0]);
+    this.setProductLookupCache(normalizedBarcode, product);
+    return { item: product };
+  }
+
+  resetProductLookupCache() {
+    this.productLookupCache.clear();
+    return { ok: true };
+  }
+
+  private setProductLookupCache(normalizedBarcode: string, product: PilotoProduct) {
+    this.productLookupCache.set(normalizedBarcode, { cachedAt: Date.now(), product });
+
+    if (this.productLookupCache.size <= PRODUCT_LOOKUP_CACHE_MAX_ENTRIES) {
+      return;
+    }
+
+    const oldestKey = this.productLookupCache.keys().next().value;
+    if (oldestKey) {
+      this.productLookupCache.delete(oldestKey);
+    }
   }
 
   async listProducts(search?: string): Promise<{ items: PilotoProduct[] }> {
@@ -124,7 +162,9 @@ export class PilotoService {
       [result.insertId]
     );
 
-    return { item: this.mapProduct(rows[0]) };
+    const product = this.mapProduct(rows[0]);
+    this.setProductLookupCache(normalizedBarcode, product);
+    return { item: product };
   }
 
   async createSale(dto: CreatePilotoSaleDto): Promise<{ item: PilotoSale }> {
