@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
-import compression from "compression";
+import * as compression from "compression";
 import { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { getAllowedCorsOrigins, isCorsOriginAllowed } from "./shared/http/cors";
