@@ -29,8 +29,8 @@ export class CreatePilotoSaleItemDto {
 
 export class CreatePilotoSaleDto {
   @IsOptional()
-  @IsIn(["efectivo", "tarjeta"])
-  paymentMethod?: "efectivo" | "tarjeta";
+  @IsIn(["efectivo", "tarjeta", "credito"])
+  paymentMethod?: "efectivo" | "tarjeta" | "credito";
 
   @IsArray()
   @ArrayMinSize(1)

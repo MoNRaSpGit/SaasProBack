@@ -12,7 +12,7 @@ export type PilotoProduct = {
   updatedAt: string;
 };
 
-export type PilotoPaymentMethod = "efectivo" | "tarjeta";
+export type PilotoPaymentMethod = "efectivo" | "tarjeta" | "credito";
 
 export type PilotoSale = {
   id: number;
