@@ -26,6 +26,7 @@ export type CarnetEventSaleBuyer = {
   id: number;
   buyerName: string;
   quantity: number;
+  delivered: boolean;
 };
 
 export type CarnetEventRankingItem = {

@@ -4,6 +4,7 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
+import { SetCarnetEventPlayerBuyerDeliveredDto } from "./dto/set-carnet-event-player-buyer-delivered.dto";
 import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
 import { UpdateCarnetPlayerDto } from "./dto/update-carnet-player.dto";
 import { UpsertCarnetEventPlayerDto } from "./dto/upsert-carnet-event-player.dto";
@@ -49,6 +50,7 @@ type CarnetEventPlayerBuyerRow = RowDataPacket & {
   event_player_id: number;
   buyer_name: string;
   quantity: number;
+  delivered: number;
 };
 
 @Injectable()
@@ -168,7 +170,7 @@ export class CarnetService {
     );
 
     const buyerRows = await this.databaseService.query<CarnetEventPlayerBuyerRow[]>(
-      `SELECT b.id, b.event_player_id, b.buyer_name, b.quantity
+      `SELECT b.id, b.event_player_id, b.buyer_name, b.quantity, b.delivered
        FROM saas_carnet_event_player_buyers b
        INNER JOIN saas_carnet_event_players ep ON ep.id = b.event_player_id
        WHERE ep.event_id = ?
@@ -429,6 +431,25 @@ export class CarnetService {
     return this.getEvent(eventId);
   }
 
+  async setEventPlayerBuyerDelivered(
+    eventId: number,
+    playerId: number,
+    buyerId: number,
+    dto: SetCarnetEventPlayerBuyerDeliveredDto
+  ) {
+    await this.ensureTables();
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_carnet_event_player_buyers b
+       INNER JOIN saas_carnet_event_players ep ON ep.id = b.event_player_id
+       SET b.delivered = ?
+       WHERE b.id = ? AND ep.event_id = ? AND ep.player_id = ?`,
+      [dto.delivered ? 1 : 0, buyerId, eventId, playerId]
+    );
+
+    return this.getEvent(eventId);
+  }
+
   async removeEventPlayerBuyer(eventId: number, playerId: number, buyerId: number) {
     await this.ensureTables();
 
@@ -612,7 +633,8 @@ export class CarnetService {
     const buyers: CarnetEventSaleBuyer[] = buyerRows.map((buyerRow) => ({
       id: buyerRow.id,
       buyerName: buyerRow.buyer_name,
-      quantity: Number(buyerRow.quantity)
+      quantity: Number(buyerRow.quantity),
+      delivered: Boolean(Number(buyerRow.delivered))
     }));
     const assigned = buyers.reduce((sum, buyer) => sum + buyer.quantity, 0);
 
@@ -756,6 +778,7 @@ export class CarnetService {
          event_player_id BIGINT UNSIGNED NOT NULL,
          buyer_name VARCHAR(120) NOT NULL,
          quantity INT UNSIGNED NOT NULL,
+         delivered TINYINT(1) NOT NULL DEFAULT 0,
          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
          PRIMARY KEY (id),
@@ -765,6 +788,14 @@ export class CarnetService {
            ON DELETE CASCADE
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    const hasDeliveredColumn = await this.hasColumn("saas_carnet_event_player_buyers", "delivered");
+    if (!hasDeliveredColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_event_player_buyers
+         ADD COLUMN delivered TINYINT(1) NOT NULL DEFAULT 0 AFTER quantity`
+      );
+    }
   }
 
   private async countPlayers() {

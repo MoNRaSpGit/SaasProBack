@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, ParseIntPipe, Post } from 
 import { CarnetService } from "./carnet.service";
 import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
+import { SetCarnetEventPlayerBuyerDeliveredDto } from "./dto/set-carnet-event-player-buyer-delivered.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
 import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
 import { UpdateCarnetPlayerDto } from "./dto/update-carnet-player.dto";
@@ -62,6 +63,16 @@ export class CarnetController {
     @Body() dto: AddCarnetEventPlayerBuyerDto
   ) {
     return this.carnetService.addEventPlayerBuyer(eventId, playerId, dto);
+  }
+
+  @Patch("events/:eventId/players/:playerId/buyers/:buyerId/delivered")
+  setEventPlayerBuyerDelivered(
+    @Param("eventId", ParseIntPipe) eventId: number,
+    @Param("playerId", ParseIntPipe) playerId: number,
+    @Param("buyerId", ParseIntPipe) buyerId: number,
+    @Body() dto: SetCarnetEventPlayerBuyerDeliveredDto
+  ) {
+    return this.carnetService.setEventPlayerBuyerDelivered(eventId, playerId, buyerId, dto);
   }
 
   @Delete("events/:eventId/players/:playerId/buyers/:buyerId")
