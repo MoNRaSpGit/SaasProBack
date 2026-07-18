@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, ParseIntPipe, Post } from "@nestjs/common";
 import { CarnetService } from "./carnet.service";
+import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
 import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
@@ -52,6 +53,24 @@ export class CarnetController {
     @Body() dto: UpdateCarnetEventPlayerDto
   ) {
     return this.carnetService.updateEventPlayer(eventId, playerId, dto);
+  }
+
+  @Post("events/:eventId/players/:playerId/buyers")
+  addEventPlayerBuyer(
+    @Param("eventId", ParseIntPipe) eventId: number,
+    @Param("playerId", ParseIntPipe) playerId: number,
+    @Body() dto: AddCarnetEventPlayerBuyerDto
+  ) {
+    return this.carnetService.addEventPlayerBuyer(eventId, playerId, dto);
+  }
+
+  @Delete("events/:eventId/players/:playerId/buyers/:buyerId")
+  removeEventPlayerBuyer(
+    @Param("eventId", ParseIntPipe) eventId: number,
+    @Param("playerId", ParseIntPipe) playerId: number,
+    @Param("buyerId", ParseIntPipe) buyerId: number
+  ) {
+    return this.carnetService.removeEventPlayerBuyer(eventId, playerId, buyerId);
   }
 
   @Patch("players/:id")

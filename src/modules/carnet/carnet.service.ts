@@ -1,12 +1,13 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
 import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
 import { UpdateCarnetPlayerDto } from "./dto/update-carnet-player.dto";
 import { UpsertCarnetEventPlayerDto } from "./dto/upsert-carnet-event-player.dto";
-import { CarnetEvent, CarnetEventDetail, CarnetEventRankingItem, CarnetPlayer, CarnetStatus } from "./carnet.types";
+import { CarnetEvent, CarnetEventDetail, CarnetEventRankingItem, CarnetEventSaleBuyer, CarnetPlayer, CarnetStatus } from "./carnet.types";
 
 type CarnetPlayerRow = RowDataPacket & {
   id: number;
@@ -41,6 +42,13 @@ type CarnetEventItemRow = RowDataPacket & {
   player_expiry_date: string | Date;
   player_created_at: string | Date;
   player_updated_at: string | Date;
+};
+
+type CarnetEventPlayerBuyerRow = RowDataPacket & {
+  id: number;
+  event_player_id: number;
+  buyer_name: string;
+  quantity: number;
 };
 
 @Injectable()
@@ -159,6 +167,22 @@ export class CarnetService {
       [eventId]
     );
 
+    const buyerRows = await this.databaseService.query<CarnetEventPlayerBuyerRow[]>(
+      `SELECT b.id, b.event_player_id, b.buyer_name, b.quantity
+       FROM saas_carnet_event_player_buyers b
+       INNER JOIN saas_carnet_event_players ep ON ep.id = b.event_player_id
+       WHERE ep.event_id = ?
+       ORDER BY b.created_at ASC, b.id ASC`,
+      [eventId]
+    );
+
+    const buyersByEventPlayerId = new Map<number, CarnetEventPlayerBuyerRow[]>();
+    for (const buyerRow of buyerRows) {
+      const list = buyersByEventPlayerId.get(buyerRow.event_player_id) ?? [];
+      list.push(buyerRow);
+      buyersByEventPlayerId.set(buyerRow.event_player_id, list);
+    }
+
     const playersRows = await this.databaseService.query<CarnetPlayerRow[]>(
       `SELECT
          id,
@@ -178,7 +202,9 @@ export class CarnetService {
       item: {
         event: this.mapEvent(eventRow),
         players: playersRows.map((row) => this.mapPlayer(row)),
-        ranking: rankingRows.map((row, index) => this.mapEventRankingItem(row, index + 1))
+        ranking: rankingRows.map((row, index) =>
+          this.mapEventRankingItem(row, index + 1, buyersByEventPlayerId.get(row.id) ?? [])
+        )
       }
     };
   }
@@ -358,6 +384,64 @@ export class CarnetService {
     return this.getEvent(eventId);
   }
 
+  async addEventPlayerBuyer(eventId: number, playerId: number, dto: AddCarnetEventPlayerBuyerDto) {
+    await this.ensureTables();
+
+    const eventPlayerRows = await this.databaseService.query<Array<RowDataPacket & { id: number; sales_count: number }>>(
+      `SELECT id, sales_count
+       FROM saas_carnet_event_players
+       WHERE event_id = ? AND player_id = ?
+       LIMIT 1`,
+      [eventId, playerId]
+    );
+
+    const eventPlayerRow = eventPlayerRows[0];
+    if (!eventPlayerRow) {
+      throw new BadRequestException("El jugador no esta cargado en este evento");
+    }
+
+    const buyerName = dto.buyerName.trim();
+    if (!buyerName) {
+      throw new BadRequestException("El nombre es obligatorio");
+    }
+
+    const assignedRows = await this.databaseService.query<Array<RowDataPacket & { total_assigned: string | number }>>(
+      `SELECT COALESCE(SUM(quantity), 0) AS total_assigned
+       FROM saas_carnet_event_player_buyers
+       WHERE event_player_id = ?`,
+      [eventPlayerRow.id]
+    );
+
+    const totalAssigned = Number(assignedRows[0]?.total_assigned || 0);
+    if (totalAssigned + dto.quantity > Number(eventPlayerRow.sales_count)) {
+      throw new BadRequestException("Estas asignando mas ventas de las que tiene cargadas el jugador");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_carnet_event_player_buyers (
+         event_player_id,
+         buyer_name,
+         quantity
+       ) VALUES (?, ?, ?)`,
+      [eventPlayerRow.id, buyerName, dto.quantity]
+    );
+
+    return this.getEvent(eventId);
+  }
+
+  async removeEventPlayerBuyer(eventId: number, playerId: number, buyerId: number) {
+    await this.ensureTables();
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `DELETE b FROM saas_carnet_event_player_buyers b
+       INNER JOIN saas_carnet_event_players ep ON ep.id = b.event_player_id
+       WHERE b.id = ? AND ep.event_id = ? AND ep.player_id = ?`,
+      [buyerId, eventId, playerId]
+    );
+
+    return this.getEvent(eventId);
+  }
+
   async updatePlayer(playerId: number, dto: UpdateCarnetPlayerDto) {
     await this.ensureTables();
 
@@ -519,13 +603,27 @@ export class CarnetService {
     };
   }
 
-  private mapEventRankingItem(row: CarnetEventItemRow, position: number): CarnetEventRankingItem {
+  private mapEventRankingItem(
+    row: CarnetEventItemRow,
+    position: number,
+    buyerRows: CarnetEventPlayerBuyerRow[]
+  ): CarnetEventRankingItem {
+    const sales = Number(row.sales_count || 0);
+    const buyers: CarnetEventSaleBuyer[] = buyerRows.map((buyerRow) => ({
+      id: buyerRow.id,
+      buyerName: buyerRow.buyer_name,
+      quantity: Number(buyerRow.quantity)
+    }));
+    const assigned = buyers.reduce((sum, buyer) => sum + buyer.quantity, 0);
+
     return {
       id: row.id,
       playerId: row.player_id,
       playerName: row.player_name,
-      sales: Number(row.sales_count || 0),
-      position
+      sales,
+      position,
+      buyers,
+      unassignedSales: Math.max(0, sales - assigned)
     };
   }
 
@@ -649,6 +747,22 @@ export class CarnetService {
          UNIQUE KEY uq_saas_carnet_event_players_event_player (event_id, player_id),
          KEY idx_saas_carnet_event_players_event_sales (event_id, sales_count),
          KEY idx_saas_carnet_event_players_player (player_id)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_carnet_event_player_buyers (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         event_player_id BIGINT UNSIGNED NOT NULL,
+         buyer_name VARCHAR(120) NOT NULL,
+         quantity INT UNSIGNED NOT NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         KEY idx_saas_carnet_event_player_buyers_event_player (event_player_id),
+         CONSTRAINT fk_saas_carnet_event_player_buyers_event_player
+           FOREIGN KEY (event_player_id) REFERENCES saas_carnet_event_players (id)
+           ON DELETE CASCADE
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
   }
