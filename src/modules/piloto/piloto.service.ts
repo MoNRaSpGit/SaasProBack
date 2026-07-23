@@ -3,6 +3,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
+import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
 import { PilotoProduct, PilotoSale } from "./piloto.types";
 
 type PilotoProductRow = RowDataPacket & {
@@ -164,6 +165,44 @@ export class PilotoService {
 
     const product = this.mapProduct(rows[0]);
     this.setProductLookupCache(normalizedBarcode, product);
+    return { item: product };
+  }
+
+  async updateProduct(productId: number, dto: UpdatePilotoProductDto): Promise<{ item: PilotoProduct }> {
+    const existingRows = await this.databaseService.query<PilotoProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_piloto_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+
+    const nextName = dto.name?.trim() || existing.name;
+    const nextPrice = dto.price ?? Number(existing.price);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_piloto_products
+       SET name = ?,
+           price = ?
+       WHERE id = ?`,
+      [nextName, nextPrice, productId]
+    );
+
+    const rows = await this.databaseService.query<PilotoProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_piloto_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    const product = this.mapProduct(rows[0]);
+    this.setProductLookupCache(normalizeBarcode(product.barcode), product);
     return { item: product };
   }
 
