@@ -43,6 +43,9 @@ type CachedProductLookup = {
 
 const PRODUCT_LOOKUP_CACHE_TTL_MS = 1000 * 60 * 10;
 const PRODUCT_LOOKUP_CACHE_MAX_ENTRIES = 1000;
+// Deshabilitado temporalmente: sospecha de que estaba causando errores al
+// editar muchos productos seguidos. Volver a poner en true para reactivarlo.
+const PRODUCT_LOOKUP_CACHE_ENABLED = false;
 
 @Injectable()
 export class PilotoService {
@@ -56,12 +59,14 @@ export class PilotoService {
       throw new BadRequestException("Codigo de barras invalido");
     }
 
-    const cachedEntry = this.productLookupCache.get(normalizedBarcode);
-    if (cachedEntry) {
-      if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
-        return { item: cachedEntry.product };
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      const cachedEntry = this.productLookupCache.get(normalizedBarcode);
+      if (cachedEntry) {
+        if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
+          return { item: cachedEntry.product };
+        }
+        this.productLookupCache.delete(normalizedBarcode);
       }
-      this.productLookupCache.delete(normalizedBarcode);
     }
 
     const rows = await this.databaseService.query<PilotoProductRow[]>(
@@ -77,7 +82,9 @@ export class PilotoService {
     }
 
     const product = this.mapProduct(rows[0]);
-    this.setProductLookupCache(normalizedBarcode, product);
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      this.setProductLookupCache(normalizedBarcode, product);
+    }
     return { item: product };
   }
 
@@ -164,7 +171,9 @@ export class PilotoService {
     );
 
     const product = this.mapProduct(rows[0]);
-    this.setProductLookupCache(normalizedBarcode, product);
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      this.setProductLookupCache(normalizedBarcode, product);
+    }
     return { item: product };
   }
 
@@ -202,7 +211,9 @@ export class PilotoService {
     );
 
     const product = this.mapProduct(rows[0]);
-    this.setProductLookupCache(normalizeBarcode(product.barcode), product);
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      this.setProductLookupCache(normalizeBarcode(product.barcode), product);
+    }
     return { item: product };
   }
 
