@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS saas_joker_settings (
+  id TINYINT UNSIGNED NOT NULL,
+  store_name VARCHAR(120) NOT NULL DEFAULT 'EL JOKER',
+  address VARCHAR(200) NOT NULL DEFAULT '',
+  phone VARCHAR(60) NOT NULL DEFAULT '',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO saas_joker_settings (id, store_name, address, phone) VALUES (1, 'EL JOKER', '', '');

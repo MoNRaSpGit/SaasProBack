@@ -3,7 +3,8 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
-import { JokerProduct } from "./joker.types";
+import { UpdateJokerSettingsDto } from "./dto/update-joker-settings.dto";
+import { JokerProduct, JokerSettings } from "./joker.types";
 
 type JokerProductRow = RowDataPacket & {
   id: number;
@@ -12,6 +13,12 @@ type JokerProductRow = RowDataPacket & {
   price: string | number;
   created_at: string | Date;
   updated_at: string | Date;
+};
+
+type JokerSettingsRow = RowDataPacket & {
+  store_name: string;
+  address: string;
+  phone: string;
 };
 
 const PRODUCT_COLUMNS = `
@@ -107,6 +114,40 @@ export class JokerService {
     }
 
     return { ok: true };
+  }
+
+  async getSettings(): Promise<{ item: JokerSettings }> {
+    const rows = await this.databaseService.query<JokerSettingsRow[]>(
+      `SELECT store_name, address, phone FROM saas_joker_settings WHERE id = 1 LIMIT 1`
+    );
+
+    const row = rows[0];
+    return {
+      item: {
+        storeName: row?.store_name ?? "EL JOKER",
+        address: row?.address ?? "",
+        phone: row?.phone ?? ""
+      }
+    };
+  }
+
+  async updateSettings(dto: UpdateJokerSettingsDto): Promise<{ item: JokerSettings }> {
+    const current = await this.getSettings();
+
+    const nextStoreName = dto.storeName?.trim() || current.item.storeName;
+    const nextAddress = dto.address?.trim() ?? current.item.address;
+    const nextPhone = dto.phone?.trim() ?? current.item.phone;
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_settings
+       SET store_name = ?,
+           address = ?,
+           phone = ?
+       WHERE id = 1`,
+      [nextStoreName, nextAddress, nextPhone]
+    );
+
+    return { item: { storeName: nextStoreName, address: nextAddress, phone: nextPhone } };
   }
 
   private mapProduct(row: JokerProductRow): JokerProduct {
