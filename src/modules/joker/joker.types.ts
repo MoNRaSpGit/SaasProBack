@@ -6,9 +6,3 @@ export type JokerProduct = {
   createdAt: string;
   updatedAt: string;
 };
-
-export type JokerSettings = {
-  storeName: string;
-  address: string;
-  phone: string;
-};
