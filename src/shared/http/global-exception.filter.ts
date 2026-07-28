@@ -10,7 +10,26 @@ import { HttpRequestContext } from "./request-context";
 
 type ContextAwareRequest = Request & HttpRequestContext;
 
-function buildErrorMessage(exception: unknown) {
+// body-parser (express) tira errores planos con .status/.statusCode (via
+// http-errors), no HttpException de Nest - los reconocemos igual para no
+// mostrarlos como un generico "error del servidor" (ej: payload demasiado
+// grande al guardar un workspace grande).
+function resolveHttpStatus(exception: unknown): number {
+  if (exception instanceof HttpException) {
+    return exception.getStatus();
+  }
+
+  const candidate = exception as { status?: unknown; statusCode?: unknown } | null;
+  const rawStatus = candidate?.status ?? candidate?.statusCode;
+
+  if (typeof rawStatus === "number" && rawStatus >= 400 && rawStatus < 600) {
+    return rawStatus;
+  }
+
+  return HttpStatus.INTERNAL_SERVER_ERROR;
+}
+
+function buildErrorMessage(exception: unknown, status: number) {
   if (exception instanceof HttpException) {
     const response = exception.getResponse();
 
@@ -21,6 +40,10 @@ function buildErrorMessage(exception: unknown) {
     if (response && typeof response === "object" && "message" in response) {
       return response.message;
     }
+  }
+
+  if (status === HttpStatus.PAYLOAD_TOO_LARGE) {
+    return "Los datos que intentaste guardar son demasiado grandes para procesarlos. Contacta soporte.";
   }
 
   if (exception instanceof Error) {
@@ -37,9 +60,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = context.getResponse<Response>();
     const request = context.getRequest<ContextAwareRequest>();
 
-    const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-    const message = buildErrorMessage(exception);
+    const status = resolveHttpStatus(exception);
+    const message = buildErrorMessage(exception, status);
     const currentUser = request.currentUser;
 
     console.error(

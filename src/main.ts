@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
+import { NestExpressApplication } from "@nestjs/platform-express";
 import * as compression from "compression";
 import { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
@@ -8,8 +9,13 @@ import { getAllowedCorsOrigins, isCorsOriginAllowed } from "./shared/http/cors";
 import { GlobalExceptionFilter } from "./shared/http/global-exception.filter";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const allowedOrigins = getAllowedCorsOrigins();
+
+  // El default de Express (100kb) se queda corto para modulos que guardan
+  // un blob JSON grande de una (ej: el workspace completo de agro).
+  app.useBodyParser("json", { limit: "10mb" });
+  app.useBodyParser("urlencoded", { limit: "10mb", extended: true });
 
   app.use(compression());
 
