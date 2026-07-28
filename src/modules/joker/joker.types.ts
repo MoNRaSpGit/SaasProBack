@@ -15,10 +15,13 @@ export type JokerOrderItem = {
   detail?: string;
 };
 
+export type JokerPaymentMethod = "efectivo" | "tarjeta" | "cuenta";
+
 export type JokerOrder = {
   id: number;
   total: number;
   address: string;
+  paymentMethod: JokerPaymentMethod;
   items: JokerOrderItem[];
   createdAt: string;
 };

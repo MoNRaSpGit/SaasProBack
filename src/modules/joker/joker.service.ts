@@ -5,7 +5,7 @@ import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
-import { JokerOrder, JokerProduct } from "./joker.types";
+import { JokerOrder, JokerPaymentMethod, JokerProduct } from "./joker.types";
 
 type JokerProductRow = RowDataPacket & {
   id: number;
@@ -20,6 +20,7 @@ type JokerOrderRow = RowDataPacket & {
   id: number;
   total: string | number;
   address: string;
+  payment_method: string;
   items: string;
   created_at: string | Date;
 };
@@ -37,6 +38,7 @@ const ORDER_COLUMNS = `
   id,
   total,
   address,
+  payment_method,
   items,
   created_at
 `;
@@ -135,8 +137,8 @@ export class JokerService {
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (total, address, items) VALUES (?, ?, ?)`,
-      [total, dto.address?.trim() || "", JSON.stringify(dto.items)]
+      `INSERT INTO saas_joker_orders (total, address, payment_method, items) VALUES (?, ?, ?, ?)`,
+      [total, dto.address?.trim() || "", dto.paymentMethod ?? "efectivo", JSON.stringify(dto.items)]
     );
 
     const rows = await this.databaseService.query<JokerOrderRow[]>(
@@ -182,9 +184,14 @@ export class JokerService {
       id: row.id,
       total: Number(row.total),
       address: row.address,
+      paymentMethod: this.toPaymentMethod(row.payment_method),
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       createdAt: this.toIsoString(row.created_at)
     };
+  }
+
+  private toPaymentMethod(value: string): JokerPaymentMethod {
+    return value === "tarjeta" || value === "cuenta" ? value : "efectivo";
   }
 
   private getStoreDateLabel(date = new Date()) {

@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from "class-validator";
 
 export class CreateJokerOrderItemDto {
   @Type(() => Number)
@@ -38,4 +38,8 @@ export class CreateJokerOrderDto {
   @IsString()
   @MaxLength(200)
   address?: string;
+
+  @IsOptional()
+  @IsIn(["efectivo", "tarjeta", "cuenta"])
+  paymentMethod?: "efectivo" | "tarjeta" | "cuenta";
 }
