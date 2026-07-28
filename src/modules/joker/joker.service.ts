@@ -168,6 +168,11 @@ export class JokerService {
     return { items: rows.map((row) => this.mapOrder(row)) };
   }
 
+  async deleteAllOrders(): Promise<{ ok: true }> {
+    await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_orders`);
+    return { ok: true };
+  }
+
   private mapProduct(row: JokerProductRow): JokerProduct {
     return {
       id: row.id,

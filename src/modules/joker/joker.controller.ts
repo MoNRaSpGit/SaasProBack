@@ -38,4 +38,9 @@ export class JokerController {
   listOrders(@Query() query: ListJokerOrdersDto) {
     return this.jokerService.listOrders(query);
   }
+
+  @Delete("orders")
+  deleteAllOrders() {
+    return this.jokerService.deleteAllOrders();
+  }
 }
