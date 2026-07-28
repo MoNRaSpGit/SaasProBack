@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS saas_joker_orders (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  total DECIMAL(12,2) NOT NULL DEFAULT 0,
+  address VARCHAR(200) NOT NULL DEFAULT '',
+  items JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_saas_joker_orders_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

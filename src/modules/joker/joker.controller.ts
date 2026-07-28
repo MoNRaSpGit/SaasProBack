@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
+import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { JokerService } from "./joker.service";
 
@@ -25,5 +27,15 @@ export class JokerController {
   @Delete("products/:id")
   deleteProduct(@Param("id", ParseIntPipe) productId: number) {
     return this.jokerService.deleteProduct(productId);
+  }
+
+  @Post("orders")
+  createOrder(@Body() dto: CreateJokerOrderDto) {
+    return this.jokerService.createOrder(dto);
+  }
+
+  @Get("orders")
+  listOrders(@Query() query: ListJokerOrdersDto) {
+    return this.jokerService.listOrders(query);
   }
 }
