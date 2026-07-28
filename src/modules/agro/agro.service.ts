@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { SaveAgroDiscoveryResponseDto } from "./dto/save-agro-discovery-response.dto";
@@ -31,10 +31,12 @@ type AgroWorkspaceRow = RowDataPacket & {
   version: string;
   workspace_json: string | Buffer | AgroWorkspaceData;
   updated_at: string | Date;
+  row_version?: number;
 };
 
 type TenantAgroWorkspaceRow = AgroWorkspaceRow & {
   tenant_id: number;
+  row_version: number;
 };
 
 @Injectable()
@@ -101,6 +103,7 @@ export class AgroService {
          workspace_key,
          version,
          workspace_json,
+         row_version,
          updated_at
        FROM saas_agro_workspaces
        WHERE tenant_id = ?
@@ -122,6 +125,7 @@ export class AgroService {
          workspace_key,
          version,
          workspace_json,
+         row_version,
          updated_at
        FROM saas_agro_workspaces
        WHERE tenant_id = ?
@@ -130,6 +134,7 @@ export class AgroService {
       [currentUser.tenantId, AGRO_WORKSPACE_PUBLIC_KEY]
     );
     const currentWorkspace = currentRows[0] ? this.parseWorkspaceJson(currentRows[0].workspace_json) : null;
+    this.assertWorkspaceRowVersion(currentRows[0], dto.expectedRowVersion);
     const nextWorkspace = this.createWorkspaceDataFromDto(dto);
     this.assertWorkspaceSaveIsNotAccidentalWipe(currentWorkspace, nextWorkspace);
 
@@ -138,11 +143,13 @@ export class AgroService {
          tenant_id,
          workspace_key,
          version,
-         workspace_json
-       ) VALUES (?, ?, ?, ?)
+         workspace_json,
+         row_version
+       ) VALUES (?, ?, ?, ?, 1)
        ON DUPLICATE KEY UPDATE
          version = VALUES(version),
          workspace_json = VALUES(workspace_json),
+         row_version = row_version + 1,
          updated_at = CURRENT_TIMESTAMP`,
       [
         currentUser.tenantId,
@@ -255,7 +262,8 @@ export class AgroService {
       workspaceKey: AGRO_WORKSPACE_PUBLIC_KEY,
       version: AGRO_WORKSPACE_VERSION,
       data: this.parseWorkspaceJson(row.workspace_json),
-      updatedAt: this.toIsoString(row.updated_at)
+      updatedAt: this.toIsoString(row.updated_at),
+      rowVersion: row.row_version ?? 0
     };
   }
 
@@ -288,6 +296,22 @@ export class AgroService {
       sanitaryRecords: dto.sanitaryRecords,
       monthlyExchangeRates: dto.monthlyExchangeRates
     };
+  }
+
+  // Bloqueo optimista: si el cliente vio una version de fila y, para cuando
+  // llega su guardado, la fila actual ya tiene otra version, es porque otro
+  // dispositivo/pestana con la misma sesion ya guardo algo mas nuevo en el
+  // medio. Sin este chequeo, el guardado mas nuevo se pisa en silencio.
+  private assertWorkspaceRowVersion(currentRow: TenantAgroWorkspaceRow | undefined, expectedRowVersion: number | null | undefined) {
+    if (!currentRow || expectedRowVersion === null || expectedRowVersion === undefined) {
+      return;
+    }
+
+    if (currentRow.row_version !== expectedRowVersion) {
+      throw new ConflictException(
+        "Otro dispositivo o pestana ya guardo cambios mas nuevos en Agro. Recarga la pagina para traerlos antes de seguir editando."
+      );
+    }
   }
 
   private assertWorkspaceSaveIsNotAccidentalWipe(currentWorkspace: AgroWorkspaceData | null, nextWorkspace: AgroWorkspaceData) {
@@ -340,7 +364,8 @@ export class AgroService {
         sanitaryRecords: [],
         monthlyExchangeRates: []
       },
-      updatedAt: null
+      updatedAt: null,
+      rowVersion: 0
     };
   }
 
@@ -367,6 +392,7 @@ export class AgroService {
          workspace_key VARCHAR(40) NOT NULL,
          version VARCHAR(20) NOT NULL DEFAULT 'v1',
          workspace_json JSON NOT NULL,
+         row_version BIGINT UNSIGNED NOT NULL DEFAULT 1,
          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
          updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
          PRIMARY KEY (id),

@@ -38,4 +38,5 @@ export type AgroWorkspaceRecord = {
   version: typeof AGRO_WORKSPACE_VERSION;
   data: AgroWorkspaceData;
   updatedAt: string | null;
+  rowVersion: number;
 };
