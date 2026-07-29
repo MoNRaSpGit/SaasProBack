@@ -11,7 +11,15 @@ type JokerProductRow = RowDataPacket & {
   id: number;
   name: string;
   category: string;
+  subcategory: string | null;
+  subcategory_detail: string | null;
+  brand: string | null;
   price: string | number;
+  ingredients: string | null;
+  observations: string | null;
+  product_type: string;
+  status: string;
+  pricing_unit: string;
   created_at: string | Date;
   updated_at: string | Date;
 };
@@ -29,7 +37,15 @@ const PRODUCT_COLUMNS = `
   id,
   name,
   category,
+  subcategory,
+  subcategory_detail,
+  brand,
   price,
+  ingredients,
+  observations,
+  product_type,
+  status,
+  pricing_unit,
   created_at,
   updated_at
 `;
@@ -67,8 +83,22 @@ export class JokerService {
     const category = dto.category?.trim() || "Otros";
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_products (name, category, price) VALUES (?, ?, ?)`,
-      [name, category, dto.price]
+      `INSERT INTO saas_joker_products
+         (name, category, subcategory, subcategory_detail, brand, price, ingredients, observations, product_type, status, pricing_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        category,
+        dto.subcategory?.trim() || null,
+        dto.subcategoryDetail?.trim() || null,
+        dto.brand?.trim() || null,
+        dto.price,
+        dto.ingredients?.trim() || null,
+        dto.observations?.trim() || null,
+        dto.productType ?? "simple",
+        dto.status ?? "published",
+        dto.pricingUnit ?? "unidad"
+      ]
     );
 
     const rows = await this.databaseService.query<JokerProductRow[]>(
@@ -99,14 +129,44 @@ export class JokerService {
     const nextName = dto.name?.trim() || existing.name;
     const nextCategory = dto.category?.trim() || existing.category;
     const nextPrice = dto.price ?? Number(existing.price);
+    const nextSubcategory = dto.subcategory !== undefined ? dto.subcategory?.trim() || null : existing.subcategory;
+    const nextSubcategoryDetail =
+      dto.subcategoryDetail !== undefined ? dto.subcategoryDetail?.trim() || null : existing.subcategory_detail;
+    const nextBrand = dto.brand !== undefined ? dto.brand?.trim() || null : existing.brand;
+    const nextIngredients = dto.ingredients !== undefined ? dto.ingredients?.trim() || null : existing.ingredients;
+    const nextObservations = dto.observations !== undefined ? dto.observations?.trim() || null : existing.observations;
+    const nextProductType = dto.productType ?? existing.product_type;
+    const nextStatus = dto.status ?? existing.status;
+    const nextPricingUnit = dto.pricingUnit ?? existing.pricing_unit;
 
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_joker_products
        SET name = ?,
            category = ?,
-           price = ?
+           subcategory = ?,
+           subcategory_detail = ?,
+           brand = ?,
+           price = ?,
+           ingredients = ?,
+           observations = ?,
+           product_type = ?,
+           status = ?,
+           pricing_unit = ?
        WHERE id = ?`,
-      [nextName, nextCategory, nextPrice, productId]
+      [
+        nextName,
+        nextCategory,
+        nextSubcategory,
+        nextSubcategoryDetail,
+        nextBrand,
+        nextPrice,
+        nextIngredients,
+        nextObservations,
+        nextProductType,
+        nextStatus,
+        nextPricingUnit,
+        productId
+      ]
     );
 
     const rows = await this.databaseService.query<JokerProductRow[]>(
@@ -178,7 +238,15 @@ export class JokerService {
       id: row.id,
       name: row.name,
       category: row.category,
+      subcategory: row.subcategory,
+      subcategoryDetail: row.subcategory_detail,
+      brand: row.brand,
       price: Number(row.price),
+      ingredients: row.ingredients,
+      observations: row.observations,
+      productType: row.product_type === "extra" ? "extra" : "simple",
+      status: row.status === "draft" ? "draft" : "published",
+      pricingUnit: row.pricing_unit === "kg" ? "kg" : "unidad",
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)
     };

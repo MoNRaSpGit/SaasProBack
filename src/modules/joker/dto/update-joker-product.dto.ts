@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
 
 export class UpdateJokerProductDto {
   @IsOptional()
@@ -17,4 +17,39 @@ export class UpdateJokerProductDto {
   @MinLength(1)
   @MaxLength(60)
   category?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  subcategory?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  subcategoryDetail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  brand?: string;
+
+  @IsOptional()
+  @IsString()
+  ingredients?: string;
+
+  @IsOptional()
+  @IsString()
+  observations?: string;
+
+  @IsOptional()
+  @IsIn(["simple", "extra"])
+  productType?: "simple" | "extra";
+
+  @IsOptional()
+  @IsIn(["draft", "published"])
+  status?: "draft" | "published";
+
+  @IsOptional()
+  @IsIn(["unidad", "kg"])
+  pricingUnit?: "unidad" | "kg";
 }
