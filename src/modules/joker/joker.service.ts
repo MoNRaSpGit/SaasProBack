@@ -72,7 +72,7 @@ export class JokerService {
       `SELECT ${PRODUCT_COLUMNS}
        FROM saas_joker_products
        ORDER BY category ASC, name ASC
-       LIMIT 200`
+       LIMIT 1000`
     );
 
     return { items: rows.map((row) => this.mapProduct(row)) };
