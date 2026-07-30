@@ -40,6 +40,6 @@ export class CreateJokerOrderDto {
   address?: string;
 
   @IsOptional()
-  @IsIn(["efectivo", "tarjeta", "cuenta"])
-  paymentMethod?: "efectivo" | "tarjeta" | "cuenta";
+  @IsIn(["efectivo", "tarjeta", "transferencia", "cuenta"])
+  paymentMethod?: "efectivo" | "tarjeta" | "transferencia" | "cuenta";
 }

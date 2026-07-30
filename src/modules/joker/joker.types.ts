@@ -27,7 +27,7 @@ export type JokerOrderItem = {
   detail?: string;
 };
 
-export type JokerPaymentMethod = "efectivo" | "tarjeta" | "cuenta";
+export type JokerPaymentMethod = "efectivo" | "tarjeta" | "transferencia" | "cuenta";
 
 export type JokerOrder = {
   id: number;

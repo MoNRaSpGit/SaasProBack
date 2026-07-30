@@ -264,7 +264,7 @@ export class JokerService {
   }
 
   private toPaymentMethod(value: string): JokerPaymentMethod {
-    return value === "tarjeta" || value === "cuenta" ? value : "efectivo";
+    return value === "tarjeta" || value === "transferencia" || value === "cuenta" ? value : "efectivo";
   }
 
   private getStoreDateLabel(date = new Date()) {
