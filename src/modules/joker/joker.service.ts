@@ -78,8 +78,10 @@ const ORDER_COLUMNS = `
 `;
 
 // El local (El Joker) opera en Montevideo (UTC-3); el "dia" del panel
-// arranca y cierra a medianoche hora local, no UTC.
+// arranca y cierra a las 5am hora local (no a medianoche), para que un
+// pedido despues de medianoche siga contando como parte del dia anterior.
 const STORE_UTC_OFFSET_HOURS = 3;
+const STORE_DAY_START_HOUR = 5;
 
 @Injectable()
 export class JokerService {
@@ -389,12 +391,13 @@ export class JokerService {
   }
 
   private getStoreDateLabel(date = new Date()) {
+    const shifted = new Date(date.getTime() - STORE_DAY_START_HOUR * 60 * 60 * 1000);
     return new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Montevideo",
       year: "numeric",
       month: "2-digit",
       day: "2-digit"
-    }).format(date);
+    }).format(shifted);
   }
 
   private buildStoreDayRangeUtc(dateLabel: string) {
@@ -407,8 +410,8 @@ export class JokerService {
     const month = Number(match[2]);
     const day = Number(match[3]);
 
-    const start = new Date(Date.UTC(year, month - 1, day, STORE_UTC_OFFSET_HOURS, 0, 0));
-    const end = new Date(Date.UTC(year, month - 1, day + 1, STORE_UTC_OFFSET_HOURS, 0, 0));
+    const start = new Date(Date.UTC(year, month - 1, day, STORE_UTC_OFFSET_HOURS + STORE_DAY_START_HOUR, 0, 0));
+    const end = new Date(Date.UTC(year, month - 1, day + 1, STORE_UTC_OFFSET_HOURS + STORE_DAY_START_HOUR, 0, 0));
 
     return {
       startIso: start.toISOString().slice(0, 19).replace("T", " "),
