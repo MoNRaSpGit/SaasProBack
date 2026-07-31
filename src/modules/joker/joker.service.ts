@@ -1,11 +1,13 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
+import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
-import { JokerOrder, JokerPaymentMethod, JokerProduct } from "./joker.types";
+import { JokerAccountEntry, JokerClient, JokerOrder, JokerPaymentMethod, JokerProduct } from "./joker.types";
 
 type JokerProductRow = RowDataPacket & {
   id: number;
@@ -29,6 +31,22 @@ type JokerOrderRow = RowDataPacket & {
   total: string | number;
   address: string;
   payment_method: string;
+  items: string;
+  created_at: string | Date;
+};
+
+type JokerClientRow = RowDataPacket & {
+  id: number;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  created_at: string | Date;
+};
+
+type JokerAccountEntryRow = RowDataPacket & {
+  id: number;
+  client_id: number;
+  total: string | number;
   items: string;
   created_at: string | Date;
 };
@@ -233,6 +251,89 @@ export class JokerService {
     return { ok: true };
   }
 
+  async listClients(): Promise<{ items: JokerClient[] }> {
+    const rows = await this.databaseService.query<JokerClientRow[]>(
+      `SELECT id, name, phone, address, created_at
+       FROM saas_joker_clients
+       ORDER BY name ASC
+       LIMIT 1000`
+    );
+
+    return { items: rows.map((row) => this.mapClient(row)) };
+  }
+
+  async createClient(dto: CreateJokerClientDto): Promise<{ item: JokerClient }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_joker_clients (name, phone, address) VALUES (?, ?, ?)`,
+      [dto.name.trim(), dto.phone?.trim() || null, dto.address?.trim() || null]
+    );
+
+    const rows = await this.databaseService.query<JokerClientRow[]>(
+      `SELECT id, name, phone, address, created_at FROM saas_joker_clients WHERE id = ? LIMIT 1`,
+      [result.insertId]
+    );
+
+    return { item: this.mapClient(rows[0]) };
+  }
+
+  async deleteClient(clientId: number): Promise<{ ok: true }> {
+    // El borrado de saas_joker_account_entries es en cascada (FK), no hace
+    // falta borrarlos aparte.
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_joker_clients WHERE id = ?`,
+      [clientId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new NotFoundException("Cliente no encontrado");
+    }
+
+    return { ok: true };
+  }
+
+  async listAccountEntries(): Promise<{ items: JokerAccountEntry[] }> {
+    const rows = await this.databaseService.query<JokerAccountEntryRow[]>(
+      `SELECT id, client_id, total, items, created_at
+       FROM saas_joker_account_entries
+       ORDER BY created_at DESC
+       LIMIT 2000`
+    );
+
+    return { items: rows.map((row) => this.mapAccountEntry(row)) };
+  }
+
+  async createAccountEntry(dto: CreateJokerAccountEntryDto): Promise<{ item: JokerAccountEntry }> {
+    const clientRows = await this.databaseService.query<JokerClientRow[]>(
+      `SELECT id, name, phone, address, created_at FROM saas_joker_clients WHERE id = ? LIMIT 1`,
+      [dto.clientId]
+    );
+
+    if (!clientRows[0]) {
+      throw new NotFoundException("Cliente no encontrado");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_joker_account_entries (client_id, total, items) VALUES (?, ?, ?)`,
+      [dto.clientId, dto.total, JSON.stringify(dto.items)]
+    );
+
+    const rows = await this.databaseService.query<JokerAccountEntryRow[]>(
+      `SELECT id, client_id, total, items, created_at FROM saas_joker_account_entries WHERE id = ? LIMIT 1`,
+      [result.insertId]
+    );
+
+    return { item: this.mapAccountEntry(rows[0]) };
+  }
+
+  // "Pago": salda la cuenta de un cliente puntual, sin borrar al cliente.
+  async settleAccount(clientId: number): Promise<{ ok: true }> {
+    await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_joker_account_entries WHERE client_id = ?`,
+      [clientId]
+    );
+    return { ok: true };
+  }
+
   private mapProduct(row: JokerProductRow): JokerProduct {
     return {
       id: row.id,
@@ -258,6 +359,26 @@ export class JokerService {
       total: Number(row.total),
       address: row.address,
       paymentMethod: this.toPaymentMethod(row.payment_method),
+      items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
+      createdAt: this.toIsoString(row.created_at)
+    };
+  }
+
+  private mapClient(row: JokerClientRow): JokerClient {
+    return {
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      address: row.address,
+      createdAt: this.toIsoString(row.created_at)
+    };
+  }
+
+  private mapAccountEntry(row: JokerAccountEntryRow): JokerAccountEntry {
+    return {
+      id: row.id,
+      clientId: row.client_id,
+      total: Number(row.total),
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       createdAt: this.toIsoString(row.created_at)
     };

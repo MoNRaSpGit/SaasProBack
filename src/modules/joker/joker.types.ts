@@ -37,3 +37,24 @@ export type JokerOrder = {
   items: JokerOrderItem[];
   createdAt: string;
 };
+
+export type JokerClient = {
+  id: number;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  createdAt: string;
+};
+
+export type JokerAccountEntryItem = {
+  productName: string;
+  quantity: number;
+};
+
+export type JokerAccountEntry = {
+  id: number;
+  clientId: number;
+  total: number;
+  items: JokerAccountEntryItem[];
+  createdAt: string;
+};
