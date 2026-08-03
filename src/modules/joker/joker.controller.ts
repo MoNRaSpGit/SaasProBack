@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
+import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { JokerService } from "./joker.service";
 
@@ -74,5 +76,17 @@ export class JokerController {
   @Delete("account-entries/client/:clientId")
   settleAccount(@Param("clientId", ParseIntPipe) clientId: number) {
     return this.jokerService.settleAccount(clientId);
+  }
+
+  // QZ Tray pide el certificado como texto plano (no JSON) via
+  // setCertificatePromise.
+  @Get("qz-certificate")
+  getQzCertificate(@Res() res: Response) {
+    res.type("text/plain").send(this.jokerService.getQzCertificate());
+  }
+
+  @Post("qz-sign")
+  signQzRequest(@Body() dto: SignQzRequestDto) {
+    return this.jokerService.signQzRequest(dto.toSign);
   }
 }
