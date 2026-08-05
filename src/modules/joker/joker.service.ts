@@ -2,13 +2,14 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { createSign } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
-import { JokerAccountEntry, JokerClient, JokerOrder, JokerPaymentMethod, JokerProduct } from "./joker.types";
+import { JokerAccountEntry, JokerClient, JokerOrder, JokerPaymentMethod, JokerProduct, JokerRegisterState } from "./joker.types";
 
 type JokerProductRow = RowDataPacket & {
   id: number;
@@ -29,11 +30,17 @@ type JokerProductRow = RowDataPacket & {
 
 type JokerOrderRow = RowDataPacket & {
   id: number;
+  display_number: number;
   total: string | number;
   address: string;
   payment_method: string;
   items: string;
   created_at: string | Date;
+};
+
+type JokerRegisterStateRow = RowDataPacket & {
+  is_open: number;
+  last_closed_at: string | Date | null;
 };
 
 type JokerClientRow = RowDataPacket & {
@@ -71,6 +78,7 @@ const PRODUCT_COLUMNS = `
 
 const ORDER_COLUMNS = `
   id,
+  display_number,
   total,
   address,
   payment_method,
@@ -216,10 +224,11 @@ export class JokerService {
 
   async createOrder(dto: CreateJokerOrderDto): Promise<{ item: JokerOrder }> {
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const displayNumber = await this.getNextOrderDisplayNumber();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (total, address, payment_method, items) VALUES (?, ?, ?, ?)`,
-      [total, dto.address?.trim() || "", dto.paymentMethod ?? "efectivo", JSON.stringify(dto.items)]
+      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, items) VALUES (?, ?, ?, ?, ?)`,
+      [displayNumber, total, dto.address?.trim() || "", dto.paymentMethod ?? "efectivo", JSON.stringify(dto.items)]
     );
 
     const rows = await this.databaseService.query<JokerOrderRow[]>(
@@ -231,6 +240,61 @@ export class JokerService {
     );
 
     return { item: this.mapOrder(rows[0]) };
+  }
+
+  // El numero que se imprime en el ticket ("Pedido #N") arranca de nuevo en
+  // 1 despues de cada cierre de caja: cuenta los pedidos desde el ultimo
+  // cierre (o desde siempre, si todavia no hubo ninguno). Se guarda fijo en
+  // el pedido al crearlo, no se recalcula despues (para que cierres futuros
+  // no le cambien el numero a pedidos viejos).
+  private async getNextOrderDisplayNumber(): Promise<number> {
+    const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
+      `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
+    );
+    const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
+
+    const countRows = await this.databaseService.query<RowDataPacket[]>(
+      lastClosedAt
+        ? `SELECT COUNT(*) AS cnt FROM saas_joker_orders WHERE created_at > ?`
+        : `SELECT COUNT(*) AS cnt FROM saas_joker_orders`,
+      lastClosedAt ? [lastClosedAt] : []
+    );
+
+    return Number(countRows[0].cnt) + 1;
+  }
+
+  async getRegisterState(): Promise<JokerRegisterState> {
+    const rows = await this.databaseService.query<JokerRegisterStateRow[]>(
+      `SELECT is_open, last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
+    );
+    const row = rows[0];
+
+    return {
+      isOpen: row ? Boolean(row.is_open) : true,
+      lastClosedAt: row?.last_closed_at ? this.toIsoString(row.last_closed_at) : null
+    };
+  }
+
+  async openRegister(): Promise<JokerRegisterState> {
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_joker_register_state SET is_open = 1 WHERE id = 1`);
+    return this.getRegisterState();
+  }
+
+  // Guarda un registro historico del cierre (para poder consultarlo mas
+  // adelante) y marca la caja como cerrada; el proximo pedido que se cree
+  // vuelve a arrancar la numeracion en 1.
+  async closeRegister(dto: CloseJokerRegisterDto): Promise<JokerRegisterState> {
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_joker_register_closes (closed_at, total_vendido, ganancia, payment_totals, ranking)
+       VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?)`,
+      [dto.totalVendido, dto.ganancia, JSON.stringify(dto.paymentTotals), JSON.stringify(dto.ranking)]
+    );
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_register_state SET is_open = 0, last_closed_at = CURRENT_TIMESTAMP WHERE id = 1`
+    );
+
+    return this.getRegisterState();
   }
 
   async listOrders(dto: ListJokerOrdersDto): Promise<{ items: JokerOrder[] }> {
@@ -386,6 +450,7 @@ export class JokerService {
   private mapOrder(row: JokerOrderRow): JokerOrder {
     return {
       id: row.id,
+      displayNumber: row.display_number,
       total: Number(row.total),
       address: row.address,
       paymentMethod: this.toPaymentMethod(row.payment_method),

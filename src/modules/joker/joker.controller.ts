@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from "@nestjs/common";
 import type { Response } from "express";
+import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
@@ -88,5 +89,20 @@ export class JokerController {
   @Post("qz-sign")
   signQzRequest(@Body() dto: SignQzRequestDto) {
     return this.jokerService.signQzRequest(dto.toSign);
+  }
+
+  @Get("register/state")
+  getRegisterState() {
+    return this.jokerService.getRegisterState();
+  }
+
+  @Post("register/open")
+  openRegister() {
+    return this.jokerService.openRegister();
+  }
+
+  @Post("register/close")
+  closeRegister(@Body() dto: CloseJokerRegisterDto) {
+    return this.jokerService.closeRegister(dto);
   }
 }

@@ -31,6 +31,7 @@ export type JokerPaymentMethod = "efectivo" | "tarjeta" | "transferencia" | "cue
 
 export type JokerOrder = {
   id: number;
+  displayNumber: number;
   total: number;
   address: string;
   paymentMethod: JokerPaymentMethod;
@@ -57,4 +58,25 @@ export type JokerAccountEntry = {
   total: number;
   items: JokerAccountEntryItem[];
   createdAt: string;
+};
+
+export type JokerRegisterState = {
+  isOpen: boolean;
+  lastClosedAt: string | null;
+};
+
+export type JokerRegisterPaymentTotals = Record<JokerPaymentMethod, number>;
+
+export type JokerRegisterCloseRankingItem = {
+  productName: string;
+  quantity: number;
+};
+
+export type JokerRegisterClose = {
+  id: number;
+  closedAt: string;
+  totalVendido: number;
+  ganancia: number;
+  paymentTotals: JokerRegisterPaymentTotals;
+  ranking: JokerRegisterCloseRankingItem[];
 };
