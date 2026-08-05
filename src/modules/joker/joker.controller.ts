@@ -44,6 +44,11 @@ export class JokerController {
     return this.jokerService.listOrders(query);
   }
 
+  @Get("orders/current-period")
+  listCurrentPeriodOrders() {
+    return this.jokerService.listCurrentPeriodOrders();
+  }
+
   @Delete("orders")
   deleteAllOrders() {
     return this.jokerService.deleteAllOrders();

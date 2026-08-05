@@ -318,6 +318,26 @@ export class JokerService {
     return { ok: true };
   }
 
+  // Pedidos del periodo de caja actual (desde el ultimo cierre, o todos si
+  // todavia no hubo ninguno). Lo usa el Panel para que el resumen (vendido,
+  // ganancia, ranking) arranque de nuevo despues de cada cierre, en vez de
+  // seguir sumando todo el dia calendario.
+  async listCurrentPeriodOrders(): Promise<{ items: JokerOrder[] }> {
+    const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
+      `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
+    );
+    const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
+
+    const rows = await this.databaseService.query<JokerOrderRow[]>(
+      lastClosedAt
+        ? `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE created_at > ? ORDER BY created_at DESC LIMIT 500`
+        : `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders ORDER BY created_at DESC LIMIT 500`,
+      lastClosedAt ? [lastClosedAt] : []
+    );
+
+    return { items: rows.map((row) => this.mapOrder(row)) };
+  }
+
   async listClients(): Promise<{ items: JokerClient[] }> {
     const rows = await this.databaseService.query<JokerClientRow[]>(
       `SELECT id, name, phone, address, created_at
