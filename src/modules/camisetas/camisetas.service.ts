@@ -59,7 +59,9 @@ type SaleRow = RowDataPacket & {
 
 type PendingOrderRow = RowDataPacket & {
   order_ref: string;
-  items_json: string;
+  // mysql2 deserializa las columnas JSON solo, este campo ya llega como
+  // array de objetos, NO como string (nada de JSON.parse aca).
+  items_json: CamisetaPendingOrderItem[];
 };
 
 function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
@@ -288,7 +290,7 @@ export class CamisetasService {
         return;
       }
 
-      const items = JSON.parse(pendingRows[0].items_json) as CamisetaPendingOrderItem[];
+      const items = pendingRows[0].items_json;
 
       for (const item of items) {
         await this.databaseService.execute(
