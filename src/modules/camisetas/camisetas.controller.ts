@@ -1,17 +1,18 @@
-import { Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post } from "@nestjs/common";
 import { CamisetasService } from "./camisetas.service";
+import { CreateCamisetasCheckoutDto } from "./dto/create-camisetas-checkout.dto";
 
 @Controller("camisetas")
 export class CamisetasController {
   constructor(private readonly camisetasService: CamisetasService) {}
 
-  @Get("product")
-  getProduct() {
-    return this.camisetasService.getProduct();
+  @Get("products")
+  getProducts() {
+    return this.camisetasService.getProducts();
   }
 
   @Post("checkout")
-  createCheckoutPreference() {
-    return this.camisetasService.createCheckoutPreference();
+  createCheckoutPreference(@Body() dto: CreateCamisetasCheckoutDto) {
+    return this.camisetasService.createCheckoutPreference(dto.productId);
   }
 }
