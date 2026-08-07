@@ -9,7 +9,7 @@ const CAMISETA_PRODUCT: CamisetaProduct = {
   id: "camiseta-clasica",
   name: "Camiseta Clasica",
   description: "Camiseta 100% algodon.",
-  price: 1500,
+  price: 20,
   currency: "UYU",
   imageUrl: ""
 };
