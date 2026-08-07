@@ -31,6 +31,7 @@ type ProductRow = RowDataPacket & {
   name: string;
   description: string;
   price: string;
+  sale_price: string | null;
   currency: string;
   static_image_path: string | null;
   has_image: number;
@@ -79,6 +80,7 @@ export class CamisetasService {
       name: row.name,
       description: row.description,
       price: Number(row.price),
+      salePrice: row.sale_price !== null ? Number(row.sale_price) : null,
       currency: row.currency,
       imageUrl
     };
@@ -86,7 +88,7 @@ export class CamisetasService {
 
   async getProducts(): Promise<{ items: CamisetaProduct[] }> {
     const rows = await this.databaseService.query<ProductRow[]>(
-      `SELECT id, name, description, price, currency, static_image_path, has_image
+      `SELECT id, name, description, price, sale_price, currency, static_image_path, has_image
        FROM saas_camisetas_products
        ORDER BY id`
     );
@@ -95,7 +97,7 @@ export class CamisetasService {
 
   private async findProductRow(productId: string): Promise<ProductRow> {
     const rows = await this.databaseService.query<ProductRow[]>(
-      `SELECT id, name, description, price, currency, static_image_path, has_image
+      `SELECT id, name, description, price, sale_price, currency, static_image_path, has_image
        FROM saas_camisetas_products
        WHERE id = ?
        LIMIT 1`,
@@ -113,7 +115,7 @@ export class CamisetasService {
     await this.findProductRow(productId);
 
     const fields: string[] = [];
-    const values: Array<string | number> = [];
+    const values: Array<string | number | null> = [];
 
     if (dto.name !== undefined) {
       fields.push("name = ?");
@@ -126,6 +128,10 @@ export class CamisetasService {
     if (dto.price !== undefined) {
       fields.push("price = ?");
       values.push(dto.price);
+    }
+    if (dto.salePrice !== undefined) {
+      fields.push("sale_price = ?");
+      values.push(dto.salePrice);
     }
 
     if (fields.length > 0) {
@@ -193,6 +199,7 @@ export class CamisetasService {
 
     const productRow = await this.findProductRow(productId);
     const product = this.mapProduct(productRow);
+    const effectivePrice = product.salePrice ?? product.price;
 
     const frontendUrl = (process.env.CAMISETAS_FRONTEND_URL || DEFAULT_FRONTEND_URL).replace(/\/$/, "");
 
@@ -208,7 +215,7 @@ export class CamisetasService {
             description: product.description,
             quantity: 1,
             currency_id: product.currency,
-            unit_price: product.price
+            unit_price: effectivePrice
           }
         ],
         external_reference: product.id,
@@ -248,12 +255,17 @@ export class CamisetasService {
       if (!productId) return;
 
       const rows = await this.databaseService.query<ProductRow[]>(
-        `SELECT id, name, description, price, currency, static_image_path, has_image
+        `SELECT id, name, description, price, sale_price, currency, static_image_path, has_image
          FROM saas_camisetas_products WHERE id = ? LIMIT 1`,
         [productId]
       );
       const product = rows[0];
       if (!product) return;
+
+      // El monto realmente cobrado lo da Mercado Pago (transaction_amount),
+      // no lo recalculamos: asi el registro queda correcto aunque el precio
+      // o la oferta hayan cambiado despues de la compra.
+      const chargedAmount = payment.transaction_amount ?? Number(product.sale_price ?? product.price);
 
       await this.databaseService.execute(
         `INSERT INTO saas_camisetas_sales
@@ -263,7 +275,7 @@ export class CamisetasService {
         [
           product.id,
           product.name,
-          Number(product.price),
+          chargedAmount,
           product.currency,
           String(payment.id),
           payment.order?.id ? String(payment.order.id) : null,

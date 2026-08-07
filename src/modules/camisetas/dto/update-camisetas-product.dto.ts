@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
+import { IsNumber, IsOptional, IsPositive, IsString, MaxLength, MinLength, ValidateIf } from "class-validator";
 
 export class UpdateCamisetasProductDto {
   @IsOptional()
@@ -17,4 +17,11 @@ export class UpdateCamisetasProductDto {
   @IsNumber()
   @IsPositive()
   price?: number;
+
+  // Precio de oferta. Mandar null saca la oferta (vuelve al precio normal).
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber()
+  @IsPositive()
+  salePrice?: number | null;
 }

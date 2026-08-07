@@ -3,6 +3,7 @@ export type CamisetaProduct = {
   name: string;
   description: string;
   price: number;
+  salePrice: number | null;
   currency: string;
   imageUrl: string;
 };
