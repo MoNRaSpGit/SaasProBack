@@ -1,6 +1,5 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { CamisetasAdminGuard } from "./camisetas-admin.guard";
 import { CamisetasService } from "./camisetas.service";
 import { CreateCamisetasCheckoutDto } from "./dto/create-camisetas-checkout.dto";
 import { UpdateCamisetasProductDto } from "./dto/update-camisetas-product.dto";
@@ -63,22 +62,12 @@ export class CamisetasController {
     return this.camisetasService.getPanelSummary();
   }
 
-  // El front llama esto una sola vez con la clave que tipeo el cliente; si
-  // devuelve 200 la guarda en sessionStorage y la manda de ahi en adelante.
-  @Get("admin/check")
-  @UseGuards(CamisetasAdminGuard)
-  checkAdminKey() {
-    return { ok: true };
-  }
-
   @Patch("products/:id")
-  @UseGuards(CamisetasAdminGuard)
   updateProduct(@Param("id") productId: string, @Body() dto: UpdateCamisetasProductDto) {
     return this.camisetasService.updateProduct(productId, dto);
   }
 
   @Post("products/:id/image")
-  @UseGuards(CamisetasAdminGuard)
   async setProductImage(@Param("id") productId: string, @Body() dto: UpdateCamisetasProductImageDto) {
     await this.camisetasService.setProductImage(productId, dto.image);
     return { ok: true };
