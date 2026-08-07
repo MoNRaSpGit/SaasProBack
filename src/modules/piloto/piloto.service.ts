@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { createHash } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
@@ -12,23 +13,42 @@ type PilotoProductRow = RowDataPacket & {
   barcode: string;
   price: string | number;
   stock: string | number;
-  image_url: string | null;
+  has_image: number;
   status: "active" | "inactive";
   created_at: string | Date;
   updated_at: string | Date;
 };
 
+type PilotoProductImageRow = RowDataPacket & {
+  image_data: Buffer;
+  mime_type: string;
+  source_hash: string;
+};
+
+// La imagen NO va en esta tabla: se guarda aparte, en binario, en
+// saas_piloto_product_images (ver getProductImage/setProductImage). Traer
+// el binario en cada SELECT de productos (como se hacia antes con
+// image_url en base64) hacia lento cualquier busqueda o listado.
 const PRODUCT_COLUMNS = `
   id,
   name,
   barcode,
   price,
   stock,
-  image_url,
+  has_image,
   status,
   created_at,
   updated_at
 `;
+
+// data:<mime>;base64,<payload> -- formato que mandaba el frontend viejo (y
+// el que se sigue aceptando por compatibilidad si algun script externo lo
+// manda asi).
+function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(value.trim());
+  if (!match) return null;
+  return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
+}
 
 function normalizeBarcode(value: string) {
   return String(value || "")
@@ -156,10 +176,9 @@ export class PilotoService {
          barcode_normalized,
          price,
          stock,
-         image_url,
          status
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [name, barcode, normalizedBarcode, dto.price, dto.stock ?? 0, dto.imageUrl ?? null, dto.status ?? "active"]
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, barcode, normalizedBarcode, dto.price, dto.stock ?? 0, dto.status ?? "active"]
     );
 
     const rows = await this.databaseService.query<PilotoProductRow[]>(
@@ -276,6 +295,51 @@ export class PilotoService {
     };
   }
 
+  // Imagen del producto: se guarda en saas_piloto_product_images (binario,
+  // no base64) y se sirve por separado via GET /piloto/products/:id/image,
+  // con cache headers (ver piloto.controller.ts). Devuelve null si el
+  // producto no tiene imagen o el hash no coincide con el guardado (permite
+  // invalidar cache del lado del cliente).
+  async getProductImage(productId: number): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
+    const rows = await this.databaseService.query<PilotoProductImageRow[]>(
+      `SELECT image_data, mime_type, source_hash FROM saas_piloto_product_images WHERE product_id = ? LIMIT 1`,
+      [productId]
+    );
+
+    if (!rows[0]) {
+      return null;
+    }
+
+    return { buffer: rows[0].image_data, mimeType: rows[0].mime_type, sourceHash: rows[0].source_hash };
+  }
+
+  // Acepta un data URI base64 (formato historico) y lo guarda como binario.
+  // No hay UI hoy que suba imagenes; queda listo para cuando haga falta
+  // (por ejemplo, un import por script o una futura pantalla de edicion).
+  async setProductImage(productId: number, dataUri: string): Promise<void> {
+    const parsed = parseImageDataUri(dataUri);
+    if (!parsed) {
+      throw new BadRequestException("La imagen debe ser un data URI base64 valido.");
+    }
+
+    const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_piloto_product_images (product_id, image_data, mime_type, source_hash, byte_size)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         image_data = VALUES(image_data),
+         mime_type = VALUES(mime_type),
+         source_hash = VALUES(source_hash),
+         byte_size = VALUES(byte_size)`,
+      [productId, parsed.buffer, parsed.mimeType, sourceHash, parsed.buffer.length]
+    );
+
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_piloto_products SET has_image = 1 WHERE id = ?`, [
+      productId
+    ]);
+  }
+
   private mapProduct(row: PilotoProductRow): PilotoProduct {
     return {
       id: row.id,
@@ -283,7 +347,7 @@ export class PilotoService {
       barcode: row.barcode,
       price: Number(row.price),
       stock: Number(row.stock),
-      imageUrl: row.image_url,
+      hasImage: Boolean(row.has_image),
       status: row.status,
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)

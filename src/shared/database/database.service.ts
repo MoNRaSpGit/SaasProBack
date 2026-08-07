@@ -10,7 +10,7 @@ type DbConnectionCheckResult = {
   suggestedFix?: string;
 };
 
-type SqlValue = string | number | boolean | null | Date;
+type SqlValue = string | number | boolean | null | Date | Buffer;
 
 function mapDatabaseError(code: string): Pick<DbConnectionCheckResult, "probableCause" | "suggestedFix"> {
   switch (code) {

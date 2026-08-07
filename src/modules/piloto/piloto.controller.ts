@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Res } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
@@ -36,5 +37,30 @@ export class PilotoController {
   @Post("cache/product-lookup/reset")
   resetProductLookupCache() {
     return this.pilotoService.resetProductLookupCache();
+  }
+
+  // Sirve la imagen en binario (no en el JSON del producto) con cache
+  // fuerte via ETag: el navegador la pide una sola vez y la reusa despues,
+  // en vez de bajar el base64 completo en cada busqueda por codigo de barra.
+  @Get("products/:id/image")
+  async getProductImage(@Param("id", ParseIntPipe) productId: number, @Req() req: Request, @Res() res: Response) {
+    const image = await this.pilotoService.getProductImage(productId);
+    if (!image) {
+      res.status(404).end();
+      return;
+    }
+
+    const etag = `"${image.sourceHash}"`;
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    res.set({
+      "Content-Type": image.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      ETag: etag
+    });
+    res.send(image.buffer);
   }
 }

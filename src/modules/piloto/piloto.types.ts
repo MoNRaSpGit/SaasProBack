@@ -6,7 +6,7 @@ export type PilotoProduct = {
   barcode: string;
   price: number;
   stock: number;
-  imageUrl: string | null;
+  hasImage: boolean;
   status: PilotoProductStatus;
   createdAt: string;
   updatedAt: string;

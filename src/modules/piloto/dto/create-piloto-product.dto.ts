@@ -21,11 +21,6 @@ export class CreatePilotoProductDto {
   stock?: number;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  imageUrl?: string;
-
-  @IsOptional()
   @IsIn(["active", "inactive"])
   status?: "active" | "inactive";
 }
