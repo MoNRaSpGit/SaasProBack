@@ -2,29 +2,22 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from "@nes
 import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
 import { RowDataPacket } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
-import { buildJerseyImageDataUri } from "./camisetas.images";
 import { CamisetaBestSeller, CamisetaPanelSummary, CamisetaProduct, CamisetaSaleMovement } from "./camisetas.types";
 
-// Catalogo fijo de camisetas genericas (sin marca de ningun equipo real).
-// Cuando el catalogo pase a ser dinamico, esto se convierte en una tabla en
-// la base como el resto de los modulos.
+// Catalogo fijo con las camisetas reales que subio el cliente. Las imagenes
+// viven en frontend-camisetas/public/camisetas/ y se sirven como ruta
+// relativa (el front le antepone su base URL, que cambia entre dev y
+// Github Pages). Cuando el catalogo pase a ser dinamico, esto se convierte
+// en una tabla en la base como el resto de los modulos.
 const CAMISETA_PRODUCTS: CamisetaProduct[] = [
-  { id: "cam-01", name: "Camiseta Titular Azul", description: "Corte clasico, azul y blanco, tela liviana transpirable.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#1d4ed8", "#ffffff", 10) },
-  { id: "cam-02", name: "Camiseta Suplente Roja", description: "Version alternativa en rojo intenso con detalles negros.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#dc2626", "#111827", 9) },
-  { id: "cam-03", name: "Camiseta Retro Verde", description: "Diseño inspirado en los clasicos de los 90, verde y blanco.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#15803d", "#ffffff", 8) },
-  { id: "cam-04", name: "Camiseta Titular Negra", description: "Elegante negro y dorado, ideal para coleccionistas.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#111827", "#facc15", 7) },
-  { id: "cam-05", name: "Camiseta Celeste Clasica", description: "Celeste y blanco, la combinacion de siempre.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#38bdf8", "#ffffff", 5) },
-  { id: "cam-06", name: "Camiseta Naranja Edicion", description: "Edicion especial en naranja vibrante con vivos blancos.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#ea580c", "#ffffff", 11) },
-  { id: "cam-07", name: "Camiseta Violeta Fan", description: "Violeta y blanco, para hinchas que buscan algo distinto.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#7c3aed", "#ffffff", 4) },
-  { id: "cam-08", name: "Camiseta Rayada Blanca", description: "Blanco y azul marino, estilo rayas verticales.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#f8fafc", "#1e3a8a", 6) },
-  { id: "cam-09", name: "Camiseta Bordo Vintage", description: "Bordo con detalles crema, look retro y sobrio.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#7f1d1d", "#fef3c7", 3) },
-  { id: "cam-10", name: "Camiseta Amarilla Sol", description: "Amarillo brillante con detalles verdes.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#facc15", "#166534", 12) },
-  { id: "cam-11", name: "Camiseta Gris Urbana", description: "Gris moderno con acentos flúor, estilo urbano.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#4b5563", "#a3e635", 14) },
-  { id: "cam-12", name: "Camiseta Rosa Edicion Limitada", description: "Rosa fuerte con detalles blancos, edicion limitada.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#db2777", "#ffffff", 17) },
-  { id: "cam-13", name: "Camiseta Turquesa Costa", description: "Turquesa fresco con detalles blancos, inspirada en el verano.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#0d9488", "#ffffff", 21) },
-  { id: "cam-14", name: "Camiseta Marron Clasica", description: "Marron tierra con vivos beige, diseño sobrio.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#78350f", "#fde68a", 2) },
-  { id: "cam-15", name: "Camiseta Azul Marino Elite", description: "Azul marino profundo con detalles plateados.", price: 10, currency: "UYU", imageUrl: buildJerseyImageDataUri("#1e293b", "#cbd5e1", 15) },
-  { id: "cam-16", name: "Camiseta Roja y Negra Ultra", description: "Combinacion clasica roja y negra, corte ajustado.", price: 20, currency: "UYU", imageUrl: buildJerseyImageDataUri("#b91c1c", "#0f172a", 19) }
+  { id: "barcelona", name: "Camiseta Barcelona", description: "Camiseta titular del Barcelona, corte clasico y tela liviana transpirable.", price: 10, currency: "UYU", imageUrl: "camisetas/barcelona.jpg" },
+  { id: "boca", name: "Camiseta Boca Juniors", description: "Camiseta titular de Boca Juniors, azul y oro, para hinchas de La Bombonera.", price: 20, currency: "UYU", imageUrl: "camisetas/boca.jpg" },
+  { id: "botafogo", name: "Camiseta Botafogo", description: "Camiseta a rayas blancas y negras del Botafogo, estilo clasico brasileño.", price: 10, currency: "UYU", imageUrl: "camisetas/botafogo.jpg" },
+  { id: "milan", name: "Camiseta Milan", description: "Camiseta titular del Milan, rojo y negro, corte ajustado.", price: 20, currency: "UYU", imageUrl: "camisetas/milan.jpg" },
+  { id: "nacional", name: "Camiseta Nacional", description: "Camiseta tricolor de Nacional, un clasico del futbol uruguayo.", price: 10, currency: "UYU", imageUrl: "camisetas/nacional.jpg" },
+  { id: "penarol", name: "Camiseta Peñarol", description: "Camiseta a rayas amarillas y negras de Peñarol, la garra charrua.", price: 20, currency: "UYU", imageUrl: "camisetas/penarol.jpg" },
+  { id: "river", name: "Camiseta River Plate", description: "Camiseta titular de River Plate, banda roja sobre blanco.", price: 10, currency: "UYU", imageUrl: "camisetas/river.jpg" },
+  { id: "real-madrid", name: "Camiseta Real Madrid", description: "Camiseta titular del Real Madrid, blanca con detalles dorados.", price: 20, currency: "UYU", imageUrl: "camisetas/real-madrid.jpg" }
 ];
 
 // A donde vuelve el comprador despues de pagar (o cancelar) en Mercado
