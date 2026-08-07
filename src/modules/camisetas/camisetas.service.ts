@@ -1,32 +1,46 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { createHash } from "crypto";
 import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
-import { RowDataPacket } from "mysql2/promise";
+import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
-import { CamisetaBestSeller, CamisetaPanelSummary, CamisetaProduct, CamisetaSaleMovement } from "./camisetas.types";
-
-// Catalogo fijo con las camisetas reales que subio el cliente. Las imagenes
-// viven en frontend-camisetas/public/camisetas/ y se sirven como ruta
-// relativa (el front le antepone su base URL, que cambia entre dev y
-// Github Pages). Cuando el catalogo pase a ser dinamico, esto se convierte
-// en una tabla en la base como el resto de los modulos.
-const CAMISETA_PRODUCTS: CamisetaProduct[] = [
-  { id: "barcelona", name: "Camiseta Barcelona", description: "Camiseta titular del Barcelona, corte clasico y tela liviana transpirable.", price: 10, currency: "UYU", imageUrl: "camisetas/barcelona.jpg" },
-  { id: "boca", name: "Camiseta Boca Juniors", description: "Camiseta titular de Boca Juniors, azul y oro, para hinchas de La Bombonera.", price: 20, currency: "UYU", imageUrl: "camisetas/boca.jpg" },
-  { id: "botafogo", name: "Camiseta Botafogo", description: "Camiseta a rayas blancas y negras del Botafogo, estilo clasico brasileño.", price: 10, currency: "UYU", imageUrl: "camisetas/botafogo.jpg" },
-  { id: "milan", name: "Camiseta Milan", description: "Camiseta titular del Milan, rojo y negro, corte ajustado.", price: 20, currency: "UYU", imageUrl: "camisetas/milan.jpg" },
-  { id: "nacional", name: "Camiseta Nacional", description: "Camiseta tricolor de Nacional, un clasico del futbol uruguayo.", price: 10, currency: "UYU", imageUrl: "camisetas/nacional.jpg" },
-  { id: "penarol", name: "Camiseta Peñarol", description: "Camiseta a rayas amarillas y negras de Peñarol, la garra charrua.", price: 20, currency: "UYU", imageUrl: "camisetas/penarol.jpg" },
-  { id: "river", name: "Camiseta River Plate", description: "Camiseta titular de River Plate, banda roja sobre blanco.", price: 10, currency: "UYU", imageUrl: "camisetas/river.jpg" },
-  { id: "real-madrid", name: "Camiseta Real Madrid", description: "Camiseta titular del Real Madrid, blanca con detalles dorados.", price: 20, currency: "UYU", imageUrl: "camisetas/real-madrid.jpg" }
-];
+import { UpdateCamisetasProductDto } from "./dto/update-camisetas-product.dto";
+import {
+  CamisetaBestSeller,
+  CamisetaPanelSummary,
+  CamisetaProduct,
+  CamisetaSaleMovement
+} from "./camisetas.types";
 
 // A donde vuelve el comprador despues de pagar (o cancelar) en Mercado
 // Pago. El front usa HashRouter en produccion (Github Pages), por eso el
 // "#/..." en cada ruta.
 const DEFAULT_FRONTEND_URL = "https://monraspgit.github.io/frontend-camisetas/";
 
-// A donde Mercado Pago manda la notificacion de pago (webhook/IPN).
+// A donde Mercado Pago manda la notificacion de pago (webhook/IPN), y de
+// donde el front arma la URL de la imagen subida (GET .../products/:id/image).
 const DEFAULT_BACKEND_URL = "https://saasproback.onrender.com";
+
+// Limite duro del lado del servidor. El frontend ya comprime/redimensiona
+// antes de mandar, esto es solo una red de seguridad por si alguien pega
+// el data URI directo a la API.
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+type ProductRow = RowDataPacket & {
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  currency: string;
+  static_image_path: string | null;
+  has_image: number;
+};
+
+type ProductImageRow = RowDataPacket & {
+  image_data: Buffer;
+  mime_type: string;
+  source_hash: string;
+};
 
 type SaleRow = RowDataPacket & {
   id: number;
@@ -39,22 +53,136 @@ type SaleRow = RowDataPacket & {
   created_at: string;
 };
 
+function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(value.trim());
+  if (!match) return null;
+  return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
+}
+
+function backendUrl() {
+  return (process.env.CAMISETAS_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/$/, "");
+}
+
 @Injectable()
 export class CamisetasService {
   private readonly logger = new Logger(CamisetasService.name);
 
   constructor(private readonly databaseService: DatabaseService) {}
 
-  getProducts(): { items: CamisetaProduct[] } {
-    return { items: CAMISETA_PRODUCTS };
+  private mapProduct(row: ProductRow): CamisetaProduct {
+    const imageUrl = row.has_image
+      ? `${backendUrl()}/api/v1/camisetas/products/${row.id}/image`
+      : row.static_image_path || "";
+
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      price: Number(row.price),
+      currency: row.currency,
+      imageUrl
+    };
   }
 
-  private findProduct(productId: string): CamisetaProduct {
-    const product = CAMISETA_PRODUCTS.find((item) => item.id === productId);
-    if (!product) {
+  async getProducts(): Promise<{ items: CamisetaProduct[] }> {
+    const rows = await this.databaseService.query<ProductRow[]>(
+      `SELECT id, name, description, price, currency, static_image_path, has_image
+       FROM saas_camisetas_products
+       ORDER BY id`
+    );
+    return { items: rows.map((row) => this.mapProduct(row)) };
+  }
+
+  private async findProductRow(productId: string): Promise<ProductRow> {
+    const rows = await this.databaseService.query<ProductRow[]>(
+      `SELECT id, name, description, price, currency, static_image_path, has_image
+       FROM saas_camisetas_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    if (!rows[0]) {
       throw new NotFoundException("La camiseta seleccionada no existe.");
     }
-    return product;
+
+    return rows[0];
+  }
+
+  async updateProduct(productId: string, dto: UpdateCamisetasProductDto): Promise<CamisetaProduct> {
+    await this.findProductRow(productId);
+
+    const fields: string[] = [];
+    const values: Array<string | number> = [];
+
+    if (dto.name !== undefined) {
+      fields.push("name = ?");
+      values.push(dto.name);
+    }
+    if (dto.description !== undefined) {
+      fields.push("description = ?");
+      values.push(dto.description);
+    }
+    if (dto.price !== undefined) {
+      fields.push("price = ?");
+      values.push(dto.price);
+    }
+
+    if (fields.length > 0) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `UPDATE saas_camisetas_products SET ${fields.join(", ")} WHERE id = ?`,
+        [...values, productId]
+      );
+    }
+
+    const row = await this.findProductRow(productId);
+    return this.mapProduct(row);
+  }
+
+  async getProductImage(productId: string): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
+    const rows = await this.databaseService.query<ProductImageRow[]>(
+      `SELECT image_data, mime_type, source_hash FROM saas_camisetas_product_images WHERE product_id = ? LIMIT 1`,
+      [productId]
+    );
+
+    if (!rows[0]) return null;
+
+    return { buffer: rows[0].image_data, mimeType: rows[0].mime_type, sourceHash: rows[0].source_hash };
+  }
+
+  async setProductImage(productId: string, dataUri: string): Promise<void> {
+    await this.findProductRow(productId);
+
+    const parsed = parseImageDataUri(dataUri);
+    if (!parsed) {
+      throw new BadRequestException("La imagen debe ser un data URI base64 valido.");
+    }
+
+    if (!ALLOWED_IMAGE_MIME_TYPES.has(parsed.mimeType)) {
+      throw new BadRequestException("Formato de imagen no soportado. Usa JPG, PNG o WEBP.");
+    }
+
+    if (parsed.buffer.length > MAX_IMAGE_BYTES) {
+      throw new BadRequestException("Esta imagen es demasiado pesada. Probá con una más liviana.");
+    }
+
+    const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_camisetas_product_images (product_id, image_data, mime_type, source_hash, byte_size)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         image_data = VALUES(image_data),
+         mime_type = VALUES(mime_type),
+         source_hash = VALUES(source_hash),
+         byte_size = VALUES(byte_size)`,
+      [productId, parsed.buffer, parsed.mimeType, sourceHash, parsed.buffer.length]
+    );
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camisetas_products SET has_image = 1 WHERE id = ?`,
+      [productId]
+    );
   }
 
   async createCheckoutPreference(productId: string): Promise<{ initPoint: string }> {
@@ -63,10 +191,10 @@ export class CamisetasService {
       throw new BadRequestException("MP_ACCESS_TOKEN no esta configurado en el servidor.");
     }
 
-    const product = this.findProduct(productId);
+    const productRow = await this.findProductRow(productId);
+    const product = this.mapProduct(productRow);
 
     const frontendUrl = (process.env.CAMISETAS_FRONTEND_URL || DEFAULT_FRONTEND_URL).replace(/\/$/, "");
-    const backendUrl = (process.env.CAMISETAS_BACKEND_URL || DEFAULT_BACKEND_URL).replace(/\/$/, "");
 
     const client = new MercadoPagoConfig({ accessToken });
     const preference = new Preference(client);
@@ -84,7 +212,7 @@ export class CamisetasService {
           }
         ],
         external_reference: product.id,
-        notification_url: `${backendUrl}/api/v1/camisetas/webhook`,
+        notification_url: `${backendUrl()}/api/v1/camisetas/webhook`,
         back_urls: {
           success: `${frontendUrl}/#/compra-exitosa`,
           pending: `${frontendUrl}/#/compra-pendiente`,
@@ -119,7 +247,12 @@ export class CamisetasService {
       const productId = payment.external_reference;
       if (!productId) return;
 
-      const product = CAMISETA_PRODUCTS.find((item) => item.id === productId);
+      const rows = await this.databaseService.query<ProductRow[]>(
+        `SELECT id, name, description, price, currency, static_image_path, has_image
+         FROM saas_camisetas_products WHERE id = ? LIMIT 1`,
+        [productId]
+      );
+      const product = rows[0];
       if (!product) return;
 
       await this.databaseService.execute(
@@ -130,7 +263,7 @@ export class CamisetasService {
         [
           product.id,
           product.name,
-          product.price,
+          Number(product.price),
           product.currency,
           String(payment.id),
           payment.order?.id ? String(payment.order.id) : null,

@@ -1,6 +1,10 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import type { Request, Response } from "express";
+import { CamisetasAdminGuard } from "./camisetas-admin.guard";
 import { CamisetasService } from "./camisetas.service";
 import { CreateCamisetasCheckoutDto } from "./dto/create-camisetas-checkout.dto";
+import { UpdateCamisetasProductDto } from "./dto/update-camisetas-product.dto";
+import { UpdateCamisetasProductImageDto } from "./dto/update-camisetas-product-image.dto";
 
 @Controller("camisetas")
 export class CamisetasController {
@@ -9,6 +13,29 @@ export class CamisetasController {
   @Get("products")
   getProducts() {
     return this.camisetasService.getProducts();
+  }
+
+  // Sirve la imagen en binario, con cache fuerte via ETag.
+  @Get("products/:id/image")
+  async getProductImage(@Param("id") productId: string, @Req() req: Request, @Res() res: Response) {
+    const image = await this.camisetasService.getProductImage(productId);
+    if (!image) {
+      res.status(404).end();
+      return;
+    }
+
+    const etag = `"${image.sourceHash}"`;
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    res.set({
+      "Content-Type": image.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      ETag: etag
+    });
+    res.send(image.buffer);
   }
 
   @Post("checkout")
@@ -34,5 +61,26 @@ export class CamisetasController {
   @Get("panel/summary")
   getPanelSummary() {
     return this.camisetasService.getPanelSummary();
+  }
+
+  // El front llama esto una sola vez con la clave que tipeo el cliente; si
+  // devuelve 200 la guarda en sessionStorage y la manda de ahi en adelante.
+  @Get("admin/check")
+  @UseGuards(CamisetasAdminGuard)
+  checkAdminKey() {
+    return { ok: true };
+  }
+
+  @Patch("products/:id")
+  @UseGuards(CamisetasAdminGuard)
+  updateProduct(@Param("id") productId: string, @Body() dto: UpdateCamisetasProductDto) {
+    return this.camisetasService.updateProduct(productId, dto);
+  }
+
+  @Post("products/:id/image")
+  @UseGuards(CamisetasAdminGuard)
+  async setProductImage(@Param("id") productId: string, @Body() dto: UpdateCamisetasProductImageDto) {
+    await this.camisetasService.setProductImage(productId, dto.image);
+    return { ok: true };
   }
 }
