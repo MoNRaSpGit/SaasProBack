@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
+import { CamisetaCheckoutItemDto } from "./dto/create-camisetas-checkout.dto";
 import { UpdateCamisetasProductDto } from "./dto/update-camisetas-product.dto";
 import {
   CamisetaBestSeller,
   CamisetaPanelSummary,
+  CamisetaPendingOrderItem,
   CamisetaProduct,
   CamisetaSaleMovement
 } from "./camisetas.types";
@@ -48,10 +50,16 @@ type SaleRow = RowDataPacket & {
   product_id: string;
   product_name: string;
   unit_price: string;
+  quantity: number;
   currency: string;
   mp_payment_id: string;
   mp_status: string;
   created_at: string;
+};
+
+type PendingOrderRow = RowDataPacket & {
+  order_ref: string;
+  items_json: string;
 };
 
 function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
@@ -191,15 +199,34 @@ export class CamisetasService {
     );
   }
 
-  async createCheckoutPreference(productId: string): Promise<{ initPoint: string }> {
+  async createCheckoutPreference(items: CamisetaCheckoutItemDto[]): Promise<{ initPoint: string }> {
     const accessToken = process.env.MP_ACCESS_TOKEN;
     if (!accessToken) {
       throw new BadRequestException("MP_ACCESS_TOKEN no esta configurado en el servidor.");
     }
 
-    const productRow = await this.findProductRow(productId);
-    const product = this.mapProduct(productRow);
-    const effectivePrice = product.salePrice ?? product.price;
+    // Los precios y nombres salen SIEMPRE de la base (nunca de lo que mande
+    // el cliente), para que nadie pueda pagar menos manipulando el pedido.
+    const orderItems: CamisetaPendingOrderItem[] = [];
+    for (const item of items) {
+      const row = await this.findProductRow(item.productId);
+      const product = this.mapProduct(row);
+      orderItems.push({
+        productId: product.id,
+        productName: product.name,
+        unitPrice: product.salePrice ?? product.price,
+        quantity: item.quantity,
+        currency: product.currency
+      });
+    }
+
+    const currency = orderItems[0].currency;
+    const orderRef = randomUUID();
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_camisetas_pending_orders (order_ref, items_json) VALUES (?, ?)`,
+      [orderRef, JSON.stringify(orderItems)]
+    );
 
     const frontendUrl = (process.env.CAMISETAS_FRONTEND_URL || DEFAULT_FRONTEND_URL).replace(/\/$/, "");
 
@@ -208,17 +235,14 @@ export class CamisetasService {
 
     const result = await preference.create({
       body: {
-        items: [
-          {
-            id: product.id,
-            title: product.name,
-            description: product.description,
-            quantity: 1,
-            currency_id: product.currency,
-            unit_price: effectivePrice
-          }
-        ],
-        external_reference: product.id,
+        items: orderItems.map((item) => ({
+          id: item.productId,
+          title: item.productName,
+          quantity: item.quantity,
+          currency_id: item.currency,
+          unit_price: item.unitPrice
+        })),
+        external_reference: orderRef,
         notification_url: `${backendUrl()}/api/v1/camisetas/webhook`,
         back_urls: {
           success: `${frontendUrl}/#/compra-exitosa`,
@@ -237,8 +261,8 @@ export class CamisetasService {
   }
 
   // Mercado Pago llama esta ruta cuando cambia el estado de un pago (IPN).
-  // Solo nos interesan los pagos aprobados; se guardan una sola vez gracias
-  // al UNIQUE de mp_payment_id (ON DUPLICATE KEY = no-op).
+  // Solo nos interesan los pagos aprobados; cada linea del carrito se guarda
+  // una sola vez gracias al UNIQUE (mp_payment_id, product_id).
   async handlePaymentNotification(paymentId: string | undefined): Promise<void> {
     if (!paymentId) return;
 
@@ -251,37 +275,39 @@ export class CamisetasService {
 
       if (payment.status !== "approved") return;
 
-      const productId = payment.external_reference;
-      if (!productId) return;
+      const orderRef = payment.external_reference;
+      if (!orderRef) return;
 
-      const rows = await this.databaseService.query<ProductRow[]>(
-        `SELECT id, name, description, price, sale_price, currency, static_image_path, has_image
-         FROM saas_camisetas_products WHERE id = ? LIMIT 1`,
-        [productId]
+      const pendingRows = await this.databaseService.query<PendingOrderRow[]>(
+        `SELECT order_ref, items_json FROM saas_camisetas_pending_orders WHERE order_ref = ? LIMIT 1`,
+        [orderRef]
       );
-      const product = rows[0];
-      if (!product) return;
 
-      // El monto realmente cobrado lo da Mercado Pago (transaction_amount),
-      // no lo recalculamos: asi el registro queda correcto aunque el precio
-      // o la oferta hayan cambiado despues de la compra.
-      const chargedAmount = payment.transaction_amount ?? Number(product.sale_price ?? product.price);
+      if (!pendingRows[0]) {
+        this.logger.warn(`No se encontro el carrito ${orderRef} para el pago ${paymentId}.`);
+        return;
+      }
 
-      await this.databaseService.execute(
-        `INSERT INTO saas_camisetas_sales
-           (product_id, product_name, unit_price, currency, mp_payment_id, mp_preference_id, mp_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE mp_status = VALUES(mp_status)`,
-        [
-          product.id,
-          product.name,
-          chargedAmount,
-          product.currency,
-          String(payment.id),
-          payment.order?.id ? String(payment.order.id) : null,
-          payment.status
-        ]
-      );
+      const items = JSON.parse(pendingRows[0].items_json) as CamisetaPendingOrderItem[];
+
+      for (const item of items) {
+        await this.databaseService.execute(
+          `INSERT INTO saas_camisetas_sales
+             (product_id, product_name, unit_price, quantity, currency, mp_payment_id, mp_preference_id, mp_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE mp_status = VALUES(mp_status), quantity = VALUES(quantity)`,
+          [
+            item.productId,
+            item.productName,
+            item.unitPrice,
+            item.quantity,
+            item.currency,
+            String(payment.id),
+            payment.order?.id ? String(payment.order.id) : null,
+            payment.status
+          ]
+        );
+      }
     } catch (error) {
       this.logger.error(`No se pudo procesar la notificacion de pago ${paymentId}`, error as Error);
     }
@@ -289,7 +315,7 @@ export class CamisetasService {
 
   async getPanelSummary(): Promise<CamisetaPanelSummary> {
     const rows = await this.databaseService.query<SaleRow[]>(
-      `SELECT id, product_id, product_name, unit_price, currency, mp_payment_id, mp_status, created_at
+      `SELECT id, product_id, product_name, unit_price, quantity, currency, mp_payment_id, mp_status, created_at
        FROM saas_camisetas_sales
        WHERE mp_status = 'approved'
        ORDER BY created_at DESC`
@@ -300,6 +326,7 @@ export class CamisetasService {
       productId: row.product_id,
       productName: row.product_name,
       unitPrice: Number(row.unit_price),
+      quantity: row.quantity,
       currency: row.currency,
       mpPaymentId: row.mp_payment_id,
       mpStatus: row.mp_status,
@@ -307,20 +334,22 @@ export class CamisetasService {
     }));
 
     const currency = movimientos[0]?.currency || "UYU";
-    const totalVendido = movimientos.reduce((sum, sale) => sum + sale.unitPrice, 0);
+    const totalVendido = movimientos.reduce((sum, sale) => sum + sale.unitPrice * sale.quantity, 0);
+    const cantidadVentas = movimientos.reduce((sum, sale) => sum + sale.quantity, 0);
 
     const salesByProduct = new Map<string, CamisetaBestSeller>();
     for (const sale of movimientos) {
       const existing = salesByProduct.get(sale.productId);
+      const lineTotal = sale.unitPrice * sale.quantity;
       if (existing) {
-        existing.unitsSold += 1;
-        existing.totalVendido += sale.unitPrice;
+        existing.unitsSold += sale.quantity;
+        existing.totalVendido += lineTotal;
       } else {
         salesByProduct.set(sale.productId, {
           productId: sale.productId,
           productName: sale.productName,
-          unitsSold: 1,
-          totalVendido: sale.unitPrice
+          unitsSold: sale.quantity,
+          totalVendido: lineTotal
         });
       }
     }
@@ -332,7 +361,7 @@ export class CamisetasService {
       // No hay costo de producto cargado (son camisetas de prueba), por eso
       // la ganancia es igual al total vendido: no hay margen a descontar.
       totalGanancia: totalVendido,
-      cantidadVentas: movimientos.length,
+      cantidadVentas,
       currency,
       movimientos,
       masVendidas
