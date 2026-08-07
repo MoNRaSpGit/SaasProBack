@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AlamcenModule } from "./modules/alamcen/alamcen.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
+import { CamisetasModule } from "./modules/camisetas/camisetas.module";
 import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
 import { JokerModule } from "./modules/joker/joker.module";
@@ -26,6 +27,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     SaasAdminModule,
     AlamcenModule,
     CamionesModule,
+    CamisetasModule,
     NeonModule,
     AgroModule,
     ScrumModule,
