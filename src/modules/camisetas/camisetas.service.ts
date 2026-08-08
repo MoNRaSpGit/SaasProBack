@@ -28,6 +28,9 @@ const DEFAULT_BACKEND_URL = "https://saasproback.onrender.com";
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+// Margen estimado hasta que carguemos el costo real de cada producto.
+const GANANCIA_MARGIN = 0.3;
+
 type ProductRow = RowDataPacket & {
   id: string;
   name: string;
@@ -35,6 +38,7 @@ type ProductRow = RowDataPacket & {
   price: string;
   sale_price: string | null;
   currency: string;
+  category: string | null;
   static_image_path: string | null;
   has_image: number;
 };
@@ -92,13 +96,14 @@ export class CamisetasService {
       price: Number(row.price),
       salePrice: row.sale_price !== null ? Number(row.sale_price) : null,
       currency: row.currency,
+      category: row.category,
       imageUrl
     };
   }
 
   async getProducts(): Promise<{ items: CamisetaProduct[] }> {
     const rows = await this.databaseService.query<ProductRow[]>(
-      `SELECT id, name, description, price, sale_price, currency, static_image_path, has_image
+      `SELECT id, name, description, price, sale_price, currency, category, static_image_path, has_image
        FROM saas_camisetas_products
        ORDER BY id`
     );
@@ -107,7 +112,7 @@ export class CamisetasService {
 
   private async findProductRow(productId: string): Promise<ProductRow> {
     const rows = await this.databaseService.query<ProductRow[]>(
-      `SELECT id, name, description, price, sale_price, currency, static_image_path, has_image
+      `SELECT id, name, description, price, sale_price, currency, category, static_image_path, has_image
        FROM saas_camisetas_products
        WHERE id = ?
        LIMIT 1`,
@@ -142,6 +147,10 @@ export class CamisetasService {
     if (dto.salePrice !== undefined) {
       fields.push("sale_price = ?");
       values.push(dto.salePrice);
+    }
+    if (dto.category !== undefined) {
+      fields.push("category = ?");
+      values.push(dto.category);
     }
 
     if (fields.length > 0) {
@@ -360,9 +369,9 @@ export class CamisetasService {
 
     return {
       totalVendido,
-      // No hay costo de producto cargado (son camisetas de prueba), por eso
-      // la ganancia es igual al total vendido: no hay margen a descontar.
-      totalGanancia: totalVendido,
+      // No hay costo real de producto cargado todavia, asi que la ganancia
+      // se estima como un margen fijo del 30% sobre lo vendido.
+      totalGanancia: totalVendido * GANANCIA_MARGIN,
       cantidadVentas,
       currency,
       movimientos,

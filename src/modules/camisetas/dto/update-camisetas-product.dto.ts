@@ -1,4 +1,5 @@
-import { IsNumber, IsOptional, IsPositive, IsString, MaxLength, MinLength, ValidateIf } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsPositive, IsString, MaxLength, MinLength, ValidateIf } from "class-validator";
+import { CAMISETA_CATEGORIES } from "../camisetas.types";
 
 export class UpdateCamisetasProductDto {
   @IsOptional()
@@ -24,4 +25,8 @@ export class UpdateCamisetasProductDto {
   @IsNumber()
   @IsPositive()
   salePrice?: number | null;
+
+  @IsOptional()
+  @IsIn(CAMISETA_CATEGORIES)
+  category?: string;
 }
