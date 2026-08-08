@@ -59,14 +59,24 @@ type SaleRow = RowDataPacket & {
   mp_payment_id: string;
   mp_status: string;
   created_at: string;
+  order_code: string | null;
+  customer_name: string | null;
+  customer_phone: string | null;
 };
 
 type PendingOrderRow = RowDataPacket & {
   order_ref: string;
+  seq_id: number;
+  customer_name: string;
+  customer_phone: string;
   // mysql2 deserializa las columnas JSON solo, este campo ya llega como
   // array de objetos, NO como string (nada de JSON.parse aca).
   items_json: CamisetaPendingOrderItem[];
 };
+
+function buildOrderCode(seqId: number): string {
+  return `PDH-${String(seqId).padStart(4, "0")}`;
+}
 
 function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
   const match = /^data:([^;]+);base64,(.+)$/s.exec(value.trim());
@@ -210,7 +220,11 @@ export class CamisetasService {
     );
   }
 
-  async createCheckoutPreference(items: CamisetaCheckoutItemDto[]): Promise<{ initPoint: string }> {
+  async createCheckoutPreference(
+    items: CamisetaCheckoutItemDto[],
+    customerName: string,
+    customerPhone: string
+  ): Promise<{ initPoint: string; orderCode: string }> {
     const accessToken = process.env.MP_ACCESS_TOKEN;
     if (!accessToken) {
       throw new BadRequestException("MP_ACCESS_TOKEN no esta configurado en el servidor.");
@@ -231,13 +245,14 @@ export class CamisetasService {
       });
     }
 
-    const currency = orderItems[0].currency;
     const orderRef = randomUUID();
 
-    await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_camisetas_pending_orders (order_ref, items_json) VALUES (?, ?)`,
-      [orderRef, JSON.stringify(orderItems)]
+    const insertResult = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_camisetas_pending_orders (order_ref, items_json, customer_name, customer_phone)
+       VALUES (?, ?, ?, ?)`,
+      [orderRef, JSON.stringify(orderItems), customerName, customerPhone]
     );
+    const orderCode = buildOrderCode(insertResult.insertId);
 
     const frontendUrl = (process.env.CAMISETAS_FRONTEND_URL || DEFAULT_FRONTEND_URL).replace(/\/$/, "");
 
@@ -256,9 +271,9 @@ export class CamisetasService {
         external_reference: orderRef,
         notification_url: `${backendUrl()}/api/v1/camisetas/webhook`,
         back_urls: {
-          success: `${frontendUrl}/#/compra-exitosa`,
-          pending: `${frontendUrl}/#/compra-pendiente`,
-          failure: `${frontendUrl}/#/compra-fallida`
+          success: `${frontendUrl}/#/compra-exitosa?codigo=${orderCode}`,
+          pending: `${frontendUrl}/#/compra-pendiente?codigo=${orderCode}`,
+          failure: `${frontendUrl}/#/compra-fallida?codigo=${orderCode}`
         },
         auto_return: "approved"
       }
@@ -268,7 +283,7 @@ export class CamisetasService {
       throw new BadRequestException("Mercado Pago no devolvio un link de pago.");
     }
 
-    return { initPoint: result.init_point };
+    return { initPoint: result.init_point, orderCode };
   }
 
   // Mercado Pago llama esta ruta cuando cambia el estado de un pago (IPN).
@@ -290,7 +305,8 @@ export class CamisetasService {
       if (!orderRef) return;
 
       const pendingRows = await this.databaseService.query<PendingOrderRow[]>(
-        `SELECT order_ref, items_json FROM saas_camisetas_pending_orders WHERE order_ref = ? LIMIT 1`,
+        `SELECT order_ref, seq_id, customer_name, customer_phone, items_json
+         FROM saas_camisetas_pending_orders WHERE order_ref = ? LIMIT 1`,
         [orderRef]
       );
 
@@ -299,13 +315,15 @@ export class CamisetasService {
         return;
       }
 
-      const items = pendingRows[0].items_json;
+      const pendingOrder = pendingRows[0];
+      const items = pendingOrder.items_json;
+      const orderCode = buildOrderCode(pendingOrder.seq_id);
 
       for (const item of items) {
         await this.databaseService.execute(
           `INSERT INTO saas_camisetas_sales
-             (product_id, product_name, unit_price, quantity, currency, mp_payment_id, mp_preference_id, mp_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             (product_id, product_name, unit_price, quantity, currency, mp_payment_id, mp_preference_id, mp_status, order_code, customer_name, customer_phone)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON DUPLICATE KEY UPDATE mp_status = VALUES(mp_status), quantity = VALUES(quantity)`,
           [
             item.productId,
@@ -315,7 +333,10 @@ export class CamisetasService {
             item.currency,
             String(payment.id),
             payment.order?.id ? String(payment.order.id) : null,
-            payment.status
+            payment.status,
+            orderCode,
+            pendingOrder.customer_name,
+            pendingOrder.customer_phone
           ]
         );
       }
@@ -326,7 +347,8 @@ export class CamisetasService {
 
   async getPanelSummary(): Promise<CamisetaPanelSummary> {
     const rows = await this.databaseService.query<SaleRow[]>(
-      `SELECT id, product_id, product_name, unit_price, quantity, currency, mp_payment_id, mp_status, created_at
+      `SELECT id, product_id, product_name, unit_price, quantity, currency, mp_payment_id, mp_status, created_at,
+              order_code, customer_name, customer_phone
        FROM saas_camisetas_sales
        WHERE mp_status = 'approved'
        ORDER BY created_at DESC`
@@ -341,7 +363,10 @@ export class CamisetasService {
       currency: row.currency,
       mpPaymentId: row.mp_payment_id,
       mpStatus: row.mp_status,
-      createdAt: new Date(row.created_at).toISOString()
+      createdAt: new Date(row.created_at).toISOString(),
+      orderCode: row.order_code,
+      customerName: row.customer_name,
+      customerPhone: row.customer_phone
     }));
 
     const currency = movimientos[0]?.currency || "UYU";

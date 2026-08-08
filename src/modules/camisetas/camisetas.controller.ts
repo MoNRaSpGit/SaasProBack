@@ -39,7 +39,7 @@ export class CamisetasController {
 
   @Post("checkout")
   createCheckoutPreference(@Body() dto: CreateCamisetasCheckoutDto) {
-    return this.camisetasService.createCheckoutPreference(dto.items);
+    return this.camisetasService.createCheckoutPreference(dto.items, dto.customerName, dto.customerPhone);
   }
 
   // Mercado Pago llama esta ruta (IPN/webhook) cuando cambia el estado de un

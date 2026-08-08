@@ -34,6 +34,9 @@ export type CamisetaSaleMovement = {
   mpPaymentId: string;
   mpStatus: string;
   createdAt: string;
+  orderCode: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
 };
 
 // Snapshot de un carrito al momento de generar la preferencia de pago.
