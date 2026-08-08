@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { CamisetasAdminGuard } from "./camisetas-admin.guard";
 import { CamisetasService } from "./camisetas.service";
+import { CamisetasAdminLoginDto } from "./dto/camisetas-admin-login.dto";
 import { CreateCamisetasCheckoutDto } from "./dto/create-camisetas-checkout.dto";
 import { UpdateCamisetasProductDto } from "./dto/update-camisetas-product.dto";
 import { UpdateCamisetasProductImageDto } from "./dto/update-camisetas-product-image.dto";
@@ -57,17 +59,25 @@ export class CamisetasController {
     return { received: true };
   }
 
+  @Post("admin/login")
+  loginAdmin(@Body() dto: CamisetasAdminLoginDto) {
+    return this.camisetasService.loginAdmin(dto.username, dto.password);
+  }
+
   @Get("panel/summary")
+  @UseGuards(CamisetasAdminGuard)
   getPanelSummary() {
     return this.camisetasService.getPanelSummary();
   }
 
   @Patch("products/:id")
+  @UseGuards(CamisetasAdminGuard)
   updateProduct(@Param("id") productId: string, @Body() dto: UpdateCamisetasProductDto) {
     return this.camisetasService.updateProduct(productId, dto);
   }
 
   @Post("products/:id/image")
+  @UseGuards(CamisetasAdminGuard)
   async setProductImage(@Param("id") productId: string, @Body() dto: UpdateCamisetasProductImageDto) {
     await this.camisetasService.setProductImage(productId, dto.image);
     return { ok: true };

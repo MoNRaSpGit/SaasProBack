@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { createHash, randomUUID } from "crypto";
 import { MercadoPagoConfig, Payment, Preference } from "mercadopago";
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
@@ -62,6 +62,12 @@ type SaleRow = RowDataPacket & {
   order_code: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+};
+
+type AdminUserRow = RowDataPacket & {
+  id: number;
+  username: string;
+  password: string;
 };
 
 type PendingOrderRow = RowDataPacket & {
@@ -402,5 +408,27 @@ export class CamisetasService {
       movimientos,
       masVendidas
     };
+  }
+
+  // Login del admin de Piel de Hincha. Contrasena en texto plano por ahora
+  // (modo de prueba, a pedido del cliente -- ver docs internas del proyecto).
+  async loginAdmin(username: string, password: string): Promise<{ token: string }> {
+    const rows = await this.databaseService.query<AdminUserRow[]>(
+      `SELECT id, username, password FROM saas_camisetas_admin_users WHERE username = ? LIMIT 1`,
+      [username]
+    );
+
+    const admin = rows[0];
+    if (!admin || admin.password !== password) {
+      throw new UnauthorizedException("Usuario o contraseña incorrectos.");
+    }
+
+    const token = randomUUID();
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_camisetas_admin_sessions (token, admin_user_id) VALUES (?, ?)`,
+      [token, admin.id]
+    );
+
+    return { token };
   }
 }
