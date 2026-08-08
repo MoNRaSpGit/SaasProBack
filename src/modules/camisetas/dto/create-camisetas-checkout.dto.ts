@@ -1,4 +1,4 @@
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -6,12 +6,14 @@ import {
   IsInt,
   IsNotEmpty,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
   MinLength,
   ValidateNested
 } from "class-validator";
+import { normalizeUyPhone } from "../phone.util";
 
 export class CamisetaCheckoutItemDto {
   @IsString()
@@ -39,8 +41,12 @@ export class CreateCamisetasCheckoutDto {
   @MaxLength(160)
   customerName!: string;
 
+  // Celular uruguayo real: 09X XXX XXX. Se normaliza (saca espacios/+598)
+  // antes de validar, asi "092 945 696" y "+598 92 945 696" quedan igual.
+  @Transform(({ value }) => (typeof value === "string" ? normalizeUyPhone(value) : value))
   @IsString()
-  @MinLength(6)
-  @MaxLength(40)
+  @Matches(/^09\d{7}$/, {
+    message: "El celular no es válido. Usa el formato 09X XXX XXX (ej: 092 945 696)."
+  })
   customerPhone!: string;
 }
