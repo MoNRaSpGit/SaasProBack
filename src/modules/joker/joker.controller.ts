@@ -84,6 +84,13 @@ export class JokerController {
     return this.jokerService.settleAccount(clientId);
   }
 
+  // Respaldo permanente de consumos ya pagados o de clientes eliminados,
+  // para reclamos ("el cliente dice que no debia eso").
+  @Get("account-settlements/client/:clientId")
+  listAccountSettlements(@Param("clientId", ParseIntPipe) clientId: number) {
+    return this.jokerService.listAccountSettlements(clientId);
+  }
+
   // QZ Tray pide el certificado como texto plano (no JSON) via
   // setCertificatePromise.
   @Get("qz-certificate")

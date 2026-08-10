@@ -60,6 +60,20 @@ export type JokerAccountEntry = {
   createdAt: string;
 };
 
+// Copia permanente de un consumo de cuenta corriente al momento en que se
+// paga o el cliente se elimina (ver joker.service.ts#archiveClientEntries).
+export type JokerAccountSettlement = {
+  id: number;
+  clientId: number;
+  clientName: string;
+  entryId: number;
+  total: number;
+  items: JokerAccountEntryItem[];
+  entryCreatedAt: string;
+  reason: "pago" | "cliente_eliminado";
+  settledAt: string;
+};
+
 export type JokerRegisterState = {
   isOpen: boolean;
   lastClosedAt: string | null;
