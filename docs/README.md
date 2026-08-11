@@ -51,7 +51,8 @@ Eso se documenta en la carpeta `docs/` del frontend correspondiente.
 7. [Inventario operativo del backend](./operations/backend-inventory.md)
 8. [Estado actual de base de datos](./operations/database-state.md)
 9. [Bitacora activa](./operations/bitacora.md)
-10. [Indice de decisiones tecnicas](./decisions/README.md)
+10. [Deuda tecnica / ruido detectado en el repo](./operations/deuda-tecnica-repo.md)
+11. [Indice de decisiones tecnicas](./decisions/README.md)
 
 ## Estructura de esta carpeta
 
@@ -73,6 +74,7 @@ Estado operativo del backend:
 - inventario del repo
 - estado real de base de datos
 - bitacora de cambios del backend
+- deuda tecnica / ruido detectado en el repo (pendiente de revisar mas adelante)
 
 ### `decisions/`
 

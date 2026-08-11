@@ -16,6 +16,7 @@ export type CarnetEvent = {
   id: number;
   name: string;
   endDate: string | null;
+  isClosed: boolean;
   createdAt: string;
   updatedAt: string;
   playersCount: number;

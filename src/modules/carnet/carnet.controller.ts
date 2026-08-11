@@ -4,6 +4,7 @@ import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buye
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { SetCarnetEventPlayerBuyerDeliveredDto } from "./dto/set-carnet-event-player-buyer-delivered.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
+import { UpdateCarnetEventDto } from "./dto/update-carnet-event.dto";
 import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
 import { UpdateCarnetPlayerDto } from "./dto/update-carnet-player.dto";
 import { UpsertCarnetEventPlayerDto } from "./dto/upsert-carnet-event-player.dto";
@@ -35,6 +36,11 @@ export class CarnetController {
   @Post("events")
   createEvent(@Body() dto: CreateCarnetEventDto) {
     return this.carnetService.createEvent(dto);
+  }
+
+  @Patch("events/:id")
+  setEventClosed(@Param("id", ParseIntPipe) eventId: number, @Body() dto: UpdateCarnetEventDto) {
+    return this.carnetService.setEventClosed(eventId, dto.isClosed);
   }
 
   @Post("players")

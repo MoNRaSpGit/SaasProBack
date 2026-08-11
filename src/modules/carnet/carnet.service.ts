@@ -26,6 +26,7 @@ type CarnetEventRow = RowDataPacket & {
   id: number;
   name: string;
   end_date: string | Date | null;
+  is_closed: number;
   created_at: string | Date;
   updated_at: string | Date;
   players_count: number;
@@ -110,13 +111,14 @@ export class CarnetService {
          e.id,
          e.name,
          e.end_date,
+         e.is_closed,
          e.created_at,
          e.updated_at,
          COUNT(ep.id) AS players_count,
          COALESCE(SUM(ep.sales_count), 0) AS total_sales
        FROM saas_carnet_events e
        LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
-       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       GROUP BY e.id, e.name, e.end_date, e.is_closed, e.created_at, e.updated_at
        ORDER BY e.created_at DESC`
     );
 
@@ -133,6 +135,7 @@ export class CarnetService {
          e.id,
          e.name,
          e.end_date,
+         e.is_closed,
          e.created_at,
          e.updated_at,
          COUNT(ep.id) AS players_count,
@@ -140,7 +143,7 @@ export class CarnetService {
        FROM saas_carnet_events e
        LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
        WHERE e.id = ?
-       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       GROUP BY e.id, e.name, e.end_date, e.is_closed, e.created_at, e.updated_at
        LIMIT 1`,
       [eventId]
     );
@@ -224,6 +227,7 @@ export class CarnetService {
          e.id,
          e.name,
          e.end_date,
+         e.is_closed,
          e.created_at,
          e.updated_at,
          COUNT(ep.id) AS players_count,
@@ -231,7 +235,7 @@ export class CarnetService {
        FROM saas_carnet_events e
        LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
        WHERE LOWER(e.name) = LOWER(?)
-       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       GROUP BY e.id, e.name, e.end_date, e.is_closed, e.created_at, e.updated_at
        LIMIT 1`,
       [name]
     );
@@ -250,6 +254,7 @@ export class CarnetService {
          e.id,
          e.name,
          e.end_date,
+         e.is_closed,
          e.created_at,
          e.updated_at,
          0 AS players_count,
@@ -261,6 +266,27 @@ export class CarnetService {
     );
 
     return { item: this.mapEvent(rows[0]) };
+  }
+
+  // Cerrar un evento bloquea que se le sigan cargando ventas (attach de
+  // jugador, cambio de cantidad, asignar comprador) para que no se mezclen
+  // con el evento nuevo que arranque despues. Reabrir es reversible: no
+  // borra nada, solo saca el bloqueo.
+  async setEventClosed(eventId: number, isClosed: boolean) {
+    await this.ensureTables();
+
+    const event = await this.findEventById(eventId);
+    if (!event) {
+      throw new BadRequestException("Evento no encontrado");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_carnet_events SET is_closed = ? WHERE id = ?`,
+      [isClosed ? 1 : 0, eventId]
+    );
+
+    const updated = await this.findEventById(eventId);
+    return { item: updated as CarnetEvent };
   }
 
   async createPlayer(dto: CreateCarnetPlayerDto) {
@@ -339,6 +365,9 @@ export class CarnetService {
     if (!event) {
       throw new BadRequestException("Evento no encontrado");
     }
+    if (event.isClosed) {
+      throw new BadRequestException("Este evento esta cerrado. Reabrilo para poder editarlo.");
+    }
 
     const player = await this.findPlayerById(dto.playerId);
     if (!player) {
@@ -366,6 +395,9 @@ export class CarnetService {
     if (!event) {
       throw new BadRequestException("Evento no encontrado");
     }
+    if (event.isClosed) {
+      throw new BadRequestException("Este evento esta cerrado. Reabrilo para poder editarlo.");
+    }
 
     const player = await this.findPlayerById(playerId);
     if (!player) {
@@ -388,6 +420,14 @@ export class CarnetService {
 
   async addEventPlayerBuyer(eventId: number, playerId: number, dto: AddCarnetEventPlayerBuyerDto) {
     await this.ensureTables();
+
+    const event = await this.findEventById(eventId);
+    if (!event) {
+      throw new BadRequestException("Evento no encontrado");
+    }
+    if (event.isClosed) {
+      throw new BadRequestException("Este evento esta cerrado. Reabrilo para poder editarlo.");
+    }
 
     const eventPlayerRows = await this.databaseService.query<Array<RowDataPacket & { id: number; sales_count: number }>>(
       `SELECT id, sales_count
@@ -617,6 +657,7 @@ export class CarnetService {
       id: row.id,
       name: row.name,
       endDate: this.toIsoDateNullable(row.end_date),
+      isClosed: Boolean(Number(row.is_closed)),
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at),
       playersCount: Number(row.players_count || 0),
@@ -737,6 +778,14 @@ export class CarnetService {
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
 
+    const hasIsClosedColumn = await this.hasColumn("saas_carnet_events", "is_closed");
+    if (!hasIsClosedColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_carnet_events
+         ADD COLUMN is_closed TINYINT(1) NOT NULL DEFAULT 0`
+      );
+    }
+
     const hasEndDateColumn = await this.hasColumn("saas_carnet_events", "end_date");
 
     if (!hasEndDateColumn) {
@@ -822,6 +871,7 @@ export class CarnetService {
          e.id,
          e.name,
          e.end_date,
+         e.is_closed,
          e.created_at,
          e.updated_at,
          COUNT(ep.id) AS players_count,
@@ -829,7 +879,7 @@ export class CarnetService {
        FROM saas_carnet_events e
        LEFT JOIN saas_carnet_event_players ep ON ep.event_id = e.id
        WHERE e.id = ?
-       GROUP BY e.id, e.name, e.end_date, e.created_at, e.updated_at
+       GROUP BY e.id, e.name, e.end_date, e.is_closed, e.created_at, e.updated_at
        LIMIT 1`,
       [eventId]
     );
