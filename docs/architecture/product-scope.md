@@ -5,15 +5,14 @@ Fecha de actualizacion: 2026-05-16
 ## Estado oficial actual
 
 - backend oficial activo: `backend`
-- productos activos documentados: `neon` y `agro`
-- frontend activo de `neon`: `frontend-neon`
+- productos activos documentados: `agro`
 - frontend activo de `agro`: `frontend-agro`
+- `neon` se dio de baja el 2026-08-11 (sin uso real); ver `operations/deuda-tecnica-repo.md` y `operations/database-state.md`
 
 ## Regla de producto
 
-Hoy el SaaS se presenta con dos productos activos:
+Hoy el SaaS se presenta con un producto activo:
 
-- `neon`
 - `agro`
 
 Eso significa:
@@ -40,7 +39,6 @@ Este documento solo declara la foto global del SaaS.
 
 No documenta:
 
-- cambios finos de `neon`
 - cambios finos de `agro`
 - cortes diarios de producto
 - listas de tareas especificas por modulo
@@ -53,7 +51,7 @@ El core SaaS soporta conceptualmente multi-modulo por tenant.
 
 Pero en esta etapa:
 
-- los modulos activos documentados son `neon` y `agro`
+- el modulo activo documentado es `agro`
 
 ## SaaS Admin
 

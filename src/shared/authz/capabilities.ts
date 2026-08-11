@@ -13,19 +13,6 @@ export type TenantCapability =
   | "agro.shell.read"
   | "agro.discovery.read"
   | "agro.discovery.write"
-  | "neon.shell.read"
-  | "neon.accounts.read"
-  | "neon.accounts.write"
-  | "neon.clients.read"
-  | "neon.clients.write"
-  | "neon.activities.read"
-  | "neon.activities.write"
-  | "neon.categories.read"
-  | "neon.categories.write"
-  | "neon.expenses.read"
-  | "neon.expenses.write"
-  | "neon.journal.read"
-  | "neon.journal.write"
   | "camiones.clients.read"
   | "camiones.clients.write"
   | "camiones.places.read"
@@ -47,19 +34,6 @@ const ALL_CAPABILITIES: TenantCapability[] = [
   "agro.shell.read",
   "agro.discovery.read",
   "agro.discovery.write",
-  "neon.shell.read",
-  "neon.accounts.read",
-  "neon.accounts.write",
-  "neon.clients.read",
-  "neon.clients.write",
-  "neon.activities.read",
-  "neon.activities.write",
-  "neon.categories.read",
-  "neon.categories.write",
-  "neon.expenses.read",
-  "neon.expenses.write",
-  "neon.journal.read",
-  "neon.journal.write",
   "camiones.clients.read",
   "camiones.clients.write",
   "camiones.places.read",
@@ -82,13 +56,6 @@ const ROLE_CAPABILITIES: Record<TenantMembershipRole, TenantCapability[]> = {
     "agro.shell.read",
     "agro.discovery.read",
     "agro.discovery.write",
-    "neon.shell.read",
-    "neon.accounts.read",
-    "neon.journal.read",
-    "neon.clients.read",
-    "neon.activities.read",
-    "neon.categories.read",
-    "neon.expenses.read",
     "camiones.clients.read",
     "camiones.places.read",
     "camiones.trips.read",

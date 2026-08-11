@@ -101,11 +101,11 @@ Si el detalle es de un frontend puntual:
 ## Estado actual resumido
 
 - backend oficial activo: `backend`
-- productos activos documentados: `neon` y `agro`
-- `frontend-neon` y `frontend-agro` son los frontends activos de este corte
+- productos activos documentados: `agro`
+- `frontend-agro` es el frontend activo de este corte
 - `main` representa la linea estable oficial
+- `neon` se dio de baja (codigo, tablas y `frontend-neon` eliminados) el 2026-08-11 por falta de uso real; ver `operations/deuda-tecnica-repo.md`
 
 ## Documentacion por frontend
 
-- `neon`: `frontend-neon/docs`
 - `agro`: `frontend-agro/docs`

@@ -104,7 +104,7 @@ async function main() {
     }
 
     const availableModules = listPayload.availableModules ?? [];
-    const expectedModules = ["camiones", "neon"];
+    const expectedModules = ["camiones", "agro"];
     const hasExpectedModules =
       expectedModules.every((moduleKey) => availableModules.includes(moduleKey)) &&
       availableModules.length === expectedModules.length;
@@ -149,7 +149,7 @@ async function main() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        enabledModules: ["camiones", "neon"]
+        enabledModules: ["camiones", "agro"]
       })
     });
     const updateModulesPayload = (await readJson(updateModulesResponse)) as {

@@ -26,6 +26,37 @@ No registra:
 
 Eso va en la carpeta `docs/` del frontend correspondiente.
 
+## 2026-08-11 - Baja completa de neon por falta de uso real
+
+Se da de baja el producto `neon`: modulo de backend, rutas, tablas de base y `frontend-neon`.
+
+Motivo: revision de actividad mostro que, salvo un tenant demo con datos minimos, todo lo
+demas eran tenants generados por la suite de tests funcionales. El tenant demo real
+(`neon.demo@saaspro.com`) tenia ultimo login el 2026-07-06 y ultimo dato cargado el
+2026-05-07 (solo 6 movimientos y 3 actividades en total).
+
+Cambios principales:
+
+- eliminadas las 7 tablas `saas_neon_*` (clients, accounts, categories, activities,
+  activity_payments, movements, movement_allocations) y sus filas en `saas_tenant_modules`
+- dump de respaldo (SQL + JSON) generado y guardado fuera del repo antes de borrar
+- eliminado `src/modules/neon/` completo, y la registracion en `app.module.ts`
+- sacadas las capabilities `neon.*` de `shared/authz/capabilities.ts`
+- sacado `neon` de `shared/saas/product-catalog.ts` (`SAAS_PRODUCT_KEYS` y afines)
+- eliminados `scripts/validate-neon-shell.ts` y `scripts/reset-neon-demo-pilot-data.js`,
+  y sus entradas en `run-functional-suite.js` / `package.json`
+- eliminada la carpeta `frontend-neon` (el repo de GitHub queda intacto, borrado manual
+  pendiente por el dueño del proyecto)
+- documentacion actualizada: `README.md`, `architecture/platform-overview.md`,
+  `architecture/product-scope.md`, `operations/backend-inventory.md`,
+  `operations/database-state.md`
+
+Comportamiento operativo:
+
+- `agro` queda como el unico producto activo documentado
+- las migraciones historicas `apply-neon-*-migration.js` se dejan como estan (registro
+  historico, no se tocan)
+
 ## 2026-06-11 - Demo de agro alineado con filtros mensuales y seed consistente
 
 Se ajusta el entorno demo de `agro` para acompañar la nueva lectura operativa mensual del frontend sin tocar el tenant real del cliente.

@@ -28,17 +28,6 @@ Las demas tablas viejas de otros proyectos no se tocan.
 
 ## Modulos activos documentados
 
-### Neon
-
-- `saas_neon_clients`
-- `saas_neon_activities`
-- `saas_neon_accounts`
-- `saas_neon_movements`
-- `saas_neon_movement_allocations`
-- `saas_neon_activity_payments`
-- `saas_neon_categories`
-- `saas_neon_expenses`
-
 ### Agro
 
 - `saas_agro_discovery_responses`
@@ -98,23 +87,6 @@ Contrato asociado:
 - `GET /api/v1/agro/workspace`
 - `PUT /api/v1/agro/workspace`
 
-### `saas_neon_activities`
-
-Concentra el eje comercial operativo de `neon`.
-
-Hoy se vincula con:
-
-- clientes
-- actividades
-- movimientos
-- cobros
-
-Su saldo operativo se cruza con:
-
-- `saas_neon_movements`
-- `saas_neon_movement_allocations`
-- `saas_neon_activity_payments`
-
 ## Modulos presentes en backend pero fuera del alcance oficial actual
 
 ### Camiones
@@ -145,6 +117,12 @@ Estados soportados:
 - eliminadas tablas `saas_pos_*`
 - eliminados modulos viejos de `saas_tenant_modules`
 - eliminados tenants y usuarios de prueba viejos del SaaS
+- 2026-08-11: eliminadas las 7 tablas `saas_neon_*` (clients, accounts, categories,
+  activities, activity_payments, movements, movement_allocations), sus filas en
+  `saas_tenant_modules`, el modulo de backend completo y `frontend-neon`. Motivo: sin
+  uso real (ultimo login 2026-07-06, ultimo dato cargado 2026-05-07, solo 47 filas en
+  total entre las 7 tablas, casi todo tenants de test automatico). Dump de respaldo
+  guardado fuera del repo antes de borrar.
 
 ## Regla futura
 

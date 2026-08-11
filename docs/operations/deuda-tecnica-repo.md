@@ -83,6 +83,17 @@ tabla de sesiones propia) hecho a pedido explicito del cliente para modo de prue
 un error, pero cuando se le agregue hash de contrasena (pendiente, ver bitacora), vale la
 pena evaluar si conviene alinearlo al patron compartido o dejarlo separado a proposito.
 
+## Resuelto (2026-08-11)
+
+- **neon**: dado de baja completo (no estaba en la lista original de este documento, salio
+  de una revision de actividad aparte). Motivo: sin uso real, ver la entrada del
+  2026-08-11 en `operations/bitacora.md` para el detalle completo.
+- **DB**: `productos_test`, `productos_test_backup`, `ops_producto`, `ops_producto_media`,
+  `eco_desclasificados`, `eco_sesion`, `eco_scan_session_item`, `eco_caja_movimiento`,
+  `saas_alamcen_products`, `saas_alamcen_sale_items` renombradas con prefijo `zzarchive_`
+  como prueba en caliente antes del `DROP` final (alamcen quedo reemplazado por `piloto`,
+  segun confirmo el dueno del proyecto).
+
 ## Que falta decidir (no hacer todavia)
 
 - Confirmar si los 5 frontends huerfanos del punto 3 siguen vivos.

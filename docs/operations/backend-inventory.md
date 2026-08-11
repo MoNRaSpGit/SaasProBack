@@ -26,7 +26,6 @@ que usa.
 
 ### Productos activos documentados (patron legacy - multi-tenant compartido)
 
-- `neon`
 - `agro`
 
 ### Modulos con datos reales fuera del alcance oficial actual (patron legacy)
@@ -79,7 +78,6 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `validate-alamcen.ts`
 - `validate-role-capabilities.ts`
 - `validate-saas-admin-lite.ts`
-- `validate-neon-shell.ts`
 - `validate-agro-discovery.ts`
 - `validate-camiones.ts`
 
@@ -93,7 +91,6 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `create-camiones-current-client-user.js`
 - `create-camiones-demo-user.js`
 - `reset-agro-public-workspace.js`
-- `reset-neon-demo-pilot-data.js`
 
 ## Scripts npm relevantes
 
@@ -105,7 +102,6 @@ El backend tambien se apoya en capas compartidas dentro de `src/shared` para:
 - `npm run test:functional:auth`
 - `npm run test:functional:alamcen`
 - `npm run test:functional:saas-admin`
-- `npm run test:functional:neon`
 - `npm run test:functional:agro`
 - `npm run test:functional:camiones`
 

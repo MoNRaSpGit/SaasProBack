@@ -9,9 +9,9 @@ Definir la estructura oficial del backend de `SaasPro` para crecer sin ruido.
 ## Foto actual
 
 - `backend` = nucleo unico del SaaS
-- `frontend-neon` = frontend activo de `neon`
 - `frontend-agro` = frontend activo de `agro`
-- `neon` y `agro` = productos activos documentados en este corte
+- `agro` = producto activo documentado en este corte
+- `neon` se dio de baja el 2026-08-11 (codigo, tablas y `frontend-neon` eliminados; sin uso real)
 
 ## Regla de arquitectura
 
@@ -27,7 +27,7 @@ Definir la estructura oficial del backend de `SaasPro` para crecer sin ruido.
 Ver [decision-008](../decisions/decision-008-frontend-dedicado-sin-tenant-para-productos-nuevos.md)
 para el detalle completo. Resumen:
 
-- **Patron legacy (multi-tenant compartido)**: `agro`, `neon`, `alamcen`, `camiones`,
+- **Patron legacy (multi-tenant compartido)**: `agro`, `alamcen`, `camiones`,
   `saas-admin`. Login con JWT, `saas_tenants` / `saas_tenant_memberships` /
   `saas_tenant_modules`, tablas de negocio con `tenant_id`. Pensado para que un mismo
   frontend sirva a varios clientes con datos aislados por fila. No se toca ni se migra.

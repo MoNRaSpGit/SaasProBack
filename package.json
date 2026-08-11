@@ -17,7 +17,6 @@
     "test:functional:alamcen": "npx.cmd ts-node scripts/validate-alamcen.ts",
     "test:functional:agro": "npx.cmd ts-node scripts/validate-agro-discovery.ts",
     "test:functional:camiones": "npx.cmd ts-node scripts/validate-camiones.ts",
-    "test:functional:neon": "npx.cmd ts-node scripts/validate-neon-shell.ts",
     "test:functional:rbac": "npx.cmd ts-node scripts/validate-role-capabilities.ts",
     "test:functional:saas-admin": "npx.cmd ts-node scripts/validate-saas-admin-lite.ts"
   },
