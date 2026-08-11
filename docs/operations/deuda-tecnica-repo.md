@@ -93,6 +93,20 @@ pena evaluar si conviene alinearlo al patron compartido o dejarlo separado a pro
   `saas_alamcen_products`, `saas_alamcen_sale_items` renombradas con prefijo `zzarchive_`
   como prueba en caliente antes del `DROP` final (alamcen quedo reemplazado por `piloto`,
   segun confirmo el dueno del proyecto).
+- **Punto 2 (`front-web`)**: carpeta local eliminada.
+- **Punto 3, parcial**: `frontend-urreta`, `frontend-gym`, `frontend-lab` y
+  `frontend-restaurante` eliminados (carpeta local). `frontend-presupuesto` sigue en pie,
+  no se pidio borrar. En los 5 casos el repo de GitHub sigue intacto (no hay tooling en
+  este entorno para borrar repos remotos); queda pendiente que el dueno del proyecto los
+  borre a mano si quiere, junto con el de `frontend-neon`.
+
+## Repos de GitHub pendientes de borrado manual (no se puede hacer desde aca)
+
+- https://github.com/MoNRaSpGit/frontend-neon
+- https://github.com/MoNRaSpGit/frontend-urreta
+- https://github.com/MoNRaSpGit/frontend-gym
+- https://github.com/MoNRaSpGit/frontend-lab
+- https://github.com/MoNRaSpGit/frontend-restaurante
 
 ## Que falta decidir (no hacer todavia)
 
