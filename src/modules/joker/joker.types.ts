@@ -74,6 +74,22 @@ export type JokerAccountSettlement = {
   settledAt: string;
 };
 
+export type JokerStockItem = {
+  id: number;
+  name: string;
+  unit: string;
+  quantity: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type JokerProductRecipeLine = {
+  stockItemId: number;
+  stockItemName: string;
+  unit: string;
+  quantityPerUnit: number;
+};
+
 export type JokerRegisterState = {
   isOpen: boolean;
   lastClosedAt: string | null;

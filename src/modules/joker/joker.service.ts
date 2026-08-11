@@ -2,12 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { createSign } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
-import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
+import { CreateJokerOrderDto, CreateJokerOrderItemDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
+import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
+import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
+import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import {
   JokerAccountEntry,
@@ -16,7 +20,9 @@ import {
   JokerOrder,
   JokerPaymentMethod,
   JokerProduct,
-  JokerRegisterState
+  JokerProductRecipeLine,
+  JokerRegisterState,
+  JokerStockItem
 } from "./joker.types";
 
 type JokerProductRow = RowDataPacket & {
@@ -49,6 +55,22 @@ type JokerOrderRow = RowDataPacket & {
 type JokerRegisterStateRow = RowDataPacket & {
   is_open: number;
   last_closed_at: string | Date | null;
+};
+
+type JokerStockItemRow = RowDataPacket & {
+  id: number;
+  name: string;
+  unit: string;
+  quantity: string | number;
+  created_at: string | Date;
+  updated_at: string | Date;
+};
+
+type JokerProductRecipeRow = RowDataPacket & {
+  stock_item_id: number;
+  stock_item_name: string;
+  unit: string;
+  quantity_per_unit: string | number;
 };
 
 type JokerClientRow = RowDataPacket & {
@@ -259,7 +281,185 @@ export class JokerService {
       [result.insertId]
     );
 
+    await this.deductStockForOrderItems(dto.items);
+
     return { item: this.mapOrder(rows[0]) };
+  }
+
+  // Descuenta stock segun la receta de cada producto vendido (si no tiene
+  // receta cargada, no se toca nada). No bloquea la venta si algun insumo
+  // queda en negativo -- eso se avisa despues en la pantalla de Stock.
+  private async deductStockForOrderItems(items: CreateJokerOrderItemDto[]): Promise<void> {
+    const productIds = [...new Set(items.map((item) => item.productId))];
+    if (!productIds.length) return;
+
+    const placeholders = productIds.map(() => "?").join(", ");
+    const recipeRows = await this.databaseService.query<
+      Array<RowDataPacket & { product_id: number; stock_item_id: number; quantity_per_unit: string | number }>
+    >(
+      `SELECT product_id, stock_item_id, quantity_per_unit
+       FROM saas_joker_product_recipes
+       WHERE product_id IN (${placeholders})`,
+      productIds
+    );
+
+    if (!recipeRows.length) return;
+
+    const recipesByProduct = new Map<number, Array<{ stockItemId: number; quantityPerUnit: number }>>();
+    for (const row of recipeRows) {
+      const list = recipesByProduct.get(row.product_id) ?? [];
+      list.push({ stockItemId: row.stock_item_id, quantityPerUnit: Number(row.quantity_per_unit) });
+      recipesByProduct.set(row.product_id, list);
+    }
+
+    for (const item of items) {
+      const recipeLines = recipesByProduct.get(item.productId);
+      if (!recipeLines) continue;
+
+      for (const line of recipeLines) {
+        await this.databaseService.execute<ResultSetHeader>(
+          `UPDATE saas_joker_stock_items SET quantity = quantity - ? WHERE id = ?`,
+          [line.quantityPerUnit * item.quantity, line.stockItemId]
+        );
+      }
+    }
+  }
+
+  async listStockItems(): Promise<{ items: JokerStockItem[] }> {
+    const rows = await this.databaseService.query<JokerStockItemRow[]>(
+      `SELECT id, name, unit, quantity, created_at, updated_at
+       FROM saas_joker_stock_items
+       ORDER BY name ASC`
+    );
+
+    return { items: rows.map((row) => this.mapStockItem(row)) };
+  }
+
+  async createStockItem(dto: CreateJokerStockItemDto): Promise<{ item: JokerStockItem }> {
+    const name = dto.name.trim();
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_joker_stock_items (name, unit, quantity) VALUES (?, ?, ?)`,
+      [name, dto.unit?.trim() || "unidad", dto.quantity ?? 0]
+    );
+
+    const rows = await this.databaseService.query<JokerStockItemRow[]>(
+      `SELECT id, name, unit, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
+      [result.insertId]
+    );
+
+    return { item: this.mapStockItem(rows[0]) };
+  }
+
+  // Reponer stock: suma (o resta, si se manda negativo) a la cantidad actual.
+  async restockItem(stockItemId: number, dto: RestockJokerStockItemDto): Promise<{ item: JokerStockItem }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_stock_items SET quantity = quantity + ? WHERE id = ?`,
+      [dto.quantity, stockItemId]
+    );
+
+    if (!result.affectedRows) {
+      throw new NotFoundException("Insumo no encontrado");
+    }
+
+    const rows = await this.databaseService.query<JokerStockItemRow[]>(
+      `SELECT id, name, unit, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
+      [stockItemId]
+    );
+
+    return { item: this.mapStockItem(rows[0]) };
+  }
+
+  async deleteStockItem(stockItemId: number): Promise<{ ok: true }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_joker_stock_items WHERE id = ?`,
+      [stockItemId]
+    );
+
+    if (!result.affectedRows) {
+      throw new NotFoundException("Insumo no encontrado");
+    }
+
+    return { ok: true };
+  }
+
+  async getProductRecipe(productId: number): Promise<{ items: JokerProductRecipeLine[] }> {
+    const rows = await this.databaseService.query<JokerProductRecipeRow[]>(
+      `SELECT r.stock_item_id, s.name AS stock_item_name, s.unit, r.quantity_per_unit
+       FROM saas_joker_product_recipes r
+       INNER JOIN saas_joker_stock_items s ON s.id = r.stock_item_id
+       WHERE r.product_id = ?
+       ORDER BY s.name ASC`,
+      [productId]
+    );
+
+    return { items: rows.map((row) => this.mapRecipeLine(row)) };
+  }
+
+  // Reemplaza toda la receta del producto (borra lo que tenia y carga lo nuevo).
+  async setProductRecipe(productId: number, dto: SetJokerProductRecipeDto): Promise<{ items: JokerProductRecipeLine[] }> {
+    await this.databaseService.withTransaction(async (connection) => {
+      await connection.execute(`DELETE FROM saas_joker_product_recipes WHERE product_id = ?`, [productId]);
+
+      for (const line of dto.items) {
+        await connection.execute(
+          `INSERT INTO saas_joker_product_recipes (product_id, stock_item_id, quantity_per_unit) VALUES (?, ?, ?)`,
+          [productId, line.stockItemId, line.quantityPerUnit]
+        );
+      }
+    });
+
+    return this.getProductRecipe(productId);
+  }
+
+  // Aplica la misma receta a todos los productos de una categoria de una
+  // sola vez (ej: "Hamburguesas" = 1 churrasco + 1 pan), para no cargar
+  // producto por producto. Las excepciones (ej. BBQ 2.0) se ajustan despues
+  // a mano con setProductRecipe sobre ese producto puntual.
+  async bulkApplyRecipe(dto: BulkApplyJokerRecipeDto): Promise<{ affectedProducts: number }> {
+    const productRows = await this.databaseService.query<Array<RowDataPacket & { id: number }>>(
+      `SELECT id FROM saas_joker_products WHERE category = ?`,
+      [dto.category]
+    );
+
+    if (!productRows.length) {
+      throw new BadRequestException("No hay productos en esa categoria");
+    }
+
+    await this.databaseService.withTransaction(async (connection) => {
+      for (const product of productRows) {
+        await connection.execute(`DELETE FROM saas_joker_product_recipes WHERE product_id = ?`, [product.id]);
+
+        for (const line of dto.items) {
+          await connection.execute(
+            `INSERT INTO saas_joker_product_recipes (product_id, stock_item_id, quantity_per_unit) VALUES (?, ?, ?)`,
+            [product.id, line.stockItemId, line.quantityPerUnit]
+          );
+        }
+      }
+    });
+
+    return { affectedProducts: productRows.length };
+  }
+
+  private mapStockItem(row: JokerStockItemRow): JokerStockItem {
+    return {
+      id: row.id,
+      name: row.name,
+      unit: row.unit,
+      quantity: Number(row.quantity),
+      createdAt: this.toIsoString(row.created_at),
+      updatedAt: this.toIsoString(row.updated_at)
+    };
+  }
+
+  private mapRecipeLine(row: JokerProductRecipeRow): JokerProductRecipeLine {
+    return {
+      stockItemId: row.stock_item_id,
+      stockItemName: row.stock_item_name,
+      unit: row.unit,
+      quantityPerUnit: Number(row.quantity_per_unit)
+    };
   }
 
   // El numero que se imprime en el ticket ("Pedido #N") arranca de nuevo en
