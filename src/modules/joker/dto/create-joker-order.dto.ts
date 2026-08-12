@@ -42,4 +42,11 @@ export class CreateJokerOrderDto {
   @IsOptional()
   @IsIn(["efectivo", "tarjeta", "transferencia", "cuenta"])
   paymentMethod?: "efectivo" | "tarjeta" | "transferencia" | "cuenta";
+
+  // Quien pago: el nombre del cliente elegido (cuenta) o el que se tipeo a
+  // mano (transferencia), para poder rastrear el pago despues en el panel.
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  customerName?: string;
 }

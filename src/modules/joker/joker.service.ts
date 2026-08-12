@@ -49,6 +49,7 @@ type JokerOrderRow = RowDataPacket & {
   total: string | number;
   address: string;
   payment_method: string;
+  customer_name: string | null;
   items: string;
   created_at: string | Date;
 };
@@ -125,6 +126,7 @@ const ORDER_COLUMNS = `
   total,
   address,
   payment_method,
+  customer_name,
   items,
   created_at
 `;
@@ -270,8 +272,15 @@ export class JokerService {
     const displayNumber = await this.getNextOrderDisplayNumber();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, items) VALUES (?, ?, ?, ?, ?)`,
-      [displayNumber, total, dto.address?.trim() || "", dto.paymentMethod ?? "efectivo", JSON.stringify(dto.items)]
+      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, customer_name, items) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        displayNumber,
+        total,
+        dto.address?.trim() || "",
+        dto.paymentMethod ?? "efectivo",
+        dto.customerName?.trim() || null,
+        JSON.stringify(dto.items)
+      ]
     );
 
     const rows = await this.databaseService.query<JokerOrderRow[]>(
@@ -804,6 +813,7 @@ export class JokerService {
       total: Number(row.total),
       address: row.address,
       paymentMethod: this.toPaymentMethod(row.payment_method),
+      customerName: row.customer_name,
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       createdAt: this.toIsoString(row.created_at)
     };

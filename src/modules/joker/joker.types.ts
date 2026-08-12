@@ -35,6 +35,7 @@ export type JokerOrder = {
   total: number;
   address: string;
   paymentMethod: JokerPaymentMethod;
+  customerName: string | null;
   items: JokerOrderItem[];
   createdAt: string;
 };
