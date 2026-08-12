@@ -12,6 +12,7 @@ import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
+import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import {
   JokerAccountEntry,
@@ -284,6 +285,62 @@ export class JokerService {
     await this.deductStockForOrderItems(dto.items);
 
     return { item: this.mapOrder(rows[0]) };
+  }
+
+  // Edita un pedido ya cargado (ej: el cliente se bajo una coca). El total
+  // se recalcula solo a partir de los items nuevos, nunca se edita a mano.
+  // El stock se ajusta por la diferencia entre lo viejo y lo nuevo: si baja
+  // una cantidad (o saca un producto entero), se lo devuelve al stock: si la
+  // sube, descuenta la diferencia. Si el pedido queda sin items, total
+  // queda en $0 (equivale a cancelarlo, pero no se borra el registro).
+  async updateOrder(orderId: number, dto: UpdateJokerOrderDto): Promise<{ item: JokerOrder }> {
+    const rows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
+      [orderId]
+    );
+
+    const existing = rows[0];
+    if (!existing) {
+      throw new NotFoundException("Pedido no encontrado");
+    }
+
+    const oldItems: CreateJokerOrderItemDto[] =
+      typeof existing.items === "string" ? JSON.parse(existing.items) : (existing.items as unknown as CreateJokerOrderItemDto[]);
+
+    const oldQtyByProduct = new Map<number, number>();
+    for (const item of oldItems) {
+      oldQtyByProduct.set(item.productId, (oldQtyByProduct.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    const newQtyByProduct = new Map<number, number>();
+    for (const item of dto.items) {
+      newQtyByProduct.set(item.productId, (newQtyByProduct.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    const productIds = new Set([...oldQtyByProduct.keys(), ...newQtyByProduct.keys()]);
+    const deltaItems: CreateJokerOrderItemDto[] = [];
+    for (const productId of productIds) {
+      const delta = (newQtyByProduct.get(productId) ?? 0) - (oldQtyByProduct.get(productId) ?? 0);
+      if (delta !== 0) {
+        deltaItems.push({ productId, productName: "", unitPrice: 0, quantity: delta });
+      }
+    }
+
+    await this.deductStockForOrderItems(deltaItems);
+
+    const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_orders SET total = ?, items = ? WHERE id = ?`,
+      [total, JSON.stringify(dto.items), orderId]
+    );
+
+    const updatedRows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
+      [orderId]
+    );
+
+    return { item: this.mapOrder(updatedRows[0]) };
   }
 
   // Descuenta stock segun la receta de cada producto vendido (si no tiene

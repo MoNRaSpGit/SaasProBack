@@ -11,6 +11,7 @@ import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
+import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { JokerService } from "./joker.service";
 
@@ -76,6 +77,11 @@ export class JokerController {
   @Post("orders")
   createOrder(@Body() dto: CreateJokerOrderDto) {
     return this.jokerService.createOrder(dto);
+  }
+
+  @Patch("orders/:id")
+  updateOrder(@Param("id", ParseIntPipe) orderId: number, @Body() dto: UpdateJokerOrderDto) {
+    return this.jokerService.updateOrder(orderId, dto);
   }
 
   @Get("orders")
