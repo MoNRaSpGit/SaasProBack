@@ -103,6 +103,7 @@ type JokerAccountEntryRow = RowDataPacket & {
   total: string | number;
   items: string;
   created_at: string | Date;
+  order_date: string | Date | null;
 };
 
 type JokerAccountSettlementRow = RowDataPacket & {
@@ -823,11 +824,17 @@ export class JokerService {
     return { ok: true };
   }
 
+  // La fecha del movimiento sigue la fecha "logica" del pedido vinculado
+  // (order_date) si tiene una editada a mano; si no, la fecha real en la
+  // que se cargo. Por eso el join con saas_joker_orders en vez de guardar
+  // una copia de la fecha en el propio movimiento (que quedaria vieja si
+  // el pedido se edita despues).
   async listAccountEntries(): Promise<{ items: JokerAccountEntry[] }> {
     const rows = await this.databaseService.query<JokerAccountEntryRow[]>(
-      `SELECT id, client_id, order_id, total, items, created_at
-       FROM saas_joker_account_entries
-       ORDER BY created_at DESC
+      `SELECT e.id, e.client_id, e.order_id, e.total, e.items, e.created_at, o.order_date
+       FROM saas_joker_account_entries e
+       LEFT JOIN saas_joker_orders o ON o.id = e.order_id
+       ORDER BY e.created_at DESC
        LIMIT 2000`
     );
 
@@ -850,7 +857,10 @@ export class JokerService {
     );
 
     const rows = await this.databaseService.query<JokerAccountEntryRow[]>(
-      `SELECT id, client_id, order_id, total, items, created_at FROM saas_joker_account_entries WHERE id = ? LIMIT 1`,
+      `SELECT e.id, e.client_id, e.order_id, e.total, e.items, e.created_at, o.order_date
+       FROM saas_joker_account_entries e
+       LEFT JOIN saas_joker_orders o ON o.id = e.order_id
+       WHERE e.id = ? LIMIT 1`,
       [result.insertId]
     );
 
@@ -1009,7 +1019,8 @@ export class JokerService {
       orderId: row.order_id,
       total: Number(row.total),
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
-      createdAt: this.toIsoString(row.created_at)
+      createdAt: this.toIsoString(row.created_at),
+      orderDate: row.order_date ? this.toIsoString(row.order_date).slice(0, 10) : null
     };
   }
 

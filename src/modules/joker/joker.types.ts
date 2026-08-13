@@ -72,6 +72,7 @@ export type JokerAccountEntry = {
   total: number;
   items: JokerAccountEntryItem[];
   createdAt: string;
+  orderDate: string | null;
 };
 
 // Copia permanente de un consumo de cuenta corriente al momento en que se
