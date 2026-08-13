@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
 
 export class CreateJokerStockItemDto {
   @IsString()
@@ -11,6 +11,10 @@ export class CreateJokerStockItemDto {
   @IsString()
   @MaxLength(20)
   unit?: string;
+
+  @IsOptional()
+  @IsIn(["comida", "bebida", "otro"])
+  category?: "comida" | "bebida" | "otro";
 
   @IsOptional()
   @Type(() => Number)

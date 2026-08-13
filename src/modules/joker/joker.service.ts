@@ -74,6 +74,7 @@ type JokerStockItemRow = RowDataPacket & {
   id: number;
   name: string;
   unit: string;
+  category: string;
   quantity: string | number;
   created_at: string | Date;
   updated_at: string | Date;
@@ -459,7 +460,7 @@ export class JokerService {
 
   async listStockItems(): Promise<{ items: JokerStockItem[] }> {
     const rows = await this.databaseService.query<JokerStockItemRow[]>(
-      `SELECT id, name, unit, quantity, created_at, updated_at
+      `SELECT id, name, unit, category, quantity, created_at, updated_at
        FROM saas_joker_stock_items
        ORDER BY name ASC`
     );
@@ -471,12 +472,12 @@ export class JokerService {
     const name = dto.name.trim();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_stock_items (name, unit, quantity) VALUES (?, ?, ?)`,
-      [name, dto.unit?.trim() || "unidad", dto.quantity ?? 0]
+      `INSERT INTO saas_joker_stock_items (name, unit, category, quantity) VALUES (?, ?, ?, ?)`,
+      [name, dto.unit?.trim() || "unidad", dto.category ?? "comida", dto.quantity ?? 0]
     );
 
     const rows = await this.databaseService.query<JokerStockItemRow[]>(
-      `SELECT id, name, unit, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
+      `SELECT id, name, unit, category, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
       [result.insertId]
     );
 
@@ -495,7 +496,7 @@ export class JokerService {
     }
 
     const rows = await this.databaseService.query<JokerStockItemRow[]>(
-      `SELECT id, name, unit, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
+      `SELECT id, name, unit, category, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
       [stockItemId]
     );
 
@@ -579,6 +580,7 @@ export class JokerService {
       id: row.id,
       name: row.name,
       unit: row.unit,
+      category: row.category === "bebida" || row.category === "otro" ? row.category : "comida",
       quantity: Number(row.quantity),
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)

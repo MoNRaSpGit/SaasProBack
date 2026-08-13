@@ -88,10 +88,13 @@ export type JokerAccountSettlement = {
   settledAt: string;
 };
 
+export type JokerStockItemCategory = "comida" | "bebida" | "otro";
+
 export type JokerStockItem = {
   id: number;
   name: string;
   unit: string;
+  category: JokerStockItemCategory;
   quantity: number;
   createdAt: string;
   updatedAt: string;
