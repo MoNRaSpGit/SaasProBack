@@ -564,32 +564,59 @@ export class JokerService {
     return { item: this.mapStockItem(updatedRows[0]) };
   }
 
-  // Desglose de que productos consumieron este insumo, desde el ultimo
+  // Historial de que pedidos consumieron este insumo, desde el ultimo
   // cierre de caja (o desde siempre, si todavia no hubo ninguno) -- mismo
-  // periodo que usa el Panel. Ej: Churrasco de hamburguesa -> Hamburguesa
-  // Clasica x1, Hamburguesa con queso x3.
-  async getStockItemConsumption(stockItemId: number): Promise<{ items: Array<{ productName: string; quantity: number }> }> {
+  // periodo que usa el Panel. Ej: Pedido #4 -> 4x Pancho. Sirve para
+  // reconciliar a mano ("teniamos 20 panes, se vendieron todos, tienen que
+  // ser 20 panchos entre los pedidos"). Los movimientos sin pedido
+  // vinculado (ajustes/reposiciones, o ventas de antes del fix de
+  // order_id) se agrupan aparte con displayNumber null.
+  async getStockItemConsumption(
+    stockItemId: number
+  ): Promise<{ items: Array<{ orderId: number | null; displayNumber: number | null; productName: string; quantity: number; createdAt: string }> }> {
     const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
       `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
     );
     const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
 
-    const rows = await this.databaseService.query<Array<RowDataPacket & { product_name: string | null; total_quantity: string | number }>>(
+    const rows = await this.databaseService.query<
+      Array<
+        RowDataPacket & {
+          order_id: number | null;
+          display_number: number | null;
+          product_name: string | null;
+          total_quantity: string | number;
+          last_created_at: string | Date;
+        }
+      >
+    >(
       lastClosedAt
-        ? `SELECT COALESCE(product_name, '(sin nombre)') AS product_name, SUM(-quantity_delta) AS total_quantity
-           FROM saas_joker_stock_movements
-           WHERE stock_item_id = ? AND reason = 'venta' AND quantity_delta < 0 AND created_at > ?
-           GROUP BY COALESCE(product_name, '(sin nombre)')
-           ORDER BY total_quantity DESC`
-        : `SELECT COALESCE(product_name, '(sin nombre)') AS product_name, SUM(-quantity_delta) AS total_quantity
-           FROM saas_joker_stock_movements
-           WHERE stock_item_id = ? AND reason = 'venta' AND quantity_delta < 0
-           GROUP BY COALESCE(product_name, '(sin nombre)')
-           ORDER BY total_quantity DESC`,
+        ? `SELECT m.order_id, o.display_number, COALESCE(m.product_name, '(sin nombre)') AS product_name,
+                  SUM(-m.quantity_delta) AS total_quantity, MAX(m.created_at) AS last_created_at
+           FROM saas_joker_stock_movements m
+           LEFT JOIN saas_joker_orders o ON o.id = m.order_id
+           WHERE m.stock_item_id = ? AND m.reason = 'venta' AND m.quantity_delta < 0 AND m.created_at > ?
+           GROUP BY m.order_id, COALESCE(m.product_name, '(sin nombre)')
+           ORDER BY last_created_at DESC`
+        : `SELECT m.order_id, o.display_number, COALESCE(m.product_name, '(sin nombre)') AS product_name,
+                  SUM(-m.quantity_delta) AS total_quantity, MAX(m.created_at) AS last_created_at
+           FROM saas_joker_stock_movements m
+           LEFT JOIN saas_joker_orders o ON o.id = m.order_id
+           WHERE m.stock_item_id = ? AND m.reason = 'venta' AND m.quantity_delta < 0
+           GROUP BY m.order_id, COALESCE(m.product_name, '(sin nombre)')
+           ORDER BY last_created_at DESC`,
       lastClosedAt ? [stockItemId, lastClosedAt] : [stockItemId]
     );
 
-    return { items: rows.map((row) => ({ productName: row.product_name ?? "(sin nombre)", quantity: Number(row.total_quantity) })) };
+    return {
+      items: rows.map((row) => ({
+        orderId: row.order_id,
+        displayNumber: row.display_number,
+        productName: row.product_name ?? "(sin nombre)",
+        quantity: Number(row.total_quantity),
+        createdAt: this.toIsoString(row.last_created_at)
+      }))
+    };
   }
 
   async deleteStockItem(stockItemId: number): Promise<{ ok: true }> {
