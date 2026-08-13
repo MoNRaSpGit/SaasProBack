@@ -52,6 +52,7 @@ type JokerOrderRow = RowDataPacket & {
   customer_name: string | null;
   items: string;
   created_at: string | Date;
+  order_date: string | Date | null;
 };
 
 type JokerRegisterStateRow = RowDataPacket & {
@@ -129,7 +130,8 @@ const ORDER_COLUMNS = `
   payment_method,
   customer_name,
   items,
-  created_at
+  created_at,
+  order_date
 `;
 
 // El local (El Joker) opera en Montevideo (UTC-3); el "dia" del panel
@@ -273,14 +275,15 @@ export class JokerService {
     const displayNumber = await this.getNextOrderDisplayNumber();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, customer_name, items) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, customer_name, items, order_date) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         displayNumber,
         total,
         dto.address?.trim() || "",
         dto.paymentMethod ?? "efectivo",
         dto.customerName?.trim() || null,
-        JSON.stringify(dto.items)
+        JSON.stringify(dto.items),
+        dto.orderDate?.trim() || null
       ]
     );
 
@@ -339,10 +342,11 @@ export class JokerService {
     await this.deductStockForOrderItems(deltaItems);
 
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const nextOrderDate = dto.orderDate !== undefined ? dto.orderDate.trim() || null : existing.order_date;
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ? WHERE id = ?`,
-      [total, JSON.stringify(dto.items), orderId]
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ? WHERE id = ?`,
+      [total, JSON.stringify(dto.items), nextOrderDate, orderId]
     );
 
     await this.syncAccountEntryForOrder(orderId, dto.items);
@@ -849,7 +853,8 @@ export class JokerService {
       paymentMethod: this.toPaymentMethod(row.payment_method),
       customerName: row.customer_name,
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
-      createdAt: this.toIsoString(row.created_at)
+      createdAt: this.toIsoString(row.created_at),
+      orderDate: row.order_date ? this.toIsoString(row.order_date).slice(0, 10) : null
     };
   }
 

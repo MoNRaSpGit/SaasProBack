@@ -38,6 +38,7 @@ export type JokerOrder = {
   customerName: string | null;
   items: JokerOrderItem[];
   createdAt: string;
+  orderDate: string | null;
 };
 
 export type JokerClient = {

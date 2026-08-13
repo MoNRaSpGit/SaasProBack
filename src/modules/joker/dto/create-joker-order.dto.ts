@@ -1,5 +1,17 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from "class-validator";
+import {
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+  ValidateNested
+} from "class-validator";
 
 export class CreateJokerOrderItemDto {
   @Type(() => Number)
@@ -49,4 +61,11 @@ export class CreateJokerOrderDto {
   @IsString()
   @MaxLength(160)
   customerName?: string;
+
+  // Fecha "logica" del pedido (YYYY-MM-DD), para cargar a mano pedidos a
+  // cuenta que se olvidaron y se ingresan varios dias despues. Si no se
+  // manda, se usa la fecha real de carga (created_at) como siempre.
+  @IsOptional()
+  @Matches(/^(\d{4}-\d{2}-\d{2})?$/)
+  orderDate?: string;
 }

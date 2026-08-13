@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, ValidateNested } from "class-validator";
+import { IsArray, IsOptional, Matches, ValidateNested } from "class-validator";
 import { CreateJokerOrderItemDto } from "./create-joker-order.dto";
 
 // A diferencia de CreateJokerOrderDto, acepta lista vacia: si el operario
@@ -9,4 +9,10 @@ export class UpdateJokerOrderDto {
   @ValidateNested({ each: true })
   @Type(() => CreateJokerOrderItemDto)
   items!: CreateJokerOrderItemDto[];
+
+  // Igual que en la creacion: si no se manda, la fecha del pedido queda
+  // como estaba.
+  @IsOptional()
+  @Matches(/^(\d{4}-\d{2}-\d{2})?$/)
+  orderDate?: string;
 }
