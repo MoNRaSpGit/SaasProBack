@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMinSize, IsArray, IsInt, IsNumber, IsString, MaxLength, Min, ValidateNested } from "class-validator";
+import { ArrayMinSize, IsArray, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateNested } from "class-validator";
 
 export class CreateJokerAccountEntryItemDto {
   @IsString()
@@ -17,6 +17,14 @@ export class CreateJokerAccountEntryDto {
   @IsInt()
   @Min(1)
   clientId!: number;
+
+  // Pedido que genero este movimiento (si vino de una venta "a cuenta" desde
+  // la pantalla de pedidos), para poder sincronizarlo despues si se edita.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  orderId?: number;
 
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })

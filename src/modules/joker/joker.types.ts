@@ -56,6 +56,7 @@ export type JokerAccountEntryItem = {
 export type JokerAccountEntry = {
   id: number;
   clientId: number;
+  orderId: number | null;
   total: number;
   items: JokerAccountEntryItem[];
   createdAt: string;

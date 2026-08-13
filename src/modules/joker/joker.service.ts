@@ -86,6 +86,7 @@ type JokerClientRow = RowDataPacket & {
 type JokerAccountEntryRow = RowDataPacket & {
   id: number;
   client_id: number;
+  order_id: number | null;
   total: string | number;
   items: string;
   created_at: string | Date;
@@ -344,12 +345,45 @@ export class JokerService {
       [total, JSON.stringify(dto.items), orderId]
     );
 
+    await this.syncAccountEntryForOrder(orderId, dto.items);
+
     const updatedRows = await this.databaseService.query<JokerOrderRow[]>(
       `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
       [orderId]
     );
 
     return { item: this.mapOrder(updatedRows[0]) };
+  }
+
+  // Si el pedido editado tenia un movimiento de cuenta corriente asociado
+  // (se vendio "a cuenta"), lo actualiza para que quede en sincro con los
+  // items/total nuevos. Si el pedido quedo sin items (cancelado), el
+  // movimiento se borra directamente. Si el pedido no era "a cuenta" no hay
+  // ningun movimiento vinculado y no hace nada.
+  private async syncAccountEntryForOrder(orderId: number, items: CreateJokerOrderItemDto[]): Promise<void> {
+    const entryRows = await this.databaseService.query<JokerAccountEntryRow[]>(
+      `SELECT id, client_id, order_id, total, items, created_at FROM saas_joker_account_entries WHERE order_id = ? LIMIT 1`,
+      [orderId]
+    );
+    const entry = entryRows[0];
+    if (!entry) return;
+
+    if (!items.length) {
+      await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_account_entries WHERE id = ?`, [entry.id]);
+      return;
+    }
+
+    const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const entryItemsByProduct = new Map<string, number>();
+    for (const item of items) {
+      entryItemsByProduct.set(item.productName, (entryItemsByProduct.get(item.productName) ?? 0) + item.quantity);
+    }
+    const entryItems = [...entryItemsByProduct.entries()].map(([productName, quantity]) => ({ productName, quantity }));
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_account_entries SET total = ?, items = ? WHERE id = ?`,
+      [total, JSON.stringify(entryItems), entry.id]
+    );
   }
 
   // Descuenta stock segun la receta de cada producto vendido (si no tiene
@@ -669,7 +703,7 @@ export class JokerService {
 
   async listAccountEntries(): Promise<{ items: JokerAccountEntry[] }> {
     const rows = await this.databaseService.query<JokerAccountEntryRow[]>(
-      `SELECT id, client_id, total, items, created_at
+      `SELECT id, client_id, order_id, total, items, created_at
        FROM saas_joker_account_entries
        ORDER BY created_at DESC
        LIMIT 2000`
@@ -689,12 +723,12 @@ export class JokerService {
     }
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_account_entries (client_id, total, items) VALUES (?, ?, ?)`,
-      [dto.clientId, dto.total, JSON.stringify(dto.items)]
+      `INSERT INTO saas_joker_account_entries (client_id, order_id, total, items) VALUES (?, ?, ?, ?)`,
+      [dto.clientId, dto.orderId ?? null, dto.total, JSON.stringify(dto.items)]
     );
 
     const rows = await this.databaseService.query<JokerAccountEntryRow[]>(
-      `SELECT id, client_id, total, items, created_at FROM saas_joker_account_entries WHERE id = ? LIMIT 1`,
+      `SELECT id, client_id, order_id, total, items, created_at FROM saas_joker_account_entries WHERE id = ? LIMIT 1`,
       [result.insertId]
     );
 
@@ -847,6 +881,7 @@ export class JokerService {
     return {
       id: row.id,
       clientId: row.client_id,
+      orderId: row.order_id,
       total: Number(row.total),
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       createdAt: this.toIsoString(row.created_at)
