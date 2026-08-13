@@ -13,6 +13,7 @@ import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
+import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
 import { JokerService } from "./joker.service";
 
 @Controller("joker")
@@ -67,6 +68,16 @@ export class JokerController {
   @Post("stock-items/:id/restock")
   restockItem(@Param("id", ParseIntPipe) stockItemId: number, @Body() dto: RestockJokerStockItemDto) {
     return this.jokerService.restockItem(stockItemId, dto);
+  }
+
+  @Patch("stock-items/:id")
+  updateStockItemQuantity(@Param("id", ParseIntPipe) stockItemId: number, @Body() dto: UpdateJokerStockItemDto) {
+    return this.jokerService.updateStockItemQuantity(stockItemId, dto);
+  }
+
+  @Get("stock-items/:id/consumption")
+  getStockItemConsumption(@Param("id", ParseIntPipe) stockItemId: number) {
+    return this.jokerService.getStockItemConsumption(stockItemId);
   }
 
   @Delete("stock-items/:id")

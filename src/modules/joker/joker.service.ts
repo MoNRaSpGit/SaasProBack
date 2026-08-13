@@ -14,6 +14,7 @@ import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
+import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
 import {
   JokerAccountEntry,
   JokerAccountSettlement,
@@ -324,7 +325,7 @@ export class JokerService {
       [result.insertId]
     );
 
-    await this.deductStockForOrderItems(dto.items);
+    await this.deductStockForOrderItems(dto.items, Number(result.insertId));
 
     return { item: this.mapOrder(rows[0]) };
   }
@@ -349,6 +350,11 @@ export class JokerService {
     const oldItems: CreateJokerOrderItemDto[] =
       typeof existing.items === "string" ? JSON.parse(existing.items) : (existing.items as unknown as CreateJokerOrderItemDto[]);
 
+    const productNameById = new Map<number, string>();
+    for (const item of [...oldItems, ...dto.items]) {
+      productNameById.set(item.productId, item.productName);
+    }
+
     const oldQtyByProduct = new Map<number, number>();
     for (const item of oldItems) {
       oldQtyByProduct.set(item.productId, (oldQtyByProduct.get(item.productId) ?? 0) + item.quantity);
@@ -364,11 +370,11 @@ export class JokerService {
     for (const productId of productIds) {
       const delta = (newQtyByProduct.get(productId) ?? 0) - (oldQtyByProduct.get(productId) ?? 0);
       if (delta !== 0) {
-        deltaItems.push({ productId, productName: "", unitPrice: 0, quantity: delta });
+        deltaItems.push({ productId, productName: productNameById.get(productId) ?? "", unitPrice: 0, quantity: delta });
       }
     }
 
-    await this.deductStockForOrderItems(deltaItems);
+    await this.deductStockForOrderItems(deltaItems, orderId);
 
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const nextOrderDate = dto.orderDate !== undefined ? dto.orderDate.trim() || null : existing.order_date;
@@ -421,8 +427,11 @@ export class JokerService {
 
   // Descuenta stock segun la receta de cada producto vendido (si no tiene
   // receta cargada, no se toca nada). No bloquea la venta si algun insumo
-  // queda en negativo -- eso se avisa despues en la pantalla de Stock.
-  private async deductStockForOrderItems(items: CreateJokerOrderItemDto[]): Promise<void> {
+  // queda en negativo -- eso se avisa despues en la pantalla de Stock. Cada
+  // descuento queda registrado en saas_joker_stock_movements, para poder
+  // mostrar despues que producto se llevo cada insumo (ver
+  // getStockItemConsumption).
+  private async deductStockForOrderItems(items: CreateJokerOrderItemDto[], orderId?: number): Promise<void> {
     const productIds = [...new Set(items.map((item) => item.productId))];
     if (!productIds.length) return;
 
@@ -450,10 +459,20 @@ export class JokerService {
       if (!recipeLines) continue;
 
       for (const line of recipeLines) {
+        const quantityDelta = line.quantityPerUnit * item.quantity;
+
         await this.databaseService.execute<ResultSetHeader>(
           `UPDATE saas_joker_stock_items SET quantity = quantity - ? WHERE id = ?`,
-          [line.quantityPerUnit * item.quantity, line.stockItemId]
+          [quantityDelta, line.stockItemId]
         );
+
+        if (quantityDelta !== 0) {
+          await this.databaseService.execute<ResultSetHeader>(
+            `INSERT INTO saas_joker_stock_movements (stock_item_id, product_id, product_name, order_id, quantity_delta, reason)
+             VALUES (?, ?, ?, ?, ?, 'venta')`,
+            [line.stockItemId, item.productId, item.productName || null, orderId ?? null, -quantityDelta]
+          );
+        }
       }
     }
   }
@@ -495,12 +514,81 @@ export class JokerService {
       throw new NotFoundException("Insumo no encontrado");
     }
 
+    if (dto.quantity !== 0) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `INSERT INTO saas_joker_stock_movements (stock_item_id, quantity_delta, reason) VALUES (?, ?, 'restock')`,
+        [stockItemId, dto.quantity]
+      );
+    }
+
     const rows = await this.databaseService.query<JokerStockItemRow[]>(
       `SELECT id, name, unit, category, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
       [stockItemId]
     );
 
     return { item: this.mapStockItem(rows[0]) };
+  }
+
+  // Fija el stock a un valor exacto (boton "Editar" del tablero). Queda
+  // registrado como ajuste manual, distinto de una venta o una reposicion.
+  async updateStockItemQuantity(stockItemId: number, dto: UpdateJokerStockItemDto): Promise<{ item: JokerStockItem }> {
+    const rows = await this.databaseService.query<JokerStockItemRow[]>(
+      `SELECT id, name, unit, category, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
+      [stockItemId]
+    );
+    const existing = rows[0];
+    if (!existing) {
+      throw new NotFoundException("Insumo no encontrado");
+    }
+
+    const delta = dto.quantity - Number(existing.quantity);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_stock_items SET quantity = ? WHERE id = ?`,
+      [dto.quantity, stockItemId]
+    );
+
+    if (delta !== 0) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `INSERT INTO saas_joker_stock_movements (stock_item_id, quantity_delta, reason) VALUES (?, ?, 'ajuste_manual')`,
+        [stockItemId, delta]
+      );
+    }
+
+    const updatedRows = await this.databaseService.query<JokerStockItemRow[]>(
+      `SELECT id, name, unit, category, quantity, created_at, updated_at FROM saas_joker_stock_items WHERE id = ? LIMIT 1`,
+      [stockItemId]
+    );
+
+    return { item: this.mapStockItem(updatedRows[0]) };
+  }
+
+  // Desglose de que productos consumieron este insumo, desde el ultimo
+  // cierre de caja (o desde siempre, si todavia no hubo ninguno) -- mismo
+  // periodo que usa el Panel. Ej: Churrasco de hamburguesa -> Hamburguesa
+  // Clasica x1, Hamburguesa con queso x3.
+  async getStockItemConsumption(stockItemId: number): Promise<{ items: Array<{ productName: string; quantity: number }> }> {
+    const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
+      `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
+    );
+    const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
+
+    const rows = await this.databaseService.query<Array<RowDataPacket & { product_name: string | null; total_quantity: string | number }>>(
+      lastClosedAt
+        ? `SELECT COALESCE(product_name, '(sin nombre)') AS product_name, SUM(-quantity_delta) AS total_quantity
+           FROM saas_joker_stock_movements
+           WHERE stock_item_id = ? AND reason = 'venta' AND quantity_delta < 0 AND created_at > ?
+           GROUP BY COALESCE(product_name, '(sin nombre)')
+           ORDER BY total_quantity DESC`
+        : `SELECT COALESCE(product_name, '(sin nombre)') AS product_name, SUM(-quantity_delta) AS total_quantity
+           FROM saas_joker_stock_movements
+           WHERE stock_item_id = ? AND reason = 'venta' AND quantity_delta < 0
+           GROUP BY COALESCE(product_name, '(sin nombre)')
+           ORDER BY total_quantity DESC`,
+      lastClosedAt ? [stockItemId, lastClosedAt] : [stockItemId]
+    );
+
+    return { items: rows.map((row) => ({ productName: row.product_name ?? "(sin nombre)", quantity: Number(row.total_quantity) })) };
   }
 
   async deleteStockItem(stockItemId: number): Promise<{ ok: true }> {
