@@ -73,7 +73,7 @@ export type JokerAccountSettlement = {
   total: number;
   items: JokerAccountEntryItem[];
   entryCreatedAt: string;
-  reason: "pago" | "cliente_eliminado";
+  reason: "pago" | "cliente_eliminado" | "correccion_manual";
   settledAt: string;
 };
 

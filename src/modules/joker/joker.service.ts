@@ -867,7 +867,8 @@ export class JokerService {
       total: Number(row.total),
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       entryCreatedAt: this.toIsoString(row.entry_created_at),
-      reason: row.reason === "cliente_eliminado" ? "cliente_eliminado" : "pago",
+      reason:
+        row.reason === "cliente_eliminado" || row.reason === "correccion_manual" ? row.reason : "pago",
       settledAt: this.toIsoString(row.settled_at)
     };
   }
