@@ -18,6 +18,7 @@ import {
   JokerAccountEntry,
   JokerAccountSettlement,
   JokerClient,
+  JokerComboSlot,
   JokerOrder,
   JokerPaymentMethod,
   JokerProduct,
@@ -41,6 +42,15 @@ type JokerProductRow = RowDataPacket & {
   pricing_unit: string;
   created_at: string | Date;
   updated_at: string | Date;
+};
+
+type JokerComboSlotRow = RowDataPacket & {
+  id: number;
+  combo_product_id: number;
+  slot_label: string;
+  slot_quantity: number;
+  option_product_ids: string;
+  sort_order: number;
 };
 
 type JokerOrderRow = RowDataPacket & {
@@ -152,7 +162,25 @@ export class JokerService {
        LIMIT 1000`
     );
 
-    return { items: rows.map((row) => this.mapProduct(row)) };
+    const slotRows = await this.databaseService.query<JokerComboSlotRow[]>(
+      `SELECT id, combo_product_id, slot_label, slot_quantity, option_product_ids, sort_order
+       FROM saas_joker_combo_slots
+       ORDER BY combo_product_id ASC, sort_order ASC`
+    );
+
+    const slotsByComboId = new Map<number, JokerComboSlot[]>();
+    for (const row of slotRows) {
+      const list = slotsByComboId.get(row.combo_product_id) ?? [];
+      list.push({
+        label: row.slot_label,
+        quantity: row.slot_quantity,
+        optionProductIds:
+          typeof row.option_product_ids === "string" ? JSON.parse(row.option_product_ids) : row.option_product_ids
+      });
+      slotsByComboId.set(row.combo_product_id, list);
+    }
+
+    return { items: rows.map((row) => this.mapProduct(row, slotsByComboId.get(row.id))) };
   }
 
   async createProduct(dto: CreateJokerProductDto): Promise<{ item: JokerProduct }> {
@@ -825,7 +853,7 @@ export class JokerService {
     return { signature };
   }
 
-  private mapProduct(row: JokerProductRow): JokerProduct {
+  private mapProduct(row: JokerProductRow, comboSlots?: JokerComboSlot[]): JokerProduct {
     return {
       id: row.id,
       name: row.name,
@@ -840,7 +868,8 @@ export class JokerService {
       status: row.status === "draft" ? "draft" : "published",
       pricingUnit: row.pricing_unit === "kg" ? "kg" : "unidad",
       createdAt: this.toIsoString(row.created_at),
-      updatedAt: this.toIsoString(row.updated_at)
+      updatedAt: this.toIsoString(row.updated_at),
+      comboSlots: comboSlots?.length ? comboSlots : undefined
     };
   }
 

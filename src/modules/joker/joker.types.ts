@@ -2,6 +2,16 @@ export type JokerProductType = "simple" | "extra";
 export type JokerProductStatus = "draft" | "published";
 export type JokerPricingUnit = "unidad" | "kg";
 
+// Slot de eleccion dentro de un combo (ej: "Hamburguesa" o "Refresco"). El
+// operario elige uno de option_product_ids al cargar el combo, y ese
+// producto (con su propia receta ya cargada) es lo que se descuenta del
+// stock, ademas del combo en si.
+export type JokerComboSlot = {
+  label: string;
+  quantity: number;
+  optionProductIds: number[];
+};
+
 export type JokerProduct = {
   id: number;
   name: string;
@@ -17,6 +27,7 @@ export type JokerProduct = {
   pricingUnit: JokerPricingUnit;
   createdAt: string;
   updatedAt: string;
+  comboSlots?: JokerComboSlot[];
 };
 
 export type JokerOrderItem = {
