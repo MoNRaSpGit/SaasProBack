@@ -87,6 +87,24 @@ export type JokerCourierCashSummary = {
   movements: JokerCourierCashMovement[];
 };
 
+// Copia permanente de la caja del repartidor al momento de liquidar (igual
+// que saas_joker_account_settlements para cuenta corriente), por si
+// despues hay que reclamar o verificar algo de un turno ya cerrado.
+export type JokerCourierSettlement = {
+  id: number;
+  courierId: number;
+  courierName: string;
+  initialCash: number;
+  ordersCashTotal: number;
+  ordersCashCount: number;
+  expensesTotal: number;
+  handoversTotal: number;
+  cashOnHand: number;
+  movements: JokerCourierCashMovement[];
+  activeSince: string | null;
+  settledAt: string;
+};
+
 export type JokerClient = {
   id: number;
   name: string;

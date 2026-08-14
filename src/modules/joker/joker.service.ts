@@ -23,7 +23,9 @@ import {
   JokerClient,
   JokerComboSlot,
   JokerCourier,
+  JokerCourierCashMovement,
   JokerCourierCashSummary,
+  JokerCourierSettlement,
   JokerOrder,
   JokerPaymentMethod,
   JokerProduct,
@@ -87,6 +89,21 @@ type JokerCourierCashMovementRow = RowDataPacket & {
   amount: string | number;
   description: string | null;
   created_at: string | Date;
+};
+
+type JokerCourierSettlementRow = RowDataPacket & {
+  id: number;
+  courier_id: number;
+  courier_name: string;
+  initial_cash: string | number;
+  orders_cash_total: string | number;
+  orders_cash_count: number;
+  expenses_total: string | number;
+  handovers_total: string | number;
+  cash_on_hand: string | number;
+  movements: string | JokerCourierCashMovement[];
+  active_since: string | Date | null;
+  settled_at: string | Date;
 };
 
 type JokerRegisterStateRow = RowDataPacket & {
@@ -864,11 +881,59 @@ export class JokerService {
   }
 
   // "Liquidar": cierra el turno del repartidor (equivalente a un cierre de
-  // caja, pero individual) -- vuelve a quedar inactivo y su caja/pedidos
-  // del proximo turno arrancan de nuevo desde 0 cuando se lo vuelva a
-  // habilitar. El cierre de caja general no se puede hacer mientras haya
-  // repartidores habilitados sin liquidar (ver closeRegister).
+  // caja, pero individual) -- antes de resetear, archiva una copia
+  // permanente de la caja del turno en saas_joker_courier_settlements
+  // (igual que archiveClientEntries para cuenta corriente), por si despues
+  // hay que revisar o reclamar algo. Vuelve a quedar inactivo y su
+  // caja/pedidos del proximo turno arrancan de nuevo desde 0 cuando se lo
+  // vuelva a habilitar. El cierre de caja general no se puede hacer
+  // mientras haya repartidores habilitados sin liquidar (ver closeRegister).
   async settleCourier(courierId: number): Promise<{ item: JokerCourier }> {
+    const courierRows = await this.databaseService.query<JokerCourierRow[]>(
+      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      [courierId]
+    );
+    const courier = courierRows[0];
+    if (!courier) {
+      throw new NotFoundException("Repartidor no encontrado");
+    }
+
+    if (courier.active_since) {
+      const summary = await this.getCourierCashSummary(courierId);
+      const activeSince = courier.active_since;
+
+      await this.databaseService.withTransaction(async (connection) => {
+        await connection.execute(
+          `INSERT INTO saas_joker_courier_settlements
+             (courier_id, courier_name, initial_cash, orders_cash_total, orders_cash_count, expenses_total, handovers_total, cash_on_hand, movements, active_since)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            courierId,
+            courier.name,
+            summary.initialCash,
+            summary.ordersCashTotal,
+            summary.ordersCashCount,
+            summary.expensesTotal,
+            summary.handoversTotal,
+            summary.cashOnHand,
+            JSON.stringify(summary.movements),
+            activeSince
+          ]
+        );
+
+        await connection.execute(`DELETE FROM saas_joker_courier_cash_movements WHERE courier_id = ? AND created_at > ?`, [
+          courierId,
+          activeSince
+        ]);
+
+        await connection.execute(`UPDATE saas_joker_couriers SET status = 'inactivo', active_since = NULL WHERE id = ?`, [
+          courierId
+        ]);
+      });
+
+      return this.getCourierById(courierId);
+    }
+
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_joker_couriers SET status = 'inactivo', active_since = NULL WHERE id = ?`,
       [courierId]
@@ -879,6 +944,41 @@ export class JokerService {
     }
 
     return this.getCourierById(courierId);
+  }
+
+  // Historial permanente de turnos liquidados de un repartidor, para
+  // revisar o reclamar algo despues (sobrevive aunque el turno ya se haya
+  // reseteado). Mismo patron que listAccountSettlements para clientes.
+  async listCourierSettlements(courierId: number): Promise<{ items: JokerCourierSettlement[] }> {
+    const rows = await this.databaseService.query<JokerCourierSettlementRow[]>(
+      `SELECT id, courier_id, courier_name, initial_cash, orders_cash_total, orders_cash_count, expenses_total, handovers_total, cash_on_hand, movements, active_since, settled_at
+       FROM saas_joker_courier_settlements
+       WHERE courier_id = ?
+       ORDER BY settled_at DESC
+       LIMIT 200`,
+      [courierId]
+    );
+
+    return { items: rows.map((row) => this.mapCourierSettlement(row)) };
+  }
+
+  private mapCourierSettlement(row: JokerCourierSettlementRow): JokerCourierSettlement {
+    const movements: JokerCourierCashMovement[] = typeof row.movements === "string" ? JSON.parse(row.movements) : row.movements;
+
+    return {
+      id: Number(row.id),
+      courierId: Number(row.courier_id),
+      courierName: row.courier_name,
+      initialCash: Number(row.initial_cash),
+      ordersCashTotal: Number(row.orders_cash_total),
+      ordersCashCount: Number(row.orders_cash_count),
+      expensesTotal: Number(row.expenses_total),
+      handoversTotal: Number(row.handovers_total),
+      cashOnHand: Number(row.cash_on_hand),
+      movements,
+      activeSince: row.active_since ? this.toIsoString(row.active_since) : null,
+      settledAt: this.toIsoString(row.settled_at)
+    };
   }
 
   private async getCourierById(courierId: number): Promise<{ item: JokerCourier }> {
@@ -904,10 +1004,26 @@ export class JokerService {
     };
   }
 
+  // Solo se puede cargar caja mientras el repartidor esta habilitado: si
+  // estuviera inactivo (active_since null), el movimiento quedaria
+  // guardado pero invisible para siempre, porque getCourierCashSummary no
+  // consulta nada cuando no hay turno abierto.
   async addCourierCashMovement(
     courierId: number,
     dto: CreateJokerCourierCashMovementDto
   ): Promise<{ item: JokerCourierCashSummary }> {
+    const courierRows = await this.databaseService.query<JokerCourierRow[]>(
+      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      [courierId]
+    );
+    const courier = courierRows[0];
+    if (!courier) {
+      throw new NotFoundException("Repartidor no encontrado");
+    }
+    if (courier.status !== "activo") {
+      throw new BadRequestException("El repartidor no esta habilitado");
+    }
+
     await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_joker_courier_cash_movements (courier_id, type, amount, description) VALUES (?, ?, ?, ?)`,
       [courierId, dto.type, dto.amount, dto.description?.trim() || null]

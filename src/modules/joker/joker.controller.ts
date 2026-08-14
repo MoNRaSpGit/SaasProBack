@@ -132,6 +132,11 @@ export class JokerController {
     return this.jokerService.settleCourier(courierId);
   }
 
+  @Get("couriers/:id/settlements")
+  listCourierSettlements(@Param("id", ParseIntPipe) courierId: number) {
+    return this.jokerService.listCourierSettlements(courierId);
+  }
+
   @Get("couriers/:id/cash-summary")
   getCourierCashSummary(@Param("id", ParseIntPipe) courierId: number) {
     return this.jokerService.getCourierCashSummary(courierId);
