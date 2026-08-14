@@ -11,6 +11,7 @@ import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
+import { UpdateJokerCourierDto } from "./dto/update-joker-courier.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
@@ -101,8 +102,8 @@ export class JokerController {
   }
 
   @Get("orders/current-period")
-  listCurrentPeriodOrders() {
-    return this.jokerService.listCurrentPeriodOrders();
+  listCurrentPeriodOrders(@Query("courierId") courierId?: string) {
+    return this.jokerService.listCurrentPeriodOrders(courierId ? Number(courierId) : undefined);
   }
 
   @Delete("orders")
@@ -113,6 +114,11 @@ export class JokerController {
   @Get("couriers")
   listCouriers() {
     return this.jokerService.listCouriers();
+  }
+
+  @Patch("couriers/:id")
+  updateCourier(@Param("id", ParseIntPipe) courierId: number, @Body() dto: UpdateJokerCourierDto) {
+    return this.jokerService.updateCourier(courierId, dto);
   }
 
   @Get("clients")

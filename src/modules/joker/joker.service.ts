@@ -12,6 +12,7 @@ import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
+import { UpdateJokerCourierDto } from "./dto/update-joker-courier.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
@@ -812,6 +813,19 @@ export class JokerService {
     return { items: rows.map((row) => ({ id: Number(row.id), name: row.name })) };
   }
 
+  async updateCourier(courierId: number, dto: UpdateJokerCourierDto): Promise<{ item: JokerCourier }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_couriers SET name = ? WHERE id = ?`,
+      [dto.name.trim(), courierId]
+    );
+
+    if (!result.affectedRows) {
+      throw new NotFoundException("Repartidor no encontrado");
+    }
+
+    return { item: { id: courierId, name: dto.name.trim() } };
+  }
+
   async deleteAllOrders(): Promise<{ ok: true }> {
     await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_orders`);
     return { ok: true };
@@ -820,18 +834,30 @@ export class JokerService {
   // Pedidos del periodo de caja actual (desde el ultimo cierre, o todos si
   // todavia no hubo ninguno). Lo usa el Panel para que el resumen (vendido,
   // ganancia, ranking) arranque de nuevo despues de cada cierre, en vez de
-  // seguir sumando todo el dia calendario.
-  async listCurrentPeriodOrders(): Promise<{ items: JokerOrder[] }> {
+  // seguir sumando todo el dia calendario. Delivery usa el mismo metodo
+  // (con courierId) para que la asignacion de pedidos por repartidor
+  // tambien arranque de nuevo con cada cierre.
+  async listCurrentPeriodOrders(courierId?: number): Promise<{ items: JokerOrder[] }> {
     const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
       `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
     );
     const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
 
+    const conditions: string[] = [];
+    const params: Array<string | number | Date> = [];
+    if (lastClosedAt) {
+      conditions.push("created_at > ?");
+      params.push(lastClosedAt);
+    }
+    if (courierId) {
+      conditions.push("courier_id = ?");
+      params.push(courierId);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
     const rows = await this.databaseService.query<JokerOrderRow[]>(
-      lastClosedAt
-        ? `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE created_at > ? ORDER BY created_at DESC LIMIT 500`
-        : `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders ORDER BY created_at DESC LIMIT 500`,
-      lastClosedAt ? [lastClosedAt] : []
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders ${whereClause} ORDER BY created_at DESC LIMIT 500`,
+      params
     );
 
     return { items: rows.map((row) => this.mapOrder(row)) };
