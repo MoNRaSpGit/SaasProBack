@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from 
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
+import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
@@ -44,6 +45,11 @@ export class ScrumController {
   @Post("clients")
   createClient(@Body() dto: CreateScrumClientDto) {
     return this.scrumService.createClient(dto);
+  }
+
+  @Patch("clients/:id")
+  updateClient(@Param("id", ParseIntPipe) clientId: number, @Body() dto: UpdateScrumClientDto) {
+    return this.scrumService.updateClient(clientId, dto);
   }
 
   @Patch("clients/:id/payment")

@@ -4,6 +4,7 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
+import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
@@ -240,6 +241,28 @@ export class ScrumService {
     return {
       ok: true,
       item: await this.getClientById(Number(result.insertId))
+    };
+  }
+
+  async updateClient(clientId: number, dto: UpdateScrumClientDto) {
+    await this.ensureTables();
+    const currentClient = await this.getClientById(clientId);
+
+    const nextName = dto.name?.trim() || currentClient.name;
+    const nextAmount = dto.amount ?? currentClient.amount;
+    const nextFrequency = dto.frequency ?? currentClient.frequency;
+    const nextPaymentAt = dto.nextPaymentAt ?? currentClient.nextPaymentAt;
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_scrum_clients
+       SET name = ?, amount = ?, frequency = ?, next_payment_at = ?
+       WHERE id = ?`,
+      [nextName, Math.round(nextAmount), nextFrequency, nextPaymentAt, clientId]
+    );
+
+    return {
+      ok: true,
+      item: await this.getClientById(clientId)
     };
   }
 
