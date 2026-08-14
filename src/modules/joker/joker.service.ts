@@ -20,6 +20,7 @@ import {
   JokerAccountSettlement,
   JokerClient,
   JokerComboSlot,
+  JokerCourier,
   JokerOrder,
   JokerPaymentMethod,
   JokerProduct,
@@ -64,6 +65,14 @@ type JokerOrderRow = RowDataPacket & {
   items: string;
   created_at: string | Date;
   order_date: string | Date | null;
+  courier_id: number | null;
+  delivery_cost: string | number | null;
+};
+
+type JokerCourierRow = RowDataPacket & {
+  id: number;
+  name: string;
+  created_at: string | Date;
 };
 
 type JokerRegisterStateRow = RowDataPacket & {
@@ -144,7 +153,9 @@ const ORDER_COLUMNS = `
   customer_name,
   items,
   created_at,
-  order_date
+  order_date,
+  courier_id,
+  delivery_cost
 `;
 
 // El local (El Joker) opera en Montevideo (UTC-3); el "dia" del panel
@@ -306,7 +317,7 @@ export class JokerService {
     const displayNumber = await this.getNextOrderDisplayNumber();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, customer_name, items, order_date) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, customer_name, items, order_date, courier_id, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         displayNumber,
         total,
@@ -314,7 +325,9 @@ export class JokerService {
         dto.paymentMethod ?? "efectivo",
         dto.customerName?.trim() || null,
         JSON.stringify(dto.items),
-        dto.orderDate?.trim() || null
+        dto.orderDate?.trim() || null,
+        dto.courierId ?? null,
+        dto.deliveryCost ?? null
       ]
     );
 
@@ -379,10 +392,12 @@ export class JokerService {
 
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const nextOrderDate = dto.orderDate !== undefined ? dto.orderDate.trim() || null : existing.order_date;
+    const nextCourierId = dto.courierId !== undefined ? dto.courierId : existing.courier_id;
+    const nextDeliveryCost = dto.deliveryCost !== undefined ? dto.deliveryCost : existing.delivery_cost;
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ? WHERE id = ?`,
-      [total, JSON.stringify(dto.items), nextOrderDate, orderId]
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, delivery_cost = ? WHERE id = ?`,
+      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, orderId]
     );
 
     await this.syncAccountEntryForOrder(orderId, dto.items);
@@ -772,15 +787,29 @@ export class JokerService {
     const { startIso, endIso } = this.buildStoreDayRangeUtc(dateLabel);
 
     const rows = await this.databaseService.query<JokerOrderRow[]>(
-      `SELECT ${ORDER_COLUMNS}
-       FROM saas_joker_orders
-       WHERE created_at >= ? AND created_at < ?
-       ORDER BY created_at DESC
-       LIMIT 500`,
-      [startIso, endIso]
+      dto.courierId
+        ? `SELECT ${ORDER_COLUMNS}
+           FROM saas_joker_orders
+           WHERE created_at >= ? AND created_at < ? AND courier_id = ?
+           ORDER BY created_at DESC
+           LIMIT 500`
+        : `SELECT ${ORDER_COLUMNS}
+           FROM saas_joker_orders
+           WHERE created_at >= ? AND created_at < ?
+           ORDER BY created_at DESC
+           LIMIT 500`,
+      dto.courierId ? [startIso, endIso, dto.courierId] : [startIso, endIso]
     );
 
     return { items: rows.map((row) => this.mapOrder(row)) };
+  }
+
+  async listCouriers(): Promise<{ items: JokerCourier[] }> {
+    const rows = await this.databaseService.query<JokerCourierRow[]>(
+      `SELECT id, name, created_at FROM saas_joker_couriers ORDER BY id ASC`
+    );
+
+    return { items: rows.map((row) => ({ id: Number(row.id), name: row.name })) };
   }
 
   async deleteAllOrders(): Promise<{ ok: true }> {
@@ -1010,7 +1039,9 @@ export class JokerService {
       customerName: row.customer_name,
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       createdAt: this.toIsoString(row.created_at),
-      orderDate: row.order_date ? this.toIsoString(row.order_date).slice(0, 10) : null
+      orderDate: row.order_date ? this.toIsoString(row.order_date).slice(0, 10) : null,
+      courierId: row.courier_id,
+      deliveryCost: row.delivery_cost === null || row.delivery_cost === undefined ? null : Number(row.delivery_cost)
     };
   }
 

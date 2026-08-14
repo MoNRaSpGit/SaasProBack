@@ -68,4 +68,18 @@ export class CreateJokerOrderDto {
   @IsOptional()
   @Matches(/^(\d{4}-\d{2}-\d{2})?$/)
   orderDate?: string;
+
+  // Repartidor asignado y cuanto se le paga por el envio de este pedido en
+  // particular (se suma despues en la liquidacion del delivery).
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  courierId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  deliveryCost?: number;
 }

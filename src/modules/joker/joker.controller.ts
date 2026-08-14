@@ -110,6 +110,11 @@ export class JokerController {
     return this.jokerService.deleteAllOrders();
   }
 
+  @Get("couriers")
+  listCouriers() {
+    return this.jokerService.listCouriers();
+  }
+
   @Get("clients")
   listClients() {
     return this.jokerService.listClients();

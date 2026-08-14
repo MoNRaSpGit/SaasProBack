@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsOptional, Matches, ValidateNested } from "class-validator";
+import { IsArray, IsInt, IsNumber, IsOptional, Matches, Min, ValidateNested } from "class-validator";
 import { CreateJokerOrderItemDto } from "./create-joker-order.dto";
 
 // A diferencia de CreateJokerOrderDto, acepta lista vacia: si el operario
@@ -15,4 +15,17 @@ export class UpdateJokerOrderDto {
   @IsOptional()
   @Matches(/^(\d{4}-\d{2}-\d{2})?$/)
   orderDate?: string;
+
+  // Igual que arriba: si no se manda ninguno de los dos, quedan como estaban.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  courierId?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  deliveryCost?: number;
 }

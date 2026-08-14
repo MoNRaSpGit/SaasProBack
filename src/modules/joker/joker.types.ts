@@ -50,6 +50,13 @@ export type JokerOrder = {
   items: JokerOrderItem[];
   createdAt: string;
   orderDate: string | null;
+  courierId: number | null;
+  deliveryCost: number | null;
+};
+
+export type JokerCourier = {
+  id: number;
+  name: string;
 };
 
 export type JokerClient = {
