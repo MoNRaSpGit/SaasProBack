@@ -11,6 +11,7 @@ import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
+import { SettleJokerCourierDto } from "./dto/settle-joker-courier.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdateJokerCourierDto } from "./dto/update-joker-courier.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
@@ -128,8 +129,8 @@ export class JokerController {
   }
 
   @Post("couriers/:id/liquidar")
-  settleCourier(@Param("id", ParseIntPipe) courierId: number) {
-    return this.jokerService.settleCourier(courierId);
+  settleCourier(@Param("id", ParseIntPipe) courierId: number, @Body() dto: SettleJokerCourierDto) {
+    return this.jokerService.settleCourier(courierId, dto);
   }
 
   @Get("couriers/:id/settlements")

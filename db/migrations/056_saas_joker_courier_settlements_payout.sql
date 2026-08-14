@@ -1,0 +1,6 @@
+ALTER TABLE saas_joker_courier_settlements
+  ADD COLUMN hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0,
+  ADD COLUMN hours_worked DECIMAL(6,2) NOT NULL DEFAULT 0,
+  ADD COLUMN hours_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN delivery_cost_total DECIMAL(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN payout_total DECIMAL(12,2) NOT NULL DEFAULT 0;

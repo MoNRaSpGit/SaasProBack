@@ -13,6 +13,7 @@ import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
+import { SettleJokerCourierDto } from "./dto/settle-joker-courier.dto";
 import { UpdateJokerCourierDto } from "./dto/update-joker-courier.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
@@ -102,6 +103,11 @@ type JokerCourierSettlementRow = RowDataPacket & {
   handovers_total: string | number;
   cash_on_hand: string | number;
   movements: string | JokerCourierCashMovement[];
+  hourly_rate: string | number;
+  hours_worked: string | number;
+  hours_total: string | number;
+  delivery_cost_total: string | number;
+  payout_total: string | number;
   active_since: string | Date | null;
   settled_at: string | Date;
 };
@@ -882,13 +888,14 @@ export class JokerService {
 
   // "Liquidar": cierra el turno del repartidor (equivalente a un cierre de
   // caja, pero individual) -- antes de resetear, archiva una copia
-  // permanente de la caja del turno en saas_joker_courier_settlements
-  // (igual que archiveClientEntries para cuenta corriente), por si despues
-  // hay que revisar o reclamar algo. Vuelve a quedar inactivo y su
-  // caja/pedidos del proximo turno arrancan de nuevo desde 0 cuando se lo
-  // vuelva a habilitar. El cierre de caja general no se puede hacer
-  // mientras haya repartidores habilitados sin liquidar (ver closeRegister).
-  async settleCourier(courierId: number): Promise<{ item: JokerCourier }> {
+  // permanente de la caja y de la liquidacion (horas + envios = total a
+  // pagar) del turno en saas_joker_courier_settlements (igual que
+  // archiveClientEntries para cuenta corriente), por si despues hay que
+  // revisar o reclamar algo. Vuelve a quedar inactivo y su caja/pedidos
+  // del proximo turno arrancan de nuevo desde 0 cuando se lo vuelva a
+  // habilitar. El cierre de caja general no se puede hacer mientras haya
+  // repartidores habilitados sin liquidar (ver closeRegister).
+  async settleCourier(courierId: number, dto?: SettleJokerCourierDto): Promise<{ item: JokerCourier }> {
     const courierRows = await this.databaseService.query<JokerCourierRow[]>(
       `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
       [courierId]
@@ -902,11 +909,22 @@ export class JokerService {
       const summary = await this.getCourierCashSummary(courierId);
       const activeSince = courier.active_since;
 
+      const orderRows = await this.databaseService.query<Array<RowDataPacket & { delivery_cost: string | number | null }>>(
+        `SELECT delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND created_at > ?`,
+        [courierId, activeSince]
+      );
+      const deliveryCostTotal = orderRows.reduce((sum, row) => sum + Number(row.delivery_cost || 0), 0);
+      const hourlyRate = dto?.hourlyRate ?? 120;
+      const hoursWorked = dto?.hoursWorked ?? 5;
+      const hoursTotal = hourlyRate * hoursWorked;
+      const payoutTotal = hoursTotal + deliveryCostTotal;
+
       await this.databaseService.withTransaction(async (connection) => {
         await connection.execute(
           `INSERT INTO saas_joker_courier_settlements
-             (courier_id, courier_name, initial_cash, orders_cash_total, orders_cash_count, expenses_total, handovers_total, cash_on_hand, movements, active_since)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             (courier_id, courier_name, initial_cash, orders_cash_total, orders_cash_count, expenses_total, handovers_total, cash_on_hand, movements,
+              hourly_rate, hours_worked, hours_total, delivery_cost_total, payout_total, active_since)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             courierId,
             courier.name,
@@ -917,6 +935,11 @@ export class JokerService {
             summary.handoversTotal,
             summary.cashOnHand,
             JSON.stringify(summary.movements),
+            hourlyRate,
+            hoursWorked,
+            hoursTotal,
+            deliveryCostTotal,
+            payoutTotal,
             activeSince
           ]
         );
@@ -951,7 +974,8 @@ export class JokerService {
   // reseteado). Mismo patron que listAccountSettlements para clientes.
   async listCourierSettlements(courierId: number): Promise<{ items: JokerCourierSettlement[] }> {
     const rows = await this.databaseService.query<JokerCourierSettlementRow[]>(
-      `SELECT id, courier_id, courier_name, initial_cash, orders_cash_total, orders_cash_count, expenses_total, handovers_total, cash_on_hand, movements, active_since, settled_at
+      `SELECT id, courier_id, courier_name, initial_cash, orders_cash_total, orders_cash_count, expenses_total, handovers_total, cash_on_hand, movements,
+              hourly_rate, hours_worked, hours_total, delivery_cost_total, payout_total, active_since, settled_at
        FROM saas_joker_courier_settlements
        WHERE courier_id = ?
        ORDER BY settled_at DESC
@@ -976,6 +1000,11 @@ export class JokerService {
       handoversTotal: Number(row.handovers_total),
       cashOnHand: Number(row.cash_on_hand),
       movements,
+      hourlyRate: Number(row.hourly_rate),
+      hoursWorked: Number(row.hours_worked),
+      hoursTotal: Number(row.hours_total),
+      deliveryCostTotal: Number(row.delivery_cost_total),
+      payoutTotal: Number(row.payout_total),
       activeSince: row.active_since ? this.toIsoString(row.active_since) : null,
       settledAt: this.toIsoString(row.settled_at)
     };

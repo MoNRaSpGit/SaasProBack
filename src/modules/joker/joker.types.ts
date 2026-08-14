@@ -101,6 +101,11 @@ export type JokerCourierSettlement = {
   handoversTotal: number;
   cashOnHand: number;
   movements: JokerCourierCashMovement[];
+  hourlyRate: number;
+  hoursWorked: number;
+  hoursTotal: number;
+  deliveryCostTotal: number;
+  payoutTotal: number;
   activeSince: string | null;
   settledAt: string;
 };
