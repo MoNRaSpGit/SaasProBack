@@ -59,6 +59,30 @@ export type JokerCourier = {
   name: string;
 };
 
+export type JokerCourierCashMovementType = "inicial" | "gasto" | "entrega";
+
+export type JokerCourierCashMovement = {
+  id: number;
+  type: JokerCourierCashMovementType;
+  amount: number;
+  description: string | null;
+  createdAt: string;
+};
+
+// Caja del repartidor durante el turno actual (desde el ultimo cierre):
+// cashOnHand = initialCash + ordersCashTotal - expensesTotal -
+// handoversTotal. movements trae solo gasto/entrega (el "inicial" ya esta
+// resumido en initialCash) para listar el historial en la UI.
+export type JokerCourierCashSummary = {
+  initialCash: number;
+  ordersCashTotal: number;
+  ordersCashCount: number;
+  expensesTotal: number;
+  handoversTotal: number;
+  cashOnHand: number;
+  movements: JokerCourierCashMovement[];
+};
+
 export type JokerClient = {
   id: number;
   name: string;

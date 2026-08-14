@@ -4,6 +4,7 @@ import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
+import { CreateJokerCourierCashMovementDto } from "./dto/create-joker-courier-cash-movement.dto";
 import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
@@ -119,6 +120,16 @@ export class JokerController {
   @Patch("couriers/:id")
   updateCourier(@Param("id", ParseIntPipe) courierId: number, @Body() dto: UpdateJokerCourierDto) {
     return this.jokerService.updateCourier(courierId, dto);
+  }
+
+  @Get("couriers/:id/cash-summary")
+  getCourierCashSummary(@Param("id", ParseIntPipe) courierId: number) {
+    return this.jokerService.getCourierCashSummary(courierId);
+  }
+
+  @Post("couriers/:id/cash-movements")
+  addCourierCashMovement(@Param("id", ParseIntPipe) courierId: number, @Body() dto: CreateJokerCourierCashMovementDto) {
+    return this.jokerService.addCourierCashMovement(courierId, dto);
   }
 
   @Get("clients")

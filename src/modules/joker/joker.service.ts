@@ -6,6 +6,7 @@ import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
+import { CreateJokerCourierCashMovementDto } from "./dto/create-joker-courier-cash-movement.dto";
 import { CreateJokerOrderDto, CreateJokerOrderItemDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
@@ -22,6 +23,7 @@ import {
   JokerClient,
   JokerComboSlot,
   JokerCourier,
+  JokerCourierCashSummary,
   JokerOrder,
   JokerPaymentMethod,
   JokerProduct,
@@ -73,6 +75,15 @@ type JokerOrderRow = RowDataPacket & {
 type JokerCourierRow = RowDataPacket & {
   id: number;
   name: string;
+  created_at: string | Date;
+};
+
+type JokerCourierCashMovementRow = RowDataPacket & {
+  id: number;
+  courier_id: number;
+  type: "inicial" | "gasto" | "entrega";
+  amount: string | number;
+  description: string | null;
   created_at: string | Date;
 };
 
@@ -824,6 +835,74 @@ export class JokerService {
     }
 
     return { item: { id: courierId, name: dto.name.trim() } };
+  }
+
+  async addCourierCashMovement(
+    courierId: number,
+    dto: CreateJokerCourierCashMovementDto
+  ): Promise<{ item: JokerCourierCashSummary }> {
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_joker_courier_cash_movements (courier_id, type, amount, description) VALUES (?, ?, ?, ?)`,
+      [courierId, dto.type, dto.amount, dto.description?.trim() || null]
+    );
+
+    return { item: await this.getCourierCashSummary(courierId) };
+  }
+
+  // Caja del repartidor en el turno actual (desde el ultimo cierre de
+  // caja, o desde siempre si todavia no hubo ninguno): lo que arranco
+  // llevando + el efectivo cobrado en los pedidos "efectivo" que reparte,
+  // menos lo que gasto comprando para el local y lo que ya entrego.
+  async getCourierCashSummary(courierId: number): Promise<JokerCourierCashSummary> {
+    const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
+      `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
+    );
+    const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
+
+    const movementRows = await this.databaseService.query<JokerCourierCashMovementRow[]>(
+      lastClosedAt
+        ? `SELECT id, courier_id, type, amount, description, created_at
+           FROM saas_joker_courier_cash_movements
+           WHERE courier_id = ? AND created_at > ?
+           ORDER BY created_at ASC`
+        : `SELECT id, courier_id, type, amount, description, created_at
+           FROM saas_joker_courier_cash_movements
+           WHERE courier_id = ?
+           ORDER BY created_at ASC`,
+      lastClosedAt ? [courierId, lastClosedAt] : [courierId]
+    );
+
+    const orderRows = await this.databaseService.query<Array<RowDataPacket & { total: string | number }>>(
+      lastClosedAt
+        ? `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND created_at > ?`
+        : `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo'`,
+      lastClosedAt ? [courierId, lastClosedAt] : [courierId]
+    );
+
+    const initialCash = movementRows.filter((row) => row.type === "inicial").reduce((sum, row) => sum + Number(row.amount), 0);
+    const expensesTotal = movementRows.filter((row) => row.type === "gasto").reduce((sum, row) => sum + Number(row.amount), 0);
+    const handoversTotal = movementRows.filter((row) => row.type === "entrega").reduce((sum, row) => sum + Number(row.amount), 0);
+    const ordersCashTotal = orderRows.reduce((sum, row) => sum + Number(row.total), 0);
+    const cashOnHand = initialCash + ordersCashTotal - expensesTotal - handoversTotal;
+
+    return {
+      initialCash,
+      ordersCashTotal,
+      ordersCashCount: orderRows.length,
+      expensesTotal,
+      handoversTotal,
+      cashOnHand,
+      movements: movementRows
+        .filter((row) => row.type !== "inicial")
+        .map((row) => ({
+          id: Number(row.id),
+          type: row.type,
+          amount: Number(row.amount),
+          description: row.description,
+          createdAt: this.toIsoString(row.created_at)
+        }))
+        .reverse()
+    };
   }
 
   async deleteAllOrders(): Promise<{ ok: true }> {
