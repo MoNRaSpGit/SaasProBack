@@ -75,6 +75,8 @@ type JokerOrderRow = RowDataPacket & {
 type JokerCourierRow = RowDataPacket & {
   id: number;
   name: string;
+  status: "inactivo" | "activo";
+  active_since: string | Date | null;
   created_at: string | Date;
 };
 
@@ -781,6 +783,14 @@ export class JokerService {
   // adelante) y marca la caja como cerrada; el proximo pedido que se cree
   // vuelve a arrancar la numeracion en 1.
   async closeRegister(dto: CloseJokerRegisterDto): Promise<JokerRegisterState> {
+    const activeCourierRows = await this.databaseService.query<Array<RowDataPacket & { name: string }>>(
+      `SELECT name FROM saas_joker_couriers WHERE status = 'activo' ORDER BY id ASC`
+    );
+    if (activeCourierRows.length) {
+      const names = activeCourierRows.map((row) => row.name).join(", ");
+      throw new BadRequestException(`Liquida primero a los repartidores habilitados: ${names}`);
+    }
+
     await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_joker_register_closes (closed_at, total_vendido, ganancia, payment_totals, ranking)
        VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?)`,
@@ -818,10 +828,10 @@ export class JokerService {
 
   async listCouriers(): Promise<{ items: JokerCourier[] }> {
     const rows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, created_at FROM saas_joker_couriers ORDER BY id ASC`
+      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers ORDER BY id ASC`
     );
 
-    return { items: rows.map((row) => ({ id: Number(row.id), name: row.name })) };
+    return { items: rows.map((row) => this.mapCourier(row)) };
   }
 
   async updateCourier(courierId: number, dto: UpdateJokerCourierDto): Promise<{ item: JokerCourier }> {
@@ -834,7 +844,64 @@ export class JokerService {
       throw new NotFoundException("Repartidor no encontrado");
     }
 
-    return { item: { id: courierId, name: dto.name.trim() } };
+    return this.getCourierById(courierId);
+  }
+
+  // "Habilitar": arranca un turno nuevo para el repartidor -- desde este
+  // momento sus pedidos asignados y su caja empiezan a contar de nuevo
+  // (ver active_since en getCourierCashSummary/listCurrentPeriodOrders).
+  async enableCourier(courierId: number): Promise<{ item: JokerCourier }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_couriers SET status = 'activo', active_since = CURRENT_TIMESTAMP WHERE id = ?`,
+      [courierId]
+    );
+
+    if (!result.affectedRows) {
+      throw new NotFoundException("Repartidor no encontrado");
+    }
+
+    return this.getCourierById(courierId);
+  }
+
+  // "Liquidar": cierra el turno del repartidor (equivalente a un cierre de
+  // caja, pero individual) -- vuelve a quedar inactivo y su caja/pedidos
+  // del proximo turno arrancan de nuevo desde 0 cuando se lo vuelva a
+  // habilitar. El cierre de caja general no se puede hacer mientras haya
+  // repartidores habilitados sin liquidar (ver closeRegister).
+  async settleCourier(courierId: number): Promise<{ item: JokerCourier }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_couriers SET status = 'inactivo', active_since = NULL WHERE id = ?`,
+      [courierId]
+    );
+
+    if (!result.affectedRows) {
+      throw new NotFoundException("Repartidor no encontrado");
+    }
+
+    return this.getCourierById(courierId);
+  }
+
+  private async getCourierById(courierId: number): Promise<{ item: JokerCourier }> {
+    const rows = await this.databaseService.query<JokerCourierRow[]>(
+      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      [courierId]
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new NotFoundException("Repartidor no encontrado");
+    }
+
+    return { item: this.mapCourier(row) };
+  }
+
+  private mapCourier(row: JokerCourierRow): JokerCourier {
+    return {
+      id: Number(row.id),
+      name: row.name,
+      status: row.status === "activo" ? "activo" : "inactivo",
+      activeSince: row.active_since ? this.toIsoString(row.active_since) : null
+    };
   }
 
   async addCourierCashMovement(
@@ -849,34 +916,34 @@ export class JokerService {
     return { item: await this.getCourierCashSummary(courierId) };
   }
 
-  // Caja del repartidor en el turno actual (desde el ultimo cierre de
-  // caja, o desde siempre si todavia no hubo ninguno): lo que arranco
-  // llevando + el efectivo cobrado en los pedidos "efectivo" que reparte,
-  // menos lo que gasto comprando para el local y lo que ya entrego.
+  // Caja del repartidor en el turno actual: desde que se lo habilito por
+  // ultima vez (active_since), lo que arranco llevando + el efectivo
+  // cobrado en los pedidos "efectivo" que reparte, menos lo que gasto
+  // comprando para el local y lo que ya entrego. Si no esta habilitado
+  // (active_since null) no tiene turno abierto, asi que la caja arranca
+  // en 0.
   async getCourierCashSummary(courierId: number): Promise<JokerCourierCashSummary> {
-    const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
-      `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
+    const courierRows = await this.databaseService.query<JokerCourierRow[]>(
+      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      [courierId]
     );
-    const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
+    const activeSince = courierRows[0]?.active_since ?? null;
+
+    if (!activeSince) {
+      return { initialCash: 0, ordersCashTotal: 0, ordersCashCount: 0, expensesTotal: 0, handoversTotal: 0, cashOnHand: 0, movements: [] };
+    }
 
     const movementRows = await this.databaseService.query<JokerCourierCashMovementRow[]>(
-      lastClosedAt
-        ? `SELECT id, courier_id, type, amount, description, created_at
-           FROM saas_joker_courier_cash_movements
-           WHERE courier_id = ? AND created_at > ?
-           ORDER BY created_at ASC`
-        : `SELECT id, courier_id, type, amount, description, created_at
-           FROM saas_joker_courier_cash_movements
-           WHERE courier_id = ?
-           ORDER BY created_at ASC`,
-      lastClosedAt ? [courierId, lastClosedAt] : [courierId]
+      `SELECT id, courier_id, type, amount, description, created_at
+       FROM saas_joker_courier_cash_movements
+       WHERE courier_id = ? AND created_at > ?
+       ORDER BY created_at ASC`,
+      [courierId, activeSince]
     );
 
     const orderRows = await this.databaseService.query<Array<RowDataPacket & { total: string | number }>>(
-      lastClosedAt
-        ? `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND created_at > ?`
-        : `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo'`,
-      lastClosedAt ? [courierId, lastClosedAt] : [courierId]
+      `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND created_at > ?`,
+      [courierId, activeSince]
     );
 
     const initialCash = movementRows.filter((row) => row.type === "inicial").reduce((sum, row) => sum + Number(row.amount), 0);
@@ -914,29 +981,38 @@ export class JokerService {
   // todavia no hubo ninguno). Lo usa el Panel para que el resumen (vendido,
   // ganancia, ranking) arranque de nuevo despues de cada cierre, en vez de
   // seguir sumando todo el dia calendario. Delivery usa el mismo metodo
-  // (con courierId) para que la asignacion de pedidos por repartidor
-  // tambien arranque de nuevo con cada cierre.
+  // (con courierId), pero ahi el periodo es el turno del repartidor
+  // (active_since, desde que se lo habilito por ultima vez) en vez del
+  // cierre de caja general, para que arranque de nuevo cada vez que se
+  // habilita/liquida y no solo con el cierre.
   async listCurrentPeriodOrders(courierId?: number): Promise<{ items: JokerOrder[] }> {
+    if (courierId) {
+      const courierRows = await this.databaseService.query<JokerCourierRow[]>(
+        `SELECT active_since FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+        [courierId]
+      );
+      const activeSince = courierRows[0]?.active_since ?? null;
+      if (!activeSince) {
+        return { items: [] };
+      }
+
+      const rows = await this.databaseService.query<JokerOrderRow[]>(
+        `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE courier_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500`,
+        [courierId, activeSince]
+      );
+      return { items: rows.map((row) => this.mapOrder(row)) };
+    }
+
     const stateRows = await this.databaseService.query<JokerRegisterStateRow[]>(
       `SELECT last_closed_at FROM saas_joker_register_state WHERE id = 1 LIMIT 1`
     );
     const lastClosedAt = stateRows[0]?.last_closed_at ?? null;
 
-    const conditions: string[] = [];
-    const params: Array<string | number | Date> = [];
-    if (lastClosedAt) {
-      conditions.push("created_at > ?");
-      params.push(lastClosedAt);
-    }
-    if (courierId) {
-      conditions.push("courier_id = ?");
-      params.push(courierId);
-    }
-    const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
     const rows = await this.databaseService.query<JokerOrderRow[]>(
-      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders ${whereClause} ORDER BY created_at DESC LIMIT 500`,
-      params
+      lastClosedAt
+        ? `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE created_at > ? ORDER BY created_at DESC LIMIT 500`
+        : `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders ORDER BY created_at DESC LIMIT 500`,
+      lastClosedAt ? [lastClosedAt] : []
     );
 
     return { items: rows.map((row) => this.mapOrder(row)) };

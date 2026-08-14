@@ -54,9 +54,13 @@ export type JokerOrder = {
   deliveryCost: number | null;
 };
 
+export type JokerCourierStatus = "inactivo" | "activo";
+
 export type JokerCourier = {
   id: number;
   name: string;
+  status: JokerCourierStatus;
+  activeSince: string | null;
 };
 
 export type JokerCourierCashMovementType = "inicial" | "gasto" | "entrega";

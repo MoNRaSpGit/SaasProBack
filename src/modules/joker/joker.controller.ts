@@ -122,6 +122,16 @@ export class JokerController {
     return this.jokerService.updateCourier(courierId, dto);
   }
 
+  @Post("couriers/:id/habilitar")
+  enableCourier(@Param("id", ParseIntPipe) courierId: number) {
+    return this.jokerService.enableCourier(courierId);
+  }
+
+  @Post("couriers/:id/liquidar")
+  settleCourier(@Param("id", ParseIntPipe) courierId: number) {
+    return this.jokerService.settleCourier(courierId);
+  }
+
   @Get("couriers/:id/cash-summary")
   getCourierCashSummary(@Param("id", ParseIntPipe) courierId: number) {
     return this.jokerService.getCourierCashSummary(courierId);
