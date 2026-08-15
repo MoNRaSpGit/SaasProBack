@@ -466,11 +466,23 @@ export class JokerService {
     }
 
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const entryItemsByProduct = new Map<string, number>();
+    // Si el mismo producto aparece en mas de una linea (ej. se agrego dos
+    // veces con precios distintos por una promo), el precio unitario que
+    // queda es el promedio ponderado: asi quantity * unitPrice sigue dando
+    // el total real de ese producto.
+    const entryItemsByProduct = new Map<string, { quantity: number; lineTotal: number }>();
     for (const item of items) {
-      entryItemsByProduct.set(item.productName, (entryItemsByProduct.get(item.productName) ?? 0) + item.quantity);
+      const existingGroup = entryItemsByProduct.get(item.productName) ?? { quantity: 0, lineTotal: 0 };
+      entryItemsByProduct.set(item.productName, {
+        quantity: existingGroup.quantity + item.quantity,
+        lineTotal: existingGroup.lineTotal + item.unitPrice * item.quantity
+      });
     }
-    const entryItems = [...entryItemsByProduct.entries()].map(([productName, quantity]) => ({ productName, quantity }));
+    const entryItems = [...entryItemsByProduct.entries()].map(([productName, group]) => ({
+      productName,
+      quantity: group.quantity,
+      unitPrice: group.lineTotal / group.quantity
+    }));
 
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_joker_account_entries SET total = ?, items = ? WHERE id = ?`,

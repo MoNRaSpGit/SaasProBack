@@ -121,6 +121,7 @@ export type JokerClient = {
 export type JokerAccountEntryItem = {
   productName: string;
   quantity: number;
+  unitPrice: number;
 };
 
 export type JokerAccountEntry = {
