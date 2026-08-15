@@ -4,6 +4,7 @@ import { CreateOriolPaymentDto } from "./dto/create-oriol-payment.dto";
 import { CreateOriolProductDto } from "./dto/create-oriol-product.dto";
 import { CreateOriolSaleContadoDto } from "./dto/create-oriol-sale-contado.dto";
 import { CreateOriolSaleCreditoDto } from "./dto/create-oriol-sale-credito.dto";
+import { UpdateOriolCierreDiaDto } from "./dto/update-oriol-cierre-dia.dto";
 import { UpdateOriolConfigDto } from "./dto/update-oriol-config.dto";
 import { UpdateOriolProductDto } from "./dto/update-oriol-product.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
@@ -125,5 +126,10 @@ export class OriolController {
   @Get("panel/historial-meses")
   getMonthHistory(@Query("cantidad") cantidad?: string) {
     return this.oriolService.getMonthHistory(cantidad ? Number(cantidad) : 6);
+  }
+
+  @Patch("cierres/:fecha")
+  editarCierreDia(@Param("fecha") fecha: string, @Body() dto: UpdateOriolCierreDiaDto) {
+    return this.oriolService.editarCierreDia(fecha, dto);
   }
 }

@@ -87,6 +87,21 @@ export type OriolMonthDay = {
   diaSemana: string;
   totalPesos: number;
   totalDolares: number;
+  // true si ya paso por el cierre automatico de las 00:00 (o se corrigio
+  // a mano) -- ese valor es la fuente de verdad y no se recalcula mas.
+  // false = todavia se esta calculando en vivo (el dia de hoy).
+  cerrado: boolean;
+};
+
+// Cierre diario de caja: valor congelado (no en vivo) por dia, usado por
+// Mes/graficas. Se genera solo con el cron de medianoche, pero se puede
+// corregir a mano despues (ver OriolService.editarCierreDia) -- una vez
+// editado a mano, el cron ya no lo vuelve a pisar.
+export type OriolCierreDia = {
+  fecha: string;
+  totalPesos: number;
+  totalDolares: number;
+  editadoManualmente: boolean;
 };
 
 export type OriolMonthWeek = {

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { Cron } from "@nestjs/schedule";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import type { PoolConnection } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
@@ -7,11 +8,13 @@ import { CreateOriolPaymentDto } from "./dto/create-oriol-payment.dto";
 import { CreateOriolProductDto } from "./dto/create-oriol-product.dto";
 import { CreateOriolSaleContadoDto } from "./dto/create-oriol-sale-contado.dto";
 import { CreateOriolSaleCreditoDto } from "./dto/create-oriol-sale-credito.dto";
+import { UpdateOriolCierreDiaDto } from "./dto/update-oriol-cierre-dia.dto";
 import { UpdateOriolConfigDto } from "./dto/update-oriol-config.dto";
 import { UpdateOriolProductDto } from "./dto/update-oriol-product.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
 import { UpdateOriolStockDto } from "./dto/update-oriol-stock.dto";
 import {
+  OriolCierreDia,
   OriolClient,
   OriolConfig,
   OriolMonthHistoryItem,
@@ -556,23 +559,53 @@ export class OriolService {
   }
 
   // ---------- Mes ----------
+  //
+  // A diferencia del resto del modulo (todo en vivo, sin cierre), "Mes" y
+  // las graficas usan el cierre diario congelado (saas_oriol_cierres_diarios)
+  // como fuente de verdad para cualquier dia que ya lo tenga -- solo cae
+  // a calcular en vivo desde saas_oriol_ventas para dias que todavia no
+  // se cerraron (tipicamente hoy, antes de que corra el cron de medianoche).
 
-  async getMonthSummary(anio: number, mes: number): Promise<OriolMonthSummary> {
-    const { startIso, endIso, daysInMonth } = this.buildMonthRangeUtc(anio, mes);
-
+  private async getVentasEnVivoPorDia(startIso: string, endIso: string): Promise<Map<string, { pesos: number; dolares: number }>> {
     const rows = await this.databaseService.query<RowDataPacket[]>(
       `SELECT fecha, total_pesos, total_dolares FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
       [startIso, endIso]
     );
-
-    const totalesPorDia = new Map<string, { pesos: number; dolares: number }>();
+    const porDia = new Map<string, { pesos: number; dolares: number }>();
     for (const row of rows) {
       const clave = this.fechaUyYMD(row.fecha as string | Date);
-      const actual = totalesPorDia.get(clave) ?? { pesos: 0, dolares: 0 };
+      const actual = porDia.get(clave) ?? { pesos: 0, dolares: 0 };
       actual.pesos += Number(row.total_pesos) || 0;
       actual.dolares += Number(row.total_dolares) || 0;
-      totalesPorDia.set(clave, actual);
+      porDia.set(clave, actual);
     }
+    return porDia;
+  }
+
+  private async getCierresPorDia(primerDia: string, ultimoDia: string): Promise<Map<string, { pesos: number; dolares: number }>> {
+    const rows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT fecha, total_pesos, total_dolares FROM saas_oriol_cierres_diarios WHERE fecha BETWEEN ? AND ?`,
+      [primerDia, ultimoDia]
+    );
+    const porDia = new Map<string, { pesos: number; dolares: number }>();
+    for (const row of rows) {
+      porDia.set(this.toIsoDateOnly(row.fecha as string | Date), {
+        pesos: Number(row.total_pesos) || 0,
+        dolares: Number(row.total_dolares) || 0
+      });
+    }
+    return porDia;
+  }
+
+  async getMonthSummary(anio: number, mes: number): Promise<OriolMonthSummary> {
+    const { startIso, endIso, daysInMonth } = this.buildMonthRangeUtc(anio, mes);
+    const primerDia = `${anio}-${String(mes).padStart(2, "0")}-01`;
+    const ultimoDia = `${anio}-${String(mes).padStart(2, "0")}-${String(daysInMonth).padStart(2, "0")}`;
+
+    const [enVivoPorDia, cierresPorDia] = await Promise.all([
+      this.getVentasEnVivoPorDia(startIso, endIso),
+      this.getCierresPorDia(primerDia, ultimoDia)
+    ]);
 
     const semanas: OriolMonthWeek[] = [];
     let semanaActual: OriolMonthWeek | null = null;
@@ -585,10 +618,11 @@ export class OriolService {
       }
 
       const fecha = `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-      const totalesDia = totalesPorDia.get(fecha) ?? { pesos: 0, dolares: 0 };
+      const cerrado = cierresPorDia.has(fecha);
+      const totalesDia = cerrado ? cierresPorDia.get(fecha)! : (enVivoPorDia.get(fecha) ?? { pesos: 0, dolares: 0 });
       const diaSemana = DIAS_SEMANA[new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay()];
 
-      semanaActual.dias.push({ fecha, diaSemana, totalPesos: totalesDia.pesos, totalDolares: totalesDia.dolares });
+      semanaActual.dias.push({ fecha, diaSemana, totalPesos: totalesDia.pesos, totalDolares: totalesDia.dolares, cerrado });
       semanaActual.totalPesos += totalesDia.pesos;
       semanaActual.totalDolares += totalesDia.dolares;
     }
@@ -616,28 +650,79 @@ export class OriolService {
 
     const { startIso } = this.buildMonthRangeUtc(meses[0].anio, meses[0].mes);
     const { endIso } = this.buildMonthRangeUtc(meses[meses.length - 1].anio, meses[meses.length - 1].mes);
+    const primerDia = `${meses[0].anio}-${String(meses[0].mes).padStart(2, "0")}-01`;
+    const ultimoMes = meses[meses.length - 1];
+    const { daysInMonth: diasUltimoMes } = this.buildMonthRangeUtc(ultimoMes.anio, ultimoMes.mes);
+    const ultimoDia = `${ultimoMes.anio}-${String(ultimoMes.mes).padStart(2, "0")}-${String(diasUltimoMes).padStart(2, "0")}`;
 
-    const rows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT fecha, total_pesos, total_dolares FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
-      [startIso, endIso]
-    );
-
-    const totalesPorMes = new Map<string, { pesos: number; dolares: number }>();
-    for (const row of rows) {
-      const [rowAnio, rowMes] = this.fechaUyYMD(row.fecha as string | Date).split("-").map(Number);
-      const clave = `${rowAnio}-${rowMes}`;
-      const actual = totalesPorMes.get(clave) ?? { pesos: 0, dolares: 0 };
-      actual.pesos += Number(row.total_pesos) || 0;
-      actual.dolares += Number(row.total_dolares) || 0;
-      totalesPorMes.set(clave, actual);
-    }
+    const [enVivoPorDia, cierresPorDia] = await Promise.all([
+      this.getVentasEnVivoPorDia(startIso, endIso),
+      this.getCierresPorDia(primerDia, ultimoDia)
+    ]);
 
     return {
       items: meses.map(({ anio: itemAnio, mes: itemMes }) => {
-        const totales = totalesPorMes.get(`${itemAnio}-${itemMes}`) ?? { pesos: 0, dolares: 0 };
-        return { anio: itemAnio, mes: itemMes, totalPesos: totales.pesos, totalDolares: totales.dolares };
+        const { daysInMonth } = this.buildMonthRangeUtc(itemAnio, itemMes);
+        let pesos = 0;
+        let dolares = 0;
+        for (let dia = 1; dia <= daysInMonth; dia++) {
+          const fecha = `${itemAnio}-${String(itemMes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+          const totales = cierresPorDia.get(fecha) ?? enVivoPorDia.get(fecha) ?? { pesos: 0, dolares: 0 };
+          pesos += totales.pesos;
+          dolares += totales.dolares;
+        }
+        return { anio: itemAnio, mes: itemMes, totalPesos: pesos, totalDolares: dolares };
       })
     };
+  }
+
+  // ---------- Cierre diario (fuente de verdad para Mes/graficas) ----------
+
+  // Corre todos los dias a medianoche (hora Uruguay) y congela el total
+  // del dia que acaba de terminar. Si ese dia ya se habia corregido a
+  // mano (editarCierreDia), no lo pisa -- el valor manual queda como
+  // fuente de verdad definitiva para ese dia.
+  @Cron("0 0 * * *", { timeZone: "America/Montevideo", name: "oriol-cierre-diario" })
+  async cerrarDiaAutomatico(): Promise<void> {
+    const { startIso, endIso, fechaYMD } = this.buildYesterdayRangeUtc();
+
+    const rows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT COALESCE(SUM(total_pesos), 0) AS pesos, COALESCE(SUM(total_dolares), 0) AS dolares
+       FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
+      [startIso, endIso]
+    );
+    const totalPesos = Number(rows[0]?.pesos) || 0;
+    const totalDolares = Number(rows[0]?.dolares) || 0;
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_oriol_cierres_diarios (fecha, total_pesos, total_dolares)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         total_pesos = IF(editado_manualmente = 1, total_pesos, VALUES(total_pesos)),
+         total_dolares = IF(editado_manualmente = 1, total_dolares, VALUES(total_dolares))`,
+      [fechaYMD, totalPesos, totalDolares]
+    );
+  }
+
+  // Correccion manual de un dia ya cerrado (ej: el operario vendio algo
+  // fuera del sistema y el cierre automatico quedo corto). Una vez
+  // editado, el cron de medianoche ya no lo vuelve a tocar.
+  async editarCierreDia(fecha: string, dto: UpdateOriolCierreDiaDto): Promise<{ item: OriolCierreDia }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new BadRequestException("Fecha invalida");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_oriol_cierres_diarios (fecha, total_pesos, total_dolares, editado_manualmente)
+       VALUES (?, ?, ?, 1)
+       ON DUPLICATE KEY UPDATE
+         total_pesos = VALUES(total_pesos),
+         total_dolares = VALUES(total_dolares),
+         editado_manualmente = 1`,
+      [fecha, dto.totalPesos, dto.totalDolares]
+    );
+
+    return { item: { fecha, totalPesos: dto.totalPesos, totalDolares: dto.totalDolares, editadoManualmente: true } };
   }
 
   // ---------- Fecha/hora Uruguay (calculado siempre en Node) ----------
@@ -663,6 +748,20 @@ export class OriolService {
   private anioMesActualUruguay(): { anio: number; mes: number } {
     const [anio, mes] = this.fechaUyYMD(new Date()).split("-").map(Number);
     return { anio, mes };
+  }
+
+  // Rango del dia anterior (hora Uruguay) -- usado por el cron de
+  // medianoche para cerrar el dia que justo termino.
+  private buildYesterdayRangeUtc(): { startIso: string; endIso: string; fechaYMD: string } {
+    const { startIso: startHoyIso } = this.buildTodayRangeUtc();
+    const startHoy = new Date(`${startHoyIso.replace(" ", "T")}Z`);
+    const start = new Date(startHoy.getTime() - 24 * 60 * 60 * 1000);
+    return { startIso: this.toMysqlDateTime(start), endIso: startHoyIso, fechaYMD: this.fechaUyYMD(start) };
+  }
+
+  private toIsoDateOnly(value: string | Date): string {
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    return value.slice(0, 10);
   }
 
   // Convierte una fecha guardada (interpretada como UTC) al dia calendario

@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, NestModule } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { ScheduleModule } from "@nestjs/schedule";
 import { AlamcenModule } from "./modules/alamcen/alamcen.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
@@ -21,6 +22,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     AuthzModule,
     DatabaseModule,
     AuthModule,
