@@ -99,6 +99,13 @@ export class OriolService {
     return { items: rows.map((row) => this.mapProduct(row)) };
   }
 
+  // Prioriza el nombre que EMPIEZA con la busqueda ("Ramon" para "ram"),
+  // despues el que tiene la busqueda como inicio de una palabra ("Pintura
+  // Ramplas" para "ram"), y recien al final cualquier coincidencia en
+  // medio de una palabra ("500 GRAMOS" para "ram"). Sin esto, un catalogo
+  // grande con muchos nombres que comparten una coincidencia parcial
+  // (ej: decenas de productos con "Gramos" en el nombre) tapaba productos
+  // mas relevantes fuera del limite de resultados.
   async searchProducts(query: string): Promise<{ items: OriolProduct[] }> {
     const trimmed = query.trim();
     if (trimmed.length < 2) {
@@ -106,8 +113,17 @@ export class OriolService {
     }
 
     const rows = await this.databaseService.query<OriolProductRow[]>(
-      `SELECT ${PRODUCT_COLUMNS} FROM saas_oriol_prodcutos WHERE name LIKE ? ORDER BY name LIMIT 20`,
-      [`%${trimmed}%`]
+      `SELECT ${PRODUCT_COLUMNS} FROM saas_oriol_prodcutos
+       WHERE name LIKE ?
+       ORDER BY
+         CASE
+           WHEN name LIKE ? THEN 0
+           WHEN name LIKE ? THEN 1
+           ELSE 2
+         END,
+         name ASC
+       LIMIT 30`,
+      [`%${trimmed}%`, `${trimmed}%`, `% ${trimmed}%`]
     );
     return { items: rows.map((row) => this.mapProduct(row)) };
   }
