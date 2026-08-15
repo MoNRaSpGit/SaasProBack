@@ -8,6 +8,7 @@ import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
+import { OriolModule } from "./modules/oriol/oriol.module";
 import { PilotoModule } from "./modules/piloto/piloto.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
@@ -32,7 +33,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     CarnetModule,
     JuezModule,
     PilotoModule,
-    JokerModule
+    JokerModule,
+    OriolModule
   ],
   controllers: [HealthController],
   providers: []
