@@ -35,15 +35,6 @@ import {
 // mismo criterio que ya usa joker.service.ts para su "store day".
 const URUGUAY_UTC_OFFSET_HOURS = 3;
 
-// El local puede abrir y cerrar caja varias veces en un mismo dia
-// calendario, y el ultimo cierre a veces cruza la medianoche (ej: abre a
-// las 19 y cierra pasadas las 3am). Para que ese cierre nocturno no quede
-// partido entre dos dias en "Mes"/graficas, el "dia comercial" no corta a
-// medianoche sino a las 5am hora Uruguay -- todo lo vendido entre las 5am
-// de una fecha y las 4:59am del dia siguiente cuenta como esa fecha.
-const DAY_CUTOFF_HOUR_URUGUAY = 5;
-const URUGUAY_DAY_SHIFT_HOURS = URUGUAY_UTC_OFFSET_HOURS + DAY_CUTOFF_HOUR_URUGUAY;
-
 // Tasa fija para convertir la porcion en dolares de una venta a un
 // equivalente en pesos, unicamente quando hay que sumarla a la deuda de
 // un cliente (nunca se suman pesos y dolares como totales "reales").
@@ -703,13 +694,11 @@ export class OriolService {
 
   // ---------- Cierre diario (fuente de verdad para Mes/graficas) ----------
 
-  // Corre todos los dias a las 5am (hora Uruguay) -- cuando el local ya
-  // esta cerrado del todo, incluso si el ultimo cierre de caja cruzo la
-  // medianoche -- y congela el total del dia comercial que acaba de
-  // terminar. Si ese dia ya se habia corregido a mano (editarCierreDia),
-  // no lo pisa -- el valor manual queda como fuente de verdad definitiva
-  // para ese dia.
-  @Cron("0 5 * * *", { timeZone: "America/Montevideo", name: "oriol-cierre-diario" })
+  // Corre todos los dias a medianoche (hora Uruguay) y congela el total
+  // del dia que acaba de terminar. Si ese dia ya se habia corregido a
+  // mano (editarCierreDia), no lo pisa -- el valor manual queda como
+  // fuente de verdad definitiva para ese dia.
+  @Cron("0 0 * * *", { timeZone: "America/Montevideo", name: "oriol-cierre-diario" })
   async cerrarDiaAutomatico(): Promise<void> {
     const { startIso, endIso, fechaYMD } = this.buildYesterdayRangeUtc();
 
@@ -755,19 +744,19 @@ export class OriolService {
   // ---------- Fecha/hora Uruguay (calculado siempre en Node) ----------
 
   private buildTodayRangeUtc(): { startIso: string; endIso: string } {
-    const uruguayBusinessNow = new Date(Date.now() - URUGUAY_DAY_SHIFT_HOURS * 60 * 60 * 1000);
-    const year = uruguayBusinessNow.getUTCFullYear();
-    const month = uruguayBusinessNow.getUTCMonth();
-    const day = uruguayBusinessNow.getUTCDate();
+    const uruguayNow = new Date(Date.now() - URUGUAY_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+    const year = uruguayNow.getUTCFullYear();
+    const month = uruguayNow.getUTCMonth();
+    const day = uruguayNow.getUTCDate();
 
-    const start = new Date(Date.UTC(year, month, day, URUGUAY_DAY_SHIFT_HOURS, 0, 0));
-    const end = new Date(Date.UTC(year, month, day + 1, URUGUAY_DAY_SHIFT_HOURS, 0, 0));
+    const start = new Date(Date.UTC(year, month, day, URUGUAY_UTC_OFFSET_HOURS, 0, 0));
+    const end = new Date(Date.UTC(year, month, day + 1, URUGUAY_UTC_OFFSET_HOURS, 0, 0));
     return { startIso: this.toMysqlDateTime(start), endIso: this.toMysqlDateTime(end) };
   }
 
   private buildMonthRangeUtc(anio: number, mes: number): { startIso: string; endIso: string; daysInMonth: number } {
-    const start = new Date(Date.UTC(anio, mes - 1, 1, URUGUAY_DAY_SHIFT_HOURS, 0, 0));
-    const end = new Date(Date.UTC(anio, mes, 1, URUGUAY_DAY_SHIFT_HOURS, 0, 0));
+    const start = new Date(Date.UTC(anio, mes - 1, 1, URUGUAY_UTC_OFFSET_HOURS, 0, 0));
+    const end = new Date(Date.UTC(anio, mes, 1, URUGUAY_UTC_OFFSET_HOURS, 0, 0));
     const daysInMonth = new Date(Date.UTC(anio, mes, 0)).getUTCDate();
     return { startIso: this.toMysqlDateTime(start), endIso: this.toMysqlDateTime(end), daysInMonth };
   }
@@ -791,13 +780,13 @@ export class OriolService {
     return value.slice(0, 10);
   }
 
-  // Convierte una fecha guardada (interpretada como UTC) al dia comercial
-  // que le corresponde en Uruguay -- mismo criterio que buildTodayRangeUtc,
-  // para que el dia "cierre" a las 5am real de Montevideo (no a medianoche).
+  // Convierte una fecha guardada (interpretada como UTC) al dia calendario
+  // que le correspondia en Uruguay -- mismo criterio que buildTodayRangeUtc,
+  // para que un dia "cierre" a la medianoche real de Montevideo.
   private fechaUyYMD(fechaUtc: string | Date): string {
     const date = fechaUtc instanceof Date ? fechaUtc : new Date(`${fechaUtc.replace(" ", "T")}Z`);
-    const uruguayBusinessDate = new Date(date.getTime() - URUGUAY_DAY_SHIFT_HOURS * 60 * 60 * 1000);
-    return uruguayBusinessDate.toISOString().slice(0, 10);
+    const uruguayDate = new Date(date.getTime() - URUGUAY_UTC_OFFSET_HOURS * 60 * 60 * 1000);
+    return uruguayDate.toISOString().slice(0, 10);
   }
 
   private nowMysqlDateTime(): string {
