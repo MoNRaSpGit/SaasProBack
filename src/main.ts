@@ -43,7 +43,7 @@ async function bootstrap() {
       callback(new Error("Not allowed by CORS"), false);
     },
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "x-camisetas-admin-token", "x-oriol-api-key"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "x-camisetas-admin-token"],
     exposedHeaders: ["X-Request-Id"],
     credentials: false,
     optionsSuccessStatus: 204,

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { CreateOriolClientDto } from "./dto/create-oriol-client.dto";
 import { CreateOriolPaymentDto } from "./dto/create-oriol-payment.dto";
 import { CreateOriolProductDto } from "./dto/create-oriol-product.dto";
@@ -8,11 +8,12 @@ import { UpdateOriolConfigDto } from "./dto/update-oriol-config.dto";
 import { UpdateOriolProductDto } from "./dto/update-oriol-product.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
 import { UpdateOriolStockDto } from "./dto/update-oriol-stock.dto";
-import { OriolApiKeyGuard } from "./oriol-api-key.guard";
 import { OriolService } from "./oriol.service";
 
+// Sin proteccion por ahora (a pedido explicito): cualquiera que entre a
+// la app puede ver y editar todo, igual que carnet/joker/piloto. Si mas
+// adelante hace falta, se puede volver a agregar un guard aca.
 @Controller("oriol")
-@UseGuards(OriolApiKeyGuard)
 export class OriolController {
   constructor(private readonly oriolService: OriolService) {}
 
