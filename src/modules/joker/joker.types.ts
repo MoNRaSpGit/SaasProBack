@@ -187,3 +187,43 @@ export type JokerRegisterClose = {
   paymentTotals: JokerRegisterPaymentTotals;
   ranking: JokerRegisterCloseRankingItem[];
 };
+
+// ---------- Mes (dia comercial: 5am a 5am, ver STORE_DAY_START_HOUR) ----------
+
+// Cierre diario congelado, usado por "Mes" como fuente de verdad para
+// cualquier dia comercial que ya lo tenga -- ver joker.service.ts para el
+// cron que lo genera y editarCierreDia para la correccion manual.
+export type JokerCierreDia = {
+  fecha: string;
+  total: number;
+  editadoManualmente: boolean;
+};
+
+export type JokerMonthDay = {
+  fecha: string;
+  diaSemana: string;
+  total: number;
+  // true si ya paso por el cierre automatico de las 5am (o se corrigio a
+  // mano) -- ese valor es la fuente de verdad. false = todavia se esta
+  // calculando en vivo (tipicamente el dia comercial de hoy).
+  cerrado: boolean;
+};
+
+export type JokerMonthWeek = {
+  numero: number;
+  dias: JokerMonthDay[];
+  total: number;
+};
+
+export type JokerMonthSummary = {
+  anio: number;
+  mes: number;
+  total: number;
+  semanas: JokerMonthWeek[];
+};
+
+export type JokerMonthHistoryItem = {
+  anio: number;
+  mes: number;
+  total: number;
+};

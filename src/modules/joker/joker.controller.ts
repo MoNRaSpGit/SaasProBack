@@ -13,6 +13,7 @@ import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SettleJokerCourierDto } from "./dto/settle-joker-courier.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
+import { UpdateJokerCierreDiaDto } from "./dto/update-joker-cierre-dia.dto";
 import { UpdateJokerCourierDto } from "./dto/update-joker-courier.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
@@ -210,5 +211,20 @@ export class JokerController {
   @Post("register/close")
   closeRegister(@Body() dto: CloseJokerRegisterDto) {
     return this.jokerService.closeRegister(dto);
+  }
+
+  @Get("panel/mes/:anio/:mes")
+  getMonthSummary(@Param("anio", ParseIntPipe) anio: number, @Param("mes", ParseIntPipe) mes: number) {
+    return this.jokerService.getMonthSummary(anio, mes);
+  }
+
+  @Get("panel/historial-meses")
+  getMonthHistory(@Query("cantidad") cantidad?: string) {
+    return this.jokerService.getMonthHistory(cantidad ? Number(cantidad) : 6);
+  }
+
+  @Patch("cierres/:fecha")
+  editarCierreDia(@Param("fecha") fecha: string, @Body() dto: UpdateJokerCierreDiaDto) {
+    return this.jokerService.editarCierreDia(fecha, dto);
   }
 }
