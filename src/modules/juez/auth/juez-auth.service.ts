@@ -69,7 +69,7 @@ export class JuezAuthService implements OnModuleInit {
 
     if (existing) {
       await this.db.execute(
-        `UPDATE juez_accounts
+        `UPDATE saas_juez_accounts
          SET password_hash = ?,
              full_name = ?,
              city = ?,
@@ -85,7 +85,7 @@ export class JuezAuthService implements OnModuleInit {
       );
     } else {
       await this.db.execute(
-        `INSERT INTO juez_accounts
+        `INSERT INTO saas_juez_accounts
          (email, password_hash, full_name, city, roles_json, account_role, is_verified, verification_token_hash, verification_expires_at)
          VALUES (?, ?, ?, ?, ?, 'juez', 0, ?, ?)`,
         [email, passwordHash, fullName, city, rolesJson, verificationTokenHash, verificationExpiresAt]
@@ -118,7 +118,7 @@ export class JuezAuthService implements OnModuleInit {
       throw new UnauthorizedException("Invalid credentials");
     }
 
-    await this.db.execute("UPDATE juez_accounts SET last_login_at = NOW() WHERE id = ?", [account.id]);
+    await this.db.execute("UPDATE saas_juez_accounts SET last_login_at = NOW() WHERE id = ?", [account.id]);
     return { user: this.toUser(account) };
   }
 
@@ -127,7 +127,7 @@ export class JuezAuthService implements OnModuleInit {
     const tokenHash = this.hashToken(dto.token.trim());
     const rows = await this.db.query<JuezAccountRow[]>(
       `SELECT id, email, password_hash, full_name, city, roles_json, account_role, is_verified, verification_token_hash, verification_expires_at, verified_at, last_login_at
-       FROM juez_accounts
+       FROM saas_juez_accounts
        WHERE verification_token_hash = ?
        LIMIT 1`,
       [tokenHash]
@@ -147,7 +147,7 @@ export class JuezAuthService implements OnModuleInit {
     }
 
     await this.db.execute(
-      `UPDATE juez_accounts
+      `UPDATE saas_juez_accounts
        SET is_verified = 1,
            verified_at = NOW(),
            verification_token_hash = NULL,
@@ -170,7 +170,7 @@ export class JuezAuthService implements OnModuleInit {
 
     const passwordHash = await hash("admin", 12);
     await this.db.execute(
-      `INSERT INTO juez_accounts
+      `INSERT INTO saas_juez_accounts
        (email, password_hash, full_name, city, roles_json, account_role, is_verified, verified_at)
        VALUES (?, ?, ?, ?, ?, 'admin', 1, NOW())`,
       [adminEmail, passwordHash, "Administrador", "Sistema", JSON.stringify(["principal", "secundario", "planillero"])]
@@ -190,7 +190,7 @@ export class JuezAuthService implements OnModuleInit {
 
   private async createTables() {
     await this.db.execute(
-      `CREATE TABLE IF NOT EXISTS juez_accounts (
+      `CREATE TABLE IF NOT EXISTS saas_juez_accounts (
          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
          email VARCHAR(191) NOT NULL,
          password_hash VARCHAR(255) NOT NULL,
@@ -206,9 +206,9 @@ export class JuezAuthService implements OnModuleInit {
          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
          PRIMARY KEY (id),
-         UNIQUE KEY uq_juez_accounts_email (email),
-         KEY idx_juez_accounts_token_hash (verification_token_hash),
-         KEY idx_juez_accounts_verified (is_verified, verified_at)
+         UNIQUE KEY uq_saas_juez_accounts_email (email),
+         KEY idx_saas_juez_accounts_token_hash (verification_token_hash),
+         KEY idx_saas_juez_accounts_verified (is_verified, verified_at)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
   }
@@ -216,7 +216,7 @@ export class JuezAuthService implements OnModuleInit {
   private async findAccountByEmail(email: string) {
     const rows = await this.db.query<JuezAccountRow[]>(
       `SELECT id, email, password_hash, full_name, city, roles_json, account_role, is_verified, verification_token_hash, verification_expires_at, verified_at, last_login_at
-       FROM juez_accounts
+       FROM saas_juez_accounts
        WHERE email = ?
        LIMIT 1`,
       [email]
