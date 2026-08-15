@@ -42,6 +42,8 @@ const TASA_DOLAR = 40;
 // sistema original.
 const PORCENTAJE_GANANCIA_NETA = 0.7;
 
+const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
 const PRODUCT_COLUMNS = "id, name, price, description, currency, codigo_barra, stock, stock_minimo";
 
 type OriolProductRow = RowDataPacket & {
@@ -453,12 +455,13 @@ export class OriolService {
 
   // ---------- Config ----------
 
-  async getConfig(): Promise<{ item: OriolConfig }> {
-    const rows = await this.databaseService.query<RowDataPacket[]>(`SELECT cambio FROM saas_oriol_config WHERE id = 1 LIMIT 1`);
-    return { item: { cambio: Number(rows[0]?.cambio ?? 0) } };
+  // Tasa fija (no persistida, igual que el original) -- separado de
+  // "cambio" (caja inicial del dia), que si se guarda en la tabla.
+  getConfig(): { tasaDolar: number } {
+    return { tasaDolar: TASA_DOLAR };
   }
 
-  async updateConfig(dto: UpdateOriolConfigDto): Promise<{ item: OriolConfig }> {
+  async updateCambio(dto: UpdateOriolConfigDto): Promise<{ item: OriolConfig }> {
     await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_oriol_config (id, cambio) VALUES (1, ?) ON DUPLICATE KEY UPDATE cambio = ?`,
       [dto.cambio, dto.cambio]
@@ -504,27 +507,50 @@ export class OriolService {
     const gananciaPesos = (efectivoEquivalente - pagosDelDiaPesos) * PORCENTAJE_GANANCIA_NETA;
 
     const ventasDetalleRows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT id, detalle, fecha, metodo_pago, cliente_id, total_pesos, total_dolares
-       FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
+      `SELECT detalle, fecha FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
+      [startIso, endIso]
+    );
+    const pagosDetalleRows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT valor, detalle, fecha FROM saas_oriol_pagos WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
       [startIso, endIso]
     );
 
-    const movimientos: OriolPanelMovimiento[] = ventasDetalleRows.map((row) => ({
-      ventaId: row.id,
-      fecha: this.toIsoString(row.fecha),
-      metodoPago: row.metodo_pago,
-      totalPesos: Number(row.total_pesos),
-      totalDolares: Number(row.total_dolares),
-      clienteId: row.cliente_id
-    }));
+    const movimientos: OriolPanelMovimiento[] = [];
+    for (const row of ventasDetalleRows) {
+      const fechaIso = this.toIsoString(row.fecha);
+      const items: OriolSaleItem[] = typeof row.detalle === "string" ? JSON.parse(row.detalle) : row.detalle ?? [];
+      for (const item of items) {
+        movimientos.push({
+          tipo: "venta",
+          descripcion: item.name,
+          cantidad: item.cantidad,
+          monto: item.precio * item.cantidad,
+          currency: item.currency,
+          fecha: fechaIso
+        });
+      }
+    }
+    for (const row of pagosDetalleRows) {
+      movimientos.push({
+        tipo: "pago",
+        descripcion: row.detalle,
+        cantidad: null,
+        monto: Number(row.valor),
+        currency: null,
+        fecha: this.toIsoString(row.fecha)
+      });
+    }
+    movimientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
     return {
+      totalTarjeta: totalesPorMetodo.tarjeta,
+      totalEfectivo: totalesPorMetodo.efectivo,
+      totalCredito: totalesPorMetodo.credito,
+      totalPagos: pagosDelDiaPesos,
       cambio,
-      ventasDelDiaPesos: efectivoEquivalente,
-      gananciaPesos,
-      totalesPorMetodo,
-      pagosDelDiaPesos,
-      cajaActualPesos,
+      caja: cajaActualPesos,
+      ventasDelDia: efectivoEquivalente,
+      ganancias: gananciaPesos,
       movimientos
     };
   }
@@ -535,14 +561,17 @@ export class OriolService {
     const { startIso, endIso, daysInMonth } = this.buildMonthRangeUtc(anio, mes);
 
     const rows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT fecha, total_pesos FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
+      `SELECT fecha, total_pesos, total_dolares FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
       [startIso, endIso]
     );
 
-    const totalesPorDia = new Map<string, number>();
+    const totalesPorDia = new Map<string, { pesos: number; dolares: number }>();
     for (const row of rows) {
       const clave = this.fechaUyYMD(row.fecha as string | Date);
-      totalesPorDia.set(clave, (totalesPorDia.get(clave) ?? 0) + (Number(row.total_pesos) || 0));
+      const actual = totalesPorDia.get(clave) ?? { pesos: 0, dolares: 0 };
+      actual.pesos += Number(row.total_pesos) || 0;
+      actual.dolares += Number(row.total_dolares) || 0;
+      totalesPorDia.set(clave, actual);
     }
 
     const semanas: OriolMonthWeek[] = [];
@@ -550,19 +579,23 @@ export class OriolService {
 
     for (let dia = 1; dia <= daysInMonth; dia++) {
       const numeroSemana = Math.min(4, Math.ceil(dia / 7));
-      if (!semanaActual || semanaActual.semana !== numeroSemana) {
-        semanaActual = { semana: numeroSemana, totalPesos: 0, dias: [] };
+      if (!semanaActual || semanaActual.numero !== numeroSemana) {
+        semanaActual = { numero: numeroSemana, totalPesos: 0, totalDolares: 0, dias: [] };
         semanas.push(semanaActual);
       }
 
       const fecha = `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-      const totalDia = totalesPorDia.get(fecha) ?? 0;
-      semanaActual.dias.push({ fecha, totalPesos: totalDia });
-      semanaActual.totalPesos += totalDia;
+      const totalesDia = totalesPorDia.get(fecha) ?? { pesos: 0, dolares: 0 };
+      const diaSemana = DIAS_SEMANA[new Date(Date.UTC(anio, mes - 1, dia)).getUTCDay()];
+
+      semanaActual.dias.push({ fecha, diaSemana, totalPesos: totalesDia.pesos, totalDolares: totalesDia.dolares });
+      semanaActual.totalPesos += totalesDia.pesos;
+      semanaActual.totalDolares += totalesDia.dolares;
     }
 
     const totalPesos = semanas.reduce((sum, semana) => sum + semana.totalPesos, 0);
-    return { anio, mes, totalPesos, semanas };
+    const totalDolares = semanas.reduce((sum, semana) => sum + semana.totalDolares, 0);
+    return { anio, mes, totalPesos, totalDolares, semanas };
   }
 
   async getMonthHistory(cantidad: number): Promise<{ items: OriolMonthHistoryItem[] }> {
@@ -585,23 +618,25 @@ export class OriolService {
     const { endIso } = this.buildMonthRangeUtc(meses[meses.length - 1].anio, meses[meses.length - 1].mes);
 
     const rows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT fecha, total_pesos FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
+      `SELECT fecha, total_pesos, total_dolares FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ?`,
       [startIso, endIso]
     );
 
-    const totalesPorMes = new Map<string, number>();
+    const totalesPorMes = new Map<string, { pesos: number; dolares: number }>();
     for (const row of rows) {
       const [rowAnio, rowMes] = this.fechaUyYMD(row.fecha as string | Date).split("-").map(Number);
       const clave = `${rowAnio}-${rowMes}`;
-      totalesPorMes.set(clave, (totalesPorMes.get(clave) ?? 0) + (Number(row.total_pesos) || 0));
+      const actual = totalesPorMes.get(clave) ?? { pesos: 0, dolares: 0 };
+      actual.pesos += Number(row.total_pesos) || 0;
+      actual.dolares += Number(row.total_dolares) || 0;
+      totalesPorMes.set(clave, actual);
     }
 
     return {
-      items: meses.map(({ anio: itemAnio, mes: itemMes }) => ({
-        anio: itemAnio,
-        mes: itemMes,
-        totalPesos: totalesPorMes.get(`${itemAnio}-${itemMes}`) ?? 0
-      }))
+      items: meses.map(({ anio: itemAnio, mes: itemMes }) => {
+        const totales = totalesPorMes.get(`${itemAnio}-${itemMes}`) ?? { pesos: 0, dolares: 0 };
+        return { anio: itemAnio, mes: itemMes, totalPesos: totales.pesos, totalDolares: totales.dolares };
+      })
     };
   }
 

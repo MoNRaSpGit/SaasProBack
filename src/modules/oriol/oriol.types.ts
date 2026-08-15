@@ -54,38 +54,53 @@ export type OriolConfig = {
   cambio: number;
 };
 
+// Un renglon por item vendido (no por venta -- cada producto de un
+// carrito es su propio movimiento) o por pago a proveedor, mezclados y
+// ordenados por fecha descendente. Igual que armarMovimientos() del
+// backend original.
 export type OriolPanelMovimiento = {
-  ventaId: number;
+  tipo: "venta" | "pago";
+  descripcion: string;
+  cantidad: number | null;
+  monto: number;
+  currency: OriolCurrency | null;
   fecha: string;
-  metodoPago: OriolPaymentMethod;
-  totalPesos: number;
-  totalDolares: number;
-  clienteId: number | null;
 };
 
 // Todo se calcula en vivo a partir de saas_oriol_ventas/saas_oriol_pagos en
 // cada request -- no hay tabla de "cierre" ni totales guardados que se
 // puedan desincronizar de las ventas reales.
 export type OriolPanelHoy = {
+  totalTarjeta: { pesos: number; dolares: number };
+  totalEfectivo: { pesos: number; dolares: number };
+  totalCredito: { pesos: number; dolares: number };
+  totalPagos: number;
   cambio: number;
-  ventasDelDiaPesos: number;
-  gananciaPesos: number;
-  totalesPorMetodo: Record<OriolPaymentMethod, { pesos: number; dolares: number }>;
-  pagosDelDiaPesos: number;
-  cajaActualPesos: number;
+  caja: number;
+  ventasDelDia: number;
+  ganancias: number;
   movimientos: OriolPanelMovimiento[];
 };
 
-export type OriolMonthWeek = {
-  semana: number;
+export type OriolMonthDay = {
+  fecha: string;
+  diaSemana: string;
   totalPesos: number;
-  dias: Array<{ fecha: string; totalPesos: number }>;
+  totalDolares: number;
+};
+
+export type OriolMonthWeek = {
+  numero: number;
+  dias: OriolMonthDay[];
+  totalPesos: number;
+  totalDolares: number;
 };
 
 export type OriolMonthSummary = {
   anio: number;
   mes: number;
   totalPesos: number;
+  totalDolares: number;
   semanas: OriolMonthWeek[];
 };
 
@@ -93,4 +108,5 @@ export type OriolMonthHistoryItem = {
   anio: number;
   mes: number;
   totalPesos: number;
+  totalDolares: number;
 };

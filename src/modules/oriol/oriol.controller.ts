@@ -106,9 +106,9 @@ export class OriolController {
     return this.oriolService.getConfig();
   }
 
-  @Patch("config")
-  updateConfig(@Body() dto: UpdateOriolConfigDto) {
-    return this.oriolService.updateConfig(dto);
+  @Patch("panel/cambio")
+  updateCambio(@Body() dto: UpdateOriolConfigDto) {
+    return this.oriolService.updateCambio(dto);
   }
 
   @Get("panel/hoy")
