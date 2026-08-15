@@ -24,14 +24,44 @@ export type OriolSaleItem = {
 
 export type OriolPaymentMethod = "efectivo" | "tarjeta" | "credito";
 
+// Pago (total o parcial) aplicado a una boleta de credito puntual.
+// saldoAnterior/saldoNuevo quedan congelados en el momento del pago, para
+// poder reconstruir el historial ("Juan debia 800 y pago 500 el...") aunque
+// la boleta ya este saldada.
+export type OriolCreditPaymentType = "completo" | "parcial";
+
+// ventaId es null para un pago general contra la deuda vieja del cliente
+// (acumulada antes de que existiera el pago por boleta puntual -- ver
+// OriolService.pagarDeudaCliente), no atado a ninguna boleta especifica.
+export type OriolCreditPayment = {
+  id: number;
+  ventaId: number | null;
+  clienteId: number;
+  monto: number;
+  tipo: OriolCreditPaymentType;
+  saldoAnterior: number;
+  saldoNuevo: number;
+  fecha: string;
+};
+
 export type OriolSale = {
   id: number;
   clienteId: number | null;
   fecha: string;
   totalPesos: number;
   totalDolares: number;
+  // Solo relevante para metodoPago "credito" -- 0 en efectivo/tarjeta.
+  montoPagado: number;
+  saldoPendiente: number;
+  // Solo las boletas de credito creadas desde que existe el pago por
+  // boleta puntual pueden pagarse individualmente (ver
+  // CREDIT_PAYMENT_FEATURE_LAUNCH_AT en OriolService) -- las anteriores ya
+  // tenian deuda acumulada sin desglose por boleta, y esa deuda vieja se
+  // paga aparte con pagarDeudaCliente.
+  pagoIndividualHabilitado: boolean;
   detalle: OriolSaleItem[];
   metodoPago: OriolPaymentMethod;
+  pagos: OriolCreditPayment[];
 };
 
 export type OriolClient = {

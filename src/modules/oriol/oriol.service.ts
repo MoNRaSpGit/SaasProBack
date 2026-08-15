@@ -4,6 +4,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import type { PoolConnection } from "mysql2/promise";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateOriolClientDto } from "./dto/create-oriol-client.dto";
+import { CreateOriolCreditPaymentDto } from "./dto/create-oriol-credit-payment.dto";
 import { CreateOriolPaymentDto } from "./dto/create-oriol-payment.dto";
 import { CreateOriolProductDto } from "./dto/create-oriol-product.dto";
 import { CreateOriolSaleContadoDto } from "./dto/create-oriol-sale-contado.dto";
@@ -17,6 +18,8 @@ import {
   OriolCierreDia,
   OriolClient,
   OriolConfig,
+  OriolCreditPayment,
+  OriolCreditPaymentType,
   OriolMonthHistoryItem,
   OriolMonthSummary,
   OriolMonthWeek,
@@ -47,6 +50,15 @@ const PORCENTAJE_GANANCIA_NETA = 0.7;
 
 const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
 
+// Antes de esta fecha, la deuda de cada cliente era un total acumulado sin
+// desglose por boleta (el sistema original tenia su propio pago de
+// clientes, nunca portado, que ajustaba la deuda directamente). Por eso las
+// boletas de credito anteriores a este momento no se pueden pagar de forma
+// individual -- esa deuda vieja se paga toda junta con pagarDeudaCliente.
+// Las boletas creadas desde este momento en adelante si tienen su propio
+// saldo pendiente confiable y se pueden pagar una por una.
+const CREDIT_PAYMENT_FEATURE_LAUNCH_AT = "2026-08-15T10:06:34.277Z";
+
 const PRODUCT_COLUMNS = "id, name, price, description, currency, codigo_barra, stock, stock_minimo";
 
 type OriolProductRow = RowDataPacket & {
@@ -66,8 +78,20 @@ type OriolSaleRow = RowDataPacket & {
   fecha: string | Date;
   total_pesos: string | number;
   total_dolares: string | number;
+  monto_pagado: string | number;
   detalle: string | OriolSaleItem[] | null;
   metodo_pago: OriolPaymentMethod;
+};
+
+type OriolCreditPaymentRow = RowDataPacket & {
+  id: number;
+  venta_id: number | null;
+  cliente_id: number;
+  monto: string | number;
+  tipo: OriolCreditPaymentType;
+  saldo_anterior: string | number;
+  saldo_nuevo: string | number;
+  fecha: string | Date;
 };
 
 type OriolClientRow = RowDataPacket & {
@@ -354,13 +378,117 @@ export class OriolService {
 
   private async getSale(saleId: number): Promise<{ item: OriolSale }> {
     const rows = await this.databaseService.query<OriolSaleRow[]>(
-      `SELECT id, cliente_id, fecha, total_pesos, total_dolares, detalle, metodo_pago FROM saas_oriol_ventas WHERE id = ? LIMIT 1`,
+      `SELECT id, cliente_id, fecha, total_pesos, total_dolares, monto_pagado, detalle, metodo_pago
+       FROM saas_oriol_ventas WHERE id = ? LIMIT 1`,
       [saleId]
     );
     if (!rows[0]) {
       throw new NotFoundException("Venta no encontrada");
     }
-    return { item: this.mapSale(rows[0]) };
+    const pagosPorVenta = await this.getPagosCreditoPorVentas([rows[0].id]);
+    return { item: this.mapSale(rows[0], pagosPorVenta.get(rows[0].id) ?? []) };
+  }
+
+  // Pago (total o parcial) de una boleta de credito puntual -- ajusta la
+  // deuda del cliente y deja un registro permanente en
+  // saas_oriol_pagos_credito, incluso una vez que la boleta queda saldada
+  // (el "Pagar" desaparece del front, pero los datos nunca se borran).
+  async pagarVentaCredito(ventaId: number, dto: CreateOriolCreditPaymentDto): Promise<{ item: OriolSale }> {
+    await this.databaseService.withTransaction(async (connection) => {
+      const [rows] = await connection.query<RowDataPacket[]>(
+        `SELECT id, cliente_id, metodo_pago, fecha, total_pesos, total_dolares, monto_pagado
+         FROM saas_oriol_ventas WHERE id = ? FOR UPDATE`,
+        [ventaId]
+      );
+      const venta = rows[0] as
+        | {
+            id: number;
+            cliente_id: number | null;
+            metodo_pago: OriolPaymentMethod;
+            fecha: string | Date;
+            total_pesos: string;
+            total_dolares: string;
+            monto_pagado: string;
+          }
+        | undefined;
+      if (!venta) {
+        throw new NotFoundException("Venta no encontrada");
+      }
+      if (venta.metodo_pago !== "credito" || !venta.cliente_id) {
+        throw new BadRequestException("Esta venta no es a credito");
+      }
+      if (this.toIsoString(venta.fecha) < CREDIT_PAYMENT_FEATURE_LAUNCH_AT) {
+        throw new BadRequestException(
+          "Esta boleta es anterior a la funcion de pago por boleta -- usa 'Pagar deuda' para la deuda acumulada del cliente"
+        );
+      }
+
+      const equivalente = Number(venta.total_pesos) + Number(venta.total_dolares) * TASA_DOLAR;
+      const montoPagadoActual = Number(venta.monto_pagado) || 0;
+      const saldoPendiente = equivalente - montoPagadoActual;
+      if (saldoPendiente <= 0) {
+        throw new BadRequestException("Esta boleta ya esta saldada");
+      }
+
+      const montoAPagar = dto.tipo === "completo" ? saldoPendiente : dto.monto ?? 0;
+      if (dto.tipo === "parcial" && (!montoAPagar || montoAPagar <= 0 || montoAPagar > saldoPendiente)) {
+        throw new BadRequestException("El monto del pago parcial no es valido");
+      }
+
+      const saldoNuevo = saldoPendiente - montoAPagar;
+
+      await connection.execute(`UPDATE saas_oriol_ventas SET monto_pagado = monto_pagado + ? WHERE id = ?`, [
+        montoAPagar,
+        ventaId
+      ]);
+      await connection.execute(`UPDATE saas_oriol_clientes SET deuda = GREATEST(deuda - ?, 0) WHERE id = ?`, [
+        montoAPagar,
+        venta.cliente_id
+      ]);
+      await connection.execute(
+        `INSERT INTO saas_oriol_pagos_credito (venta_id, cliente_id, monto, tipo, saldo_anterior, saldo_nuevo, fecha)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [ventaId, venta.cliente_id, montoAPagar, dto.tipo, saldoPendiente, saldoNuevo, this.nowMysqlDateTime()]
+      );
+    });
+
+    return this.getSale(ventaId);
+  }
+
+  private async getPagosCreditoPorVentas(ventaIds: number[]): Promise<Map<number, OriolCreditPayment[]>> {
+    const mapa = new Map<number, OriolCreditPayment[]>();
+    if (!ventaIds.length) {
+      return mapa;
+    }
+    const placeholders = ventaIds.map(() => "?").join(", ");
+    const rows = await this.databaseService.query<OriolCreditPaymentRow[]>(
+      `SELECT id, venta_id, cliente_id, monto, tipo, saldo_anterior, saldo_nuevo, fecha
+       FROM saas_oriol_pagos_credito WHERE venta_id IN (${placeholders}) ORDER BY fecha ASC`,
+      ventaIds
+    );
+    for (const row of rows) {
+      const pago = this.mapCreditPayment(row);
+      if (pago.ventaId === null) {
+        continue;
+      }
+      const lista = mapa.get(pago.ventaId) ?? [];
+      lista.push(pago);
+      mapa.set(pago.ventaId, lista);
+    }
+    return mapa;
+  }
+
+  private mapCreditPayment(row: OriolCreditPaymentRow): OriolCreditPayment {
+    return {
+      id: row.id,
+      ventaId: row.venta_id,
+      clienteId: row.cliente_id,
+      monto: Number(row.monto),
+      tipo: row.tipo,
+      saldoAnterior: Number(row.saldo_anterior),
+      saldoNuevo: Number(row.saldo_nuevo),
+      fecha: this.toIsoString(row.fecha)
+    };
   }
 
   private async decrementStock(connection: PoolConnection, items: Array<{ id: number; cantidad: number }>) {
@@ -386,16 +514,27 @@ export class OriolService {
     return { totalPesos, totalDolares };
   }
 
-  private mapSale(row: OriolSaleRow): OriolSale {
+  private mapSale(row: OriolSaleRow, pagos: OriolCreditPayment[] = []): OriolSale {
     const detalle = typeof row.detalle === "string" ? (JSON.parse(row.detalle) as OriolSaleItem[]) : row.detalle ?? [];
+    const totalPesos = Number(row.total_pesos);
+    const totalDolares = Number(row.total_dolares);
+    const montoPagado = Number(row.monto_pagado) || 0;
+    const equivalente = totalPesos + totalDolares * TASA_DOLAR;
+    const saldoPendiente = row.metodo_pago === "credito" ? Math.max(equivalente - montoPagado, 0) : 0;
+    const pagoIndividualHabilitado =
+      row.metodo_pago === "credito" && this.toIsoString(row.fecha) >= CREDIT_PAYMENT_FEATURE_LAUNCH_AT;
     return {
       id: row.id,
       clienteId: row.cliente_id,
       fecha: this.toIsoString(row.fecha),
-      totalPesos: Number(row.total_pesos),
-      totalDolares: Number(row.total_dolares),
+      totalPesos,
+      totalDolares,
+      montoPagado,
+      saldoPendiente,
+      pagoIndividualHabilitado,
       detalle,
-      metodoPago: row.metodo_pago
+      metodoPago: row.metodo_pago,
+      pagos
     };
   }
 
@@ -426,11 +565,51 @@ export class OriolService {
 
   async getClientHistory(clientId: number): Promise<{ items: OriolSale[] }> {
     const rows = await this.databaseService.query<OriolSaleRow[]>(
-      `SELECT id, cliente_id, fecha, total_pesos, total_dolares, detalle, metodo_pago
+      `SELECT id, cliente_id, fecha, total_pesos, total_dolares, monto_pagado, detalle, metodo_pago
        FROM saas_oriol_ventas WHERE cliente_id = ? ORDER BY fecha DESC`,
       [clientId]
     );
-    return { items: rows.map((row) => this.mapSale(row)) };
+    const pagosPorVenta = await this.getPagosCreditoPorVentas(rows.map((row) => row.id));
+    return { items: rows.map((row) => this.mapSale(row, pagosPorVenta.get(row.id) ?? [])) };
+  }
+
+  // Pago (total o parcial) de la deuda vieja acumulada de un cliente, sin
+  // atarlo a ninguna boleta puntual -- para la deuda que ya existia antes
+  // de que el pago por boleta pudiera desglosarse (ver
+  // CREDIT_PAYMENT_FEATURE_LAUNCH_AT). Deja el mismo registro permanente en
+  // saas_oriol_pagos_credito, con venta_id NULL.
+  async pagarDeudaCliente(clientId: number, dto: CreateOriolCreditPaymentDto): Promise<{ item: OriolClient }> {
+    await this.databaseService.withTransaction(async (connection) => {
+      const [rows] = await connection.query<RowDataPacket[]>(
+        `SELECT id, deuda FROM saas_oriol_clientes WHERE id = ? FOR UPDATE`,
+        [clientId]
+      );
+      const cliente = rows[0] as { id: number; deuda: string } | undefined;
+      if (!cliente) {
+        throw new NotFoundException("Cliente no encontrado");
+      }
+
+      const deudaActual = Number(cliente.deuda) || 0;
+      if (deudaActual <= 0) {
+        throw new BadRequestException("El cliente no tiene deuda pendiente");
+      }
+
+      const montoAPagar = dto.tipo === "completo" ? deudaActual : dto.monto ?? 0;
+      if (dto.tipo === "parcial" && (!montoAPagar || montoAPagar <= 0 || montoAPagar > deudaActual)) {
+        throw new BadRequestException("El monto del pago parcial no es valido");
+      }
+
+      const saldoNuevo = deudaActual - montoAPagar;
+
+      await connection.execute(`UPDATE saas_oriol_clientes SET deuda = ? WHERE id = ?`, [saldoNuevo, clientId]);
+      await connection.execute(
+        `INSERT INTO saas_oriol_pagos_credito (venta_id, cliente_id, monto, tipo, saldo_anterior, saldo_nuevo, fecha)
+         VALUES (NULL, ?, ?, ?, ?, ?, ?)`,
+        [clientId, montoAPagar, dto.tipo, deudaActual, saldoNuevo, this.nowMysqlDateTime()]
+      );
+    });
+
+    return this.getClient(clientId);
   }
 
   private mapClient(row: OriolClientRow): OriolClient {

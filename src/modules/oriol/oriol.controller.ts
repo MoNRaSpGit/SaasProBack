@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { CreateOriolClientDto } from "./dto/create-oriol-client.dto";
+import { CreateOriolCreditPaymentDto } from "./dto/create-oriol-credit-payment.dto";
 import { CreateOriolPaymentDto } from "./dto/create-oriol-payment.dto";
 import { CreateOriolProductDto } from "./dto/create-oriol-product.dto";
 import { CreateOriolSaleContadoDto } from "./dto/create-oriol-sale-contado.dto";
@@ -73,6 +74,11 @@ export class OriolController {
     return this.oriolService.updateSale(saleId, dto);
   }
 
+  @Post("ventas/:id/pagos-credito")
+  pagarVentaCredito(@Param("id", ParseIntPipe) saleId: number, @Body() dto: CreateOriolCreditPaymentDto) {
+    return this.oriolService.pagarVentaCredito(saleId, dto);
+  }
+
   @Get("clientes")
   listClients() {
     return this.oriolService.listClients();
@@ -91,6 +97,11 @@ export class OriolController {
   @Get("clientes/:id/historial")
   getClientHistory(@Param("id", ParseIntPipe) clientId: number) {
     return this.oriolService.getClientHistory(clientId);
+  }
+
+  @Post("clientes/:id/pagos-deuda")
+  pagarDeudaCliente(@Param("id", ParseIntPipe) clientId: number, @Body() dto: CreateOriolCreditPaymentDto) {
+    return this.oriolService.pagarDeudaCliente(clientId, dto);
   }
 
   @Get("pagos")
