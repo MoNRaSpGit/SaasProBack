@@ -4,11 +4,12 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
+import { RecordCarnetVisitDto } from "./dto/record-carnet-visit.dto";
 import { SetCarnetEventPlayerBuyerDeliveredDto } from "./dto/set-carnet-event-player-buyer-delivered.dto";
 import { UpdateCarnetEventPlayerDto } from "./dto/update-carnet-event-player.dto";
 import { UpdateCarnetPlayerDto } from "./dto/update-carnet-player.dto";
 import { UpsertCarnetEventPlayerDto } from "./dto/upsert-carnet-event-player.dto";
-import { CarnetEvent, CarnetEventDetail, CarnetEventRankingItem, CarnetEventSaleBuyer, CarnetPlayer, CarnetStatus } from "./carnet.types";
+import { CarnetEvent, CarnetEventDetail, CarnetEventRankingItem, CarnetEventSaleBuyer, CarnetPlayer, CarnetStatus, CarnetVisitSummary } from "./carnet.types";
 
 type CarnetPlayerRow = RowDataPacket & {
   id: number;
@@ -52,6 +53,16 @@ type CarnetEventPlayerBuyerRow = RowDataPacket & {
   buyer_name: string;
   quantity: number;
   delivered: number;
+};
+
+type CarnetVisitSummaryRow = RowDataPacket & {
+  visitor_id: string;
+  ip: string | null;
+  user_agent: string | null;
+  role: string | null;
+  visit_count: number;
+  first_seen: string | Date;
+  last_seen: string | Date;
 };
 
 @Injectable()
@@ -695,6 +706,7 @@ export class CarnetService {
       this.tablesReady = (async () => {
         await this.ensurePlayerTable();
         await this.ensureEventTables();
+        await this.ensureVisitTable();
       })().catch((error) => {
         this.tablesReady = null;
         throw error;
@@ -702,6 +714,21 @@ export class CarnetService {
     }
 
     await this.tablesReady;
+  }
+
+  private async ensureVisitTable() {
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_carnet_visits (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         visitor_id VARCHAR(64) NOT NULL,
+         role VARCHAR(20) NULL,
+         ip VARCHAR(64) NULL,
+         user_agent VARCHAR(255) NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         KEY idx_saas_carnet_visits_visitor (visitor_id)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
   }
 
   private async ensurePlayerTable() {
@@ -928,6 +955,61 @@ export class CarnetService {
     }
 
     return this.toMysqlDate(date);
+  }
+
+  // Sin login ni registro: cada navegador se identifica con un visitorId
+  // random que genera el propio frontend y guarda en localStorage. Esto
+  // solo deja ver "cuanta gente distinta entro" (por dispositivo/navegador,
+  // no por persona real), no arma un sistema de cuentas.
+  async recordVisit(dto: RecordCarnetVisitDto, ip: string | null, userAgent: string | null): Promise<{ ok: true }> {
+    await this.ensureTables();
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_carnet_visits (visitor_id, role, ip, user_agent) VALUES (?, ?, ?, ?)`,
+      [dto.visitorId, dto.role ?? null, ip, userAgent]
+    );
+
+    return { ok: true };
+  }
+
+  // Un renglon por visitorId distinto (el mas reciente primero), con
+  // cuantas veces entro y cuando fue la primera/ultima vez.
+  async listVisitSummary(): Promise<{ items: CarnetVisitSummary[] }> {
+    await this.ensureTables();
+
+    const rows = await this.databaseService.query<CarnetVisitSummaryRow[]>(
+      `SELECT visitor_id, ip, user_agent, role, first_seen, last_seen, visit_count
+       FROM (
+         SELECT
+           v.visitor_id,
+           v.ip,
+           v.user_agent,
+           v.role,
+           v.created_at,
+           ROW_NUMBER() OVER (PARTITION BY v.visitor_id ORDER BY v.created_at DESC) AS rn,
+           MIN(v.created_at) OVER (PARTITION BY v.visitor_id) AS first_seen,
+           MAX(v.created_at) OVER (PARTITION BY v.visitor_id) AS last_seen,
+           COUNT(*) OVER (PARTITION BY v.visitor_id) AS visit_count
+         FROM saas_carnet_visits v
+       ) t
+       WHERE rn = 1
+       ORDER BY last_seen DESC
+       LIMIT 200`
+    );
+
+    return { items: rows.map((row) => this.mapVisitSummary(row)) };
+  }
+
+  private mapVisitSummary(row: CarnetVisitSummaryRow): CarnetVisitSummary {
+    return {
+      visitorId: row.visitor_id,
+      ip: row.ip,
+      userAgent: row.user_agent,
+      role: row.role,
+      visitCount: Number(row.visit_count),
+      firstSeen: this.toIsoString(row.first_seen),
+      lastSeen: this.toIsoString(row.last_seen)
+    };
   }
 
   private toMysqlDate(date: Date) {

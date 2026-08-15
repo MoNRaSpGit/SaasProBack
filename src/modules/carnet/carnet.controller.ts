@@ -1,7 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, ParseIntPipe, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, ParseIntPipe, Post, Req } from "@nestjs/common";
+import type { Request } from "express";
 import { CarnetService } from "./carnet.service";
 import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
+import { RecordCarnetVisitDto } from "./dto/record-carnet-visit.dto";
 import { SetCarnetEventPlayerBuyerDeliveredDto } from "./dto/set-carnet-event-player-buyer-delivered.dto";
 import { CreateCarnetPlayerDto } from "./dto/create-carnet-player.dto";
 import { UpdateCarnetEventDto } from "./dto/update-carnet-event.dto";
@@ -21,6 +23,20 @@ export class CarnetController {
   @Get("players")
   listPlayers() {
     return this.carnetService.listPlayers();
+  }
+
+  @Post("visits")
+  recordVisit(@Body() dto: RecordCarnetVisitDto, @Req() request: Request) {
+    const forwardedFor = request.headers["x-forwarded-for"];
+    const ip = typeof forwardedFor === "string" ? forwardedFor.split(",")[0].trim() : request.ip || null;
+    const userAgentHeader = request.headers["user-agent"];
+    const userAgent = typeof userAgentHeader === "string" ? userAgentHeader : null;
+    return this.carnetService.recordVisit(dto, ip, userAgent);
+  }
+
+  @Get("visits")
+  listVisitSummary() {
+    return this.carnetService.listVisitSummary();
   }
 
   @Get("events")
