@@ -1,7 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Patch, ParseIntPipe, Post, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, ParseIntPipe, Post, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
+import { CarnetAdminGuard } from "./carnet-admin.guard";
 import { CarnetService } from "./carnet.service";
 import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
+import { CarnetAdminLoginDto } from "./dto/carnet-admin-login.dto";
 import { CreateCarnetEventDto } from "./dto/create-carnet-event.dto";
 import { RecordCarnetVisitDto } from "./dto/record-carnet-visit.dto";
 import { SetCarnetEventPlayerBuyerDeliveredDto } from "./dto/set-carnet-event-player-buyer-delivered.dto";
@@ -20,6 +22,11 @@ export class CarnetController {
     return this.carnetService.getStatus();
   }
 
+  @Post("admin/login")
+  loginAdmin(@Body() dto: CarnetAdminLoginDto) {
+    return this.carnetService.loginAdmin(dto.pin);
+  }
+
   @Get("players")
   listPlayers() {
     return this.carnetService.listPlayers();
@@ -35,6 +42,7 @@ export class CarnetController {
   }
 
   @Get("visits")
+  @UseGuards(CarnetAdminGuard)
   listVisitSummary() {
     return this.carnetService.listVisitSummary();
   }
@@ -50,26 +58,31 @@ export class CarnetController {
   }
 
   @Post("events")
+  @UseGuards(CarnetAdminGuard)
   createEvent(@Body() dto: CreateCarnetEventDto) {
     return this.carnetService.createEvent(dto);
   }
 
   @Patch("events/:id")
+  @UseGuards(CarnetAdminGuard)
   setEventClosed(@Param("id", ParseIntPipe) eventId: number, @Body() dto: UpdateCarnetEventDto) {
     return this.carnetService.setEventClosed(eventId, dto.isClosed);
   }
 
   @Post("players")
+  @UseGuards(CarnetAdminGuard)
   createPlayer(@Body() dto: CreateCarnetPlayerDto) {
     return this.carnetService.createPlayer(dto);
   }
 
   @Post("events/:id/players")
+  @UseGuards(CarnetAdminGuard)
   upsertEventPlayer(@Param("id", ParseIntPipe) eventId: number, @Body() dto: UpsertCarnetEventPlayerDto) {
     return this.carnetService.upsertEventPlayer(eventId, dto);
   }
 
   @Patch("events/:eventId/players/:playerId")
+  @UseGuards(CarnetAdminGuard)
   updateEventPlayer(
     @Param("eventId", ParseIntPipe) eventId: number,
     @Param("playerId", ParseIntPipe) playerId: number,
@@ -79,6 +92,7 @@ export class CarnetController {
   }
 
   @Post("events/:eventId/players/:playerId/buyers")
+  @UseGuards(CarnetAdminGuard)
   addEventPlayerBuyer(
     @Param("eventId", ParseIntPipe) eventId: number,
     @Param("playerId", ParseIntPipe) playerId: number,
@@ -87,6 +101,8 @@ export class CarnetController {
     return this.carnetService.addEventPlayerBuyer(eventId, playerId, dto);
   }
 
+  // Sin guard: lo usa cualquier usuario (no solo admin) para marcar
+  // entregas de porciones desde UsuarioApp.
   @Patch("events/:eventId/players/:playerId/buyers/:buyerId/delivered")
   setEventPlayerBuyerDelivered(
     @Param("eventId", ParseIntPipe) eventId: number,
@@ -98,6 +114,7 @@ export class CarnetController {
   }
 
   @Delete("events/:eventId/players/:playerId/buyers/:buyerId")
+  @UseGuards(CarnetAdminGuard)
   removeEventPlayerBuyer(
     @Param("eventId", ParseIntPipe) eventId: number,
     @Param("playerId", ParseIntPipe) playerId: number,
@@ -107,11 +124,13 @@ export class CarnetController {
   }
 
   @Patch("players/:id")
+  @UseGuards(CarnetAdminGuard)
   updatePlayer(@Param("id", ParseIntPipe) playerId: number, @Body() dto: UpdateCarnetPlayerDto) {
     return this.carnetService.updatePlayer(playerId, dto);
   }
 
   @Delete("players/:id")
+  @UseGuards(CarnetAdminGuard)
   deletePlayer(@Param("id", ParseIntPipe) playerId: number) {
     return this.carnetService.deletePlayer(playerId);
   }

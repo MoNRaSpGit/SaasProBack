@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { randomUUID } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { AddCarnetEventPlayerBuyerDto } from "./dto/add-carnet-event-player-buyer.dto";
@@ -69,7 +71,29 @@ type CarnetVisitSummaryRow = RowDataPacket & {
 export class CarnetService {
   private tablesReady: Promise<void> | null = null;
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly configService: ConfigService
+  ) {}
+
+  // Login del admin de carnet: PIN unico compartido (CARNET_ADMIN_PIN),
+  // comparado en texto plano -- no hay usuarios individuales, es solo el
+  // "candado" que reemplaza al botón sin proteccion que habia antes.
+  async loginAdmin(pin: string): Promise<{ token: string }> {
+    await this.ensureTables();
+
+    const expectedPin = this.configService.get<string>("CARNET_ADMIN_PIN");
+    if (!expectedPin || pin !== expectedPin) {
+      throw new UnauthorizedException("PIN incorrecto.");
+    }
+
+    const token = randomUUID();
+    await this.databaseService.execute<ResultSetHeader>(`INSERT INTO saas_carnet_admin_sessions (token) VALUES (?)`, [
+      token
+    ]);
+
+    return { token };
+  }
 
   async getStatus(): Promise<CarnetStatus> {
     await this.ensureTables();
@@ -707,6 +731,7 @@ export class CarnetService {
         await this.ensurePlayerTable();
         await this.ensureEventTables();
         await this.ensureVisitTable();
+        await this.ensureAdminSessionsTable();
       })().catch((error) => {
         this.tablesReady = null;
         throw error;
@@ -728,6 +753,18 @@ export class CarnetService {
          PRIMARY KEY (id),
          KEY idx_saas_carnet_visits_visitor (visitor_id)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+  }
+
+  private async ensureAdminSessionsTable() {
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_carnet_admin_sessions (
+         id INT NOT NULL AUTO_INCREMENT,
+         token VARCHAR(64) NOT NULL,
+         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         UNIQUE KEY uq_saas_carnet_admin_sessions_token (token)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     );
   }
 
