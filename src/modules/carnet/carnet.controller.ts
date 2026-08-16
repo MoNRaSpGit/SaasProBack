@@ -101,6 +101,17 @@ export class CarnetController {
     return this.carnetService.addEventPlayerBuyer(eventId, playerId, dto);
   }
 
+  // Sin guard: lo usa cualquier usuario (no solo admin) para cargar una
+  // venta nueva desde su propia tarjeta en UsuarioApp.
+  @Post("events/:eventId/players/:playerId/sales")
+  addEventPlayerSale(
+    @Param("eventId", ParseIntPipe) eventId: number,
+    @Param("playerId", ParseIntPipe) playerId: number,
+    @Body() dto: AddCarnetEventPlayerBuyerDto
+  ) {
+    return this.carnetService.addEventPlayerSale(eventId, playerId, dto.buyerName, dto.quantity);
+  }
+
   // Sin guard: lo usa cualquier usuario (no solo admin) para marcar
   // entregas de porciones desde UsuarioApp.
   @Patch("events/:eventId/players/:playerId/buyers/:buyerId/delivered")

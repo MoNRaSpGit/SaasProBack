@@ -506,6 +506,54 @@ export class CarnetService {
     return this.getEvent(eventId);
   }
 
+  // Venta nueva cargada por un operario (no admin): a diferencia de
+  // addEventPlayerBuyer (que reconcilia compradores contra un total de
+  // ventas ya declarado por el admin, y rechaza si te pasas), esta suma
+  // ambos numeros juntos en el mismo paso. El operario no maneja "ventas
+  // totales" del jugador, solo carga a quien le vendio -- por eso no hay
+  // chequeo de limite, siempre queda consistente.
+  async addEventPlayerSale(eventId: number, playerId: number, buyerName: string, quantity: number) {
+    await this.ensureTables();
+
+    const event = await this.findEventById(eventId);
+    if (!event) {
+      throw new BadRequestException("Evento no encontrado");
+    }
+    if (event.isClosed) {
+      throw new BadRequestException("Este evento esta cerrado.");
+    }
+
+    const trimmedName = buyerName.trim();
+    if (!trimmedName) {
+      throw new BadRequestException("El nombre es obligatorio");
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      throw new BadRequestException("La cantidad debe ser mayor a 0");
+    }
+
+    await this.databaseService.withTransaction(async (connection) => {
+      const [eventPlayerRows] = await connection.query<RowDataPacket[]>(
+        `SELECT id FROM saas_carnet_event_players WHERE event_id = ? AND player_id = ? LIMIT 1`,
+        [eventId, playerId]
+      );
+      const eventPlayerRow = eventPlayerRows[0] as { id: number } | undefined;
+      if (!eventPlayerRow) {
+        throw new BadRequestException("El jugador no esta cargado en este evento");
+      }
+
+      await connection.execute(
+        `UPDATE saas_carnet_event_players SET sales_count = COALESCE(sales_count, 0) + ? WHERE id = ?`,
+        [quantity, eventPlayerRow.id]
+      );
+      await connection.execute(
+        `INSERT INTO saas_carnet_event_player_buyers (event_player_id, buyer_name, quantity) VALUES (?, ?, ?)`,
+        [eventPlayerRow.id, trimmedName, quantity]
+      );
+    });
+
+    return this.getEvent(eventId);
+  }
+
   async setEventPlayerBuyerDelivered(
     eventId: number,
     playerId: number,
