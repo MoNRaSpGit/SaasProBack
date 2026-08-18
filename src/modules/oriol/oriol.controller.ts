@@ -99,11 +99,6 @@ export class OriolController {
     return this.oriolService.getClientHistory(clientId);
   }
 
-  @Post("clientes/:id/pagos-deuda")
-  pagarDeudaCliente(@Param("id", ParseIntPipe) clientId: number, @Body() dto: CreateOriolCreditPaymentDto) {
-    return this.oriolService.pagarDeudaCliente(clientId, dto);
-  }
-
   @Get("pagos")
   listPayments() {
     return this.oriolService.listPayments();

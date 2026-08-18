@@ -30,14 +30,17 @@ export type OriolPaymentMethod = "efectivo" | "tarjeta" | "credito";
 // la boleta ya este saldada.
 export type OriolCreditPaymentType = "completo" | "parcial";
 
-// ventaId es null para un pago general contra la deuda vieja del cliente
-// (acumulada antes de que existiera el pago por boleta puntual -- ver
-// OriolService.pagarDeudaCliente), no atado a ninguna boleta especifica.
+// ventaId es null en pagos historicos contra la deuda vieja del cliente,
+// de cuando existia un pago general no atado a ninguna boleta puntual (esa
+// funcion ya no existe, pero esos registros viejos quedan como estan).
+// moneda indica a cual de los dos saldos del cliente (deuda o
+// deudaDolares) afecto este pago -- ver OriolClient.
 export type OriolCreditPayment = {
   id: number;
   ventaId: number | null;
   clienteId: number;
   monto: number;
+  moneda: OriolCurrency;
   tipo: OriolCreditPaymentType;
   saldoAnterior: number;
   saldoNuevo: number;
@@ -50,26 +53,35 @@ export type OriolSale = {
   fecha: string;
   totalPesos: number;
   totalDolares: number;
-  // Solo relevante para metodoPago "credito" -- 0 en efectivo/tarjeta.
-  montoPagado: number;
-  saldoPendiente: number;
+  // Solo relevantes para metodoPago "credito" -- 0 en efectivo/tarjeta. Los
+  // dos saldos son independientes, sin conversion entre ellos (ver
+  // OriolClient.deuda / deudaDolares).
+  montoPagadoPesos: number;
+  montoPagadoDolares: number;
+  saldoPendientePesos: number;
+  saldoPendienteDolares: number;
   // Solo las boletas de credito creadas desde que existe el pago por
   // boleta puntual pueden pagarse individualmente (ver
   // CREDIT_PAYMENT_FEATURE_LAUNCH_AT en OriolService) -- las anteriores ya
-  // tenian deuda acumulada sin desglose por boleta, y esa deuda vieja se
-  // paga aparte con pagarDeudaCliente.
+  // tenian deuda acumulada sin desglose por boleta.
   pagoIndividualHabilitado: boolean;
   detalle: OriolSaleItem[];
   metodoPago: OriolPaymentMethod;
   pagos: OriolCreditPayment[];
 };
 
+// Dos saldos reales e independientes, sin conversion entre ellos. La deuda
+// acumulada antes de este cambio (mezclada, convertida a pesos con
+// TASA_DOLAR) quedo toda en `deuda` -- no se reconstruyo retroactivamente
+// que parte "era" dolares. Desde este cambio en adelante cada venta a
+// credito suma a `deuda` o `deudaDolares` segun la moneda real del item.
 export type OriolClient = {
   id: number;
   nombre: string;
   telefono: string | null;
   cedula: string | null;
   deuda: number;
+  deudaDolares: number;
   createdAt: string;
 };
 
