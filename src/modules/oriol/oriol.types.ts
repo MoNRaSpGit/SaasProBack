@@ -62,7 +62,7 @@ export type OriolSale = {
   saldoPendienteDolares: number;
   // Solo las boletas de credito creadas desde que existe el pago por
   // boleta puntual pueden pagarse individualmente (ver
-  // CREDIT_PAYMENT_FEATURE_LAUNCH_AT en OriolService) -- las anteriores ya
+  // CREDIT_PAYMENT_FEATURE_LAUNCH_AT en OriolSalesService) -- las anteriores ya
   // tenian deuda acumulada sin desglose por boleta.
   pagoIndividualHabilitado: boolean;
   detalle: OriolSaleItem[];
@@ -138,7 +138,7 @@ export type OriolMonthDay = {
 
 // Cierre diario de caja: valor congelado (no en vivo) por dia, usado por
 // Mes/graficas. Se genera solo con el cron de medianoche, pero se puede
-// corregir a mano despues (ver OriolService.editarCierreDia) -- una vez
+// corregir a mano despues (ver OriolPanelService.editarCierreDia) -- una vez
 // editado a mano, el cron ya no lo vuelve a pisar.
 export type OriolCierreDia = {
   fecha: string;
