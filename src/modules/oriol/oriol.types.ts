@@ -62,7 +62,7 @@ export type OriolSale = {
   saldoPendienteDolares: number;
   // Solo las boletas de credito creadas desde que existe el pago por
   // boleta puntual pueden pagarse individualmente (ver
-  // CREDIT_PAYMENT_FEATURE_LAUNCH_AT en OriolSalesService) -- las anteriores ya
+  // esPagoIndividualHabilitado en oriol.creditPayment.ts) -- las anteriores ya
   // tenian deuda acumulada sin desglose por boleta.
   pagoIndividualHabilitado: boolean;
   detalle: OriolSaleItem[];

@@ -6,21 +6,9 @@ import { CreateOriolSaleContadoDto } from "./dto/create-oriol-sale-contado.dto";
 import { CreateOriolSaleCreditoDto } from "./dto/create-oriol-sale-credito.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
 import { nowMysqlDateTime, toIsoString } from "./oriol.dateUtils";
-import { calcularPagoCredito } from "./oriol.creditPayment";
+import { calcularPagoCredito, esPagoIndividualHabilitado } from "./oriol.creditPayment";
 import { OriolProductsService } from "./oriol-products.service";
 import { OriolCreditPayment, OriolCreditPaymentType, OriolCurrency, OriolPaymentMethod, OriolSale, OriolSaleItem } from "./oriol.types";
-
-// Antes de esta fecha, la deuda de cada cliente era un total acumulado sin
-// desglose por boleta (el sistema original tenia su propio pago de
-// clientes, nunca portado, que ajustaba la deuda directamente). Por eso las
-// boletas de credito anteriores a este momento no se pueden pagar de forma
-// individual -- ver pagoIndividualHabilitado en mapSale. Las boletas
-// creadas desde este momento en adelante si tienen su propio saldo
-// pendiente confiable y se pueden pagar una por una (pagarVentaCredito).
-// El pago generico de deuda vieja (pagarDeudaCliente/"Pagar deuda") que
-// existia para esas boletas viejas se saco a pedido del cliente: solo
-// habia datos de prueba, sin deuda real que reconciliar.
-export const CREDIT_PAYMENT_FEATURE_LAUNCH_AT = "2026-08-15T10:06:34.277Z";
 
 type OriolSaleRow = RowDataPacket & {
   id: number;
@@ -210,7 +198,7 @@ export class OriolSalesService {
       if (venta.metodo_pago !== "credito" || !venta.cliente_id) {
         throw new BadRequestException("Esta venta no es a credito");
       }
-      if (toIsoString(venta.fecha) < CREDIT_PAYMENT_FEATURE_LAUNCH_AT) {
+      if (!esPagoIndividualHabilitado(venta.fecha, venta.metodo_pago)) {
         throw new BadRequestException("Esta boleta es anterior a la funcion de pago por boleta");
       }
 
@@ -317,7 +305,7 @@ export class OriolSalesService {
     const esCredito = row.metodo_pago === "credito";
     const saldoPendientePesos = esCredito ? Math.max(totalPesos - montoPagadoPesos, 0) : 0;
     const saldoPendienteDolares = esCredito ? Math.max(totalDolares - montoPagadoDolares, 0) : 0;
-    const pagoIndividualHabilitado = esCredito && toIsoString(row.fecha) >= CREDIT_PAYMENT_FEATURE_LAUNCH_AT;
+    const pagoIndividualHabilitado = esPagoIndividualHabilitado(row.fecha, row.metodo_pago);
     return {
       id: row.id,
       clienteId: row.cliente_id,

@@ -45,11 +45,29 @@ export class OriolPanelService {
   async getPanelHoy(): Promise<OriolPanelHoy> {
     const { startIso, endIso } = buildTodayRangeUtc();
 
-    const ventasPorMetodo = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT metodo_pago, SUM(total_pesos) AS pesos, SUM(total_dolares) AS dolares
-       FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ? GROUP BY metodo_pago`,
-      [startIso, endIso]
-    );
+    // Las 5 consultas son independientes entre si -- van todas en paralelo
+    // en vez de una atras de la otra para no sumar su latencia (el Panel
+    // se consulta seguido, cada round-trip de mas se nota).
+    const [ventasPorMetodo, pagosRows, config, ventasDetalleRows, pagosDetalleRows] = await Promise.all([
+      this.databaseService.query<RowDataPacket[]>(
+        `SELECT metodo_pago, SUM(total_pesos) AS pesos, SUM(total_dolares) AS dolares
+         FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ? GROUP BY metodo_pago`,
+        [startIso, endIso]
+      ),
+      this.databaseService.query<RowDataPacket[]>(
+        `SELECT COALESCE(SUM(valor), 0) AS total FROM saas_oriol_pagos WHERE fecha >= ? AND fecha < ?`,
+        [startIso, endIso]
+      ),
+      this.configService.getConfig(),
+      this.databaseService.query<RowDataPacket[]>(
+        `SELECT detalle, fecha FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
+        [startIso, endIso]
+      ),
+      this.databaseService.query<RowDataPacket[]>(
+        `SELECT valor, detalle, fecha FROM saas_oriol_pagos WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
+        [startIso, endIso]
+      )
+    ]);
 
     const totalesPorMetodo: Record<OriolPaymentMethod, { pesos: number; dolares: number }> = {
       efectivo: { pesos: 0, dolares: 0 },
@@ -61,26 +79,12 @@ export class OriolPanelService {
       totalesPorMetodo[metodo] = { pesos: Number(row.pesos) || 0, dolares: Number(row.dolares) || 0 };
     }
 
-    const pagosRows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT COALESCE(SUM(valor), 0) AS total FROM saas_oriol_pagos WHERE fecha >= ? AND fecha < ?`,
-      [startIso, endIso]
-    );
     const pagosDelDiaPesos = Number(pagosRows[0]?.total) || 0;
-
-    const { cambio, tasaDolar } = await this.configService.getConfig();
+    const { cambio, tasaDolar } = config;
 
     const efectivoEquivalente = totalesPorMetodo.efectivo.pesos + totalesPorMetodo.efectivo.dolares * tasaDolar;
     const cajaActualPesos = cambio + efectivoEquivalente - pagosDelDiaPesos;
     const gananciaPesos = (efectivoEquivalente - pagosDelDiaPesos) * PORCENTAJE_GANANCIA_NETA;
-
-    const ventasDetalleRows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT detalle, fecha FROM saas_oriol_ventas WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
-      [startIso, endIso]
-    );
-    const pagosDetalleRows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT valor, detalle, fecha FROM saas_oriol_pagos WHERE fecha >= ? AND fecha < ? ORDER BY fecha DESC`,
-      [startIso, endIso]
-    );
 
     const movimientos: OriolPanelMovimiento[] = [];
     for (const row of ventasDetalleRows) {

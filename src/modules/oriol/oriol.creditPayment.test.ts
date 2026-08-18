@@ -1,6 +1,6 @@
 import { BadRequestException } from "@nestjs/common";
 import { describe, expect, it } from "vitest";
-import { calcularPagoCredito } from "./oriol.creditPayment";
+import { calcularPagoCredito, esPagoIndividualHabilitado } from "./oriol.creditPayment";
 
 describe("calcularPagoCredito", () => {
   it("pago completo salda todo el saldo pendiente", () => {
@@ -52,5 +52,33 @@ describe("calcularPagoCredito", () => {
 
     expect(pagoPesos.saldoNuevo).toBe(0);
     expect(pagoDolares.saldoNuevo).toBeCloseTo(14.5, 2);
+  });
+});
+
+describe("esPagoIndividualHabilitado", () => {
+  it("una boleta a credito creada despues del lanzamiento de la funcion se puede pagar individualmente", () => {
+    expect(esPagoIndividualHabilitado("2026-08-15T10:06:34.278Z", "credito")).toBe(true);
+    expect(esPagoIndividualHabilitado("2026-09-01T00:00:00.000Z", "credito")).toBe(true);
+  });
+
+  it("una boleta a credito creada justo en el instante del lanzamiento cuenta como habilitada", () => {
+    expect(esPagoIndividualHabilitado("2026-08-15T10:06:34.277Z", "credito")).toBe(true);
+  });
+
+  it("una boleta a credito creada antes del lanzamiento NO se puede pagar individualmente", () => {
+    expect(esPagoIndividualHabilitado("2026-08-15T10:06:34.276Z", "credito")).toBe(false);
+    expect(esPagoIndividualHabilitado("2026-01-01T00:00:00.000Z", "credito")).toBe(false);
+  });
+
+  it("una venta que no es a credito nunca esta habilitada, sin importar la fecha", () => {
+    expect(esPagoIndividualHabilitado("2026-09-01T00:00:00.000Z", "efectivo")).toBe(false);
+    expect(esPagoIndividualHabilitado("2026-09-01T00:00:00.000Z", "tarjeta")).toBe(false);
+  });
+
+  it("funciona igual pasando un Date que un string, y no depende del formato exacto del string", () => {
+    // Mismo instante escrito con distinta cantidad de decimales -- una
+    // comparacion de strings ingenua podria fallar aca, Date no.
+    expect(esPagoIndividualHabilitado(new Date("2026-09-01T00:00:00.000Z"), "credito")).toBe(true);
+    expect(esPagoIndividualHabilitado("2026-09-01T00:00:00Z", "credito")).toBe(true);
   });
 });
