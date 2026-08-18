@@ -94,6 +94,7 @@ export type OriolPayment = {
 
 export type OriolConfig = {
   cambio: number;
+  tasaDolar: number;
 };
 
 // Un renglon por item vendido (no por venta -- cada producto de un

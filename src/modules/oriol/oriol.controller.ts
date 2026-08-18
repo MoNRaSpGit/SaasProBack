@@ -10,6 +10,7 @@ import { UpdateOriolConfigDto } from "./dto/update-oriol-config.dto";
 import { UpdateOriolProductDto } from "./dto/update-oriol-product.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
 import { UpdateOriolStockDto } from "./dto/update-oriol-stock.dto";
+import { UpdateOriolTasaDolarDto } from "./dto/update-oriol-tasa-dolar.dto";
 import { OriolService } from "./oriol.service";
 
 // Sin proteccion por ahora (a pedido explicito): cualquiera que entre a
@@ -117,6 +118,11 @@ export class OriolController {
   @Patch("panel/cambio")
   updateCambio(@Body() dto: UpdateOriolConfigDto) {
     return this.oriolService.updateCambio(dto);
+  }
+
+  @Patch("config/tasa-dolar")
+  updateTasaDolar(@Body() dto: UpdateOriolTasaDolarDto) {
+    return this.oriolService.updateTasaDolar(dto);
   }
 
   @Get("panel/hoy")

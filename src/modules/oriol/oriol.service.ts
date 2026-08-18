@@ -14,6 +14,7 @@ import { UpdateOriolConfigDto } from "./dto/update-oriol-config.dto";
 import { UpdateOriolProductDto } from "./dto/update-oriol-product.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
 import { UpdateOriolStockDto } from "./dto/update-oriol-stock.dto";
+import { UpdateOriolTasaDolarDto } from "./dto/update-oriol-tasa-dolar.dto";
 import {
   OriolCierreDia,
   OriolClient,
@@ -39,10 +40,11 @@ import {
 // mismo criterio que ya usa joker.service.ts para su "store day".
 const URUGUAY_UTC_OFFSET_HOURS = 3;
 
-// Tasa fija usada solo para el Panel (caja del dia, ganancia estimada),
-// donde hace falta un unico numero en pesos. La deuda de clientes ya NO
-// usa esta tasa -- se trackea como dos saldos reales independientes
-// (deuda / deudaDolares en OriolClient), sin conversion entre monedas.
+// Valor de respaldo si saas_oriol_config todavia no tiene fila (id=1) --
+// en uso normal la tasa real vive en la DB (tasa_dolar, editable desde el
+// Panel, ver updateTasaDolar). Solo se usa para el Panel (caja del dia,
+// ganancia estimada); la deuda de clientes no convierte entre monedas
+// (deuda / deudaDolares en OriolClient son saldos independientes).
 const TASA_DOLAR = 40;
 
 // El 30% se resta de la ganancia bruta (efectivo del dia - pagos a
@@ -634,10 +636,14 @@ export class OriolService {
 
   // ---------- Config ----------
 
-  // Tasa fija (no persistida, igual que el original) -- separado de
-  // "cambio" (caja inicial del dia), que si se guarda en la tabla.
-  getConfig(): { tasaDolar: number } {
-    return { tasaDolar: TASA_DOLAR };
+  async getConfig(): Promise<OriolConfig> {
+    const rows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT cambio, tasa_dolar FROM saas_oriol_config WHERE id = 1`
+    );
+    return {
+      cambio: Number(rows[0]?.cambio) || 0,
+      tasaDolar: Number(rows[0]?.tasa_dolar) || TASA_DOLAR
+    };
   }
 
   async updateCambio(dto: UpdateOriolConfigDto): Promise<{ item: OriolConfig }> {
@@ -645,7 +651,19 @@ export class OriolService {
       `INSERT INTO saas_oriol_config (id, cambio) VALUES (1, ?) ON DUPLICATE KEY UPDATE cambio = ?`,
       [dto.cambio, dto.cambio]
     );
-    return { item: { cambio: dto.cambio } };
+    return this.getConfig().then((item) => ({ item }));
+  }
+
+  // Tasa de conversion dolar->pesos, editable a mano desde el Panel -- ya
+  // no es una constante fija en el codigo. Solo se usa para calculos en
+  // pesos del Panel (caja del dia, ganancia); la deuda de clientes no
+  // convierte entre monedas (ver deuda / deudaDolares en OriolClient).
+  async updateTasaDolar(dto: UpdateOriolTasaDolarDto): Promise<{ item: OriolConfig }> {
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_oriol_config (id, tasa_dolar) VALUES (1, ?) ON DUPLICATE KEY UPDATE tasa_dolar = ?`,
+      [dto.tasaDolar, dto.tasaDolar]
+    );
+    return this.getConfig().then((item) => ({ item }));
   }
 
   // ---------- Panel (caja en vivo, sin cierre) ----------
@@ -678,10 +696,13 @@ export class OriolService {
     );
     const pagosDelDiaPesos = Number(pagosRows[0]?.total) || 0;
 
-    const configRows = await this.databaseService.query<RowDataPacket[]>(`SELECT cambio FROM saas_oriol_config WHERE id = 1`);
+    const configRows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT cambio, tasa_dolar FROM saas_oriol_config WHERE id = 1`
+    );
     const cambio = Number(configRows[0]?.cambio) || 0;
+    const tasaDolar = Number(configRows[0]?.tasa_dolar) || TASA_DOLAR;
 
-    const efectivoEquivalente = totalesPorMetodo.efectivo.pesos + totalesPorMetodo.efectivo.dolares * TASA_DOLAR;
+    const efectivoEquivalente = totalesPorMetodo.efectivo.pesos + totalesPorMetodo.efectivo.dolares * tasaDolar;
     const cajaActualPesos = cambio + efectivoEquivalente - pagosDelDiaPesos;
     const gananciaPesos = (efectivoEquivalente - pagosDelDiaPesos) * PORCENTAJE_GANANCIA_NETA;
 
