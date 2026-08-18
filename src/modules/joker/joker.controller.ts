@@ -18,213 +18,227 @@ import { UpdateJokerCourierDto } from "./dto/update-joker-courier.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
-import { JokerService } from "./joker.service";
+import { JokerAccountService } from "./joker-account.service";
+import { JokerCourierService } from "./joker-courier.service";
+import { JokerOrdersService } from "./joker-orders.service";
+import { JokerPrintingService } from "./joker-printing.service";
+import { JokerProductsService } from "./joker-products.service";
+import { JokerReportingService } from "./joker-reporting.service";
+import { JokerStockService } from "./joker-stock.service";
 
 @Controller("joker")
 export class JokerController {
-  constructor(private readonly jokerService: JokerService) {}
+  constructor(
+    private readonly productsService: JokerProductsService,
+    private readonly stockService: JokerStockService,
+    private readonly ordersService: JokerOrdersService,
+    private readonly courierService: JokerCourierService,
+    private readonly accountService: JokerAccountService,
+    private readonly reportingService: JokerReportingService,
+    private readonly printingService: JokerPrintingService
+  ) {}
 
   @Get("products")
   listProducts() {
-    return this.jokerService.listProducts();
+    return this.productsService.listProducts();
   }
 
   @Post("products")
   createProduct(@Body() dto: CreateJokerProductDto) {
-    return this.jokerService.createProduct(dto);
+    return this.productsService.createProduct(dto);
   }
 
   @Patch("products/:id")
   updateProduct(@Param("id", ParseIntPipe) productId: number, @Body() dto: UpdateJokerProductDto) {
-    return this.jokerService.updateProduct(productId, dto);
+    return this.productsService.updateProduct(productId, dto);
   }
 
   @Delete("products/:id")
   deleteProduct(@Param("id", ParseIntPipe) productId: number) {
-    return this.jokerService.deleteProduct(productId);
+    return this.productsService.deleteProduct(productId);
   }
 
   @Get("products/:id/recipe")
   getProductRecipe(@Param("id", ParseIntPipe) productId: number) {
-    return this.jokerService.getProductRecipe(productId);
+    return this.productsService.getProductRecipe(productId);
   }
 
   @Patch("products/:id/recipe")
   setProductRecipe(@Param("id", ParseIntPipe) productId: number, @Body() dto: SetJokerProductRecipeDto) {
-    return this.jokerService.setProductRecipe(productId, dto);
+    return this.productsService.setProductRecipe(productId, dto);
   }
 
   @Post("recipes/bulk-apply")
   bulkApplyRecipe(@Body() dto: BulkApplyJokerRecipeDto) {
-    return this.jokerService.bulkApplyRecipe(dto);
+    return this.productsService.bulkApplyRecipe(dto);
   }
 
   @Get("stock-items")
   listStockItems() {
-    return this.jokerService.listStockItems();
+    return this.stockService.listStockItems();
   }
 
   @Post("stock-items")
   createStockItem(@Body() dto: CreateJokerStockItemDto) {
-    return this.jokerService.createStockItem(dto);
+    return this.stockService.createStockItem(dto);
   }
 
   @Post("stock-items/:id/restock")
   restockItem(@Param("id", ParseIntPipe) stockItemId: number, @Body() dto: RestockJokerStockItemDto) {
-    return this.jokerService.restockItem(stockItemId, dto);
+    return this.stockService.restockItem(stockItemId, dto);
   }
 
   @Patch("stock-items/:id")
   updateStockItemQuantity(@Param("id", ParseIntPipe) stockItemId: number, @Body() dto: UpdateJokerStockItemDto) {
-    return this.jokerService.updateStockItemQuantity(stockItemId, dto);
+    return this.stockService.updateStockItemQuantity(stockItemId, dto);
   }
 
   @Get("stock-items/:id/consumption")
   getStockItemConsumption(@Param("id", ParseIntPipe) stockItemId: number) {
-    return this.jokerService.getStockItemConsumption(stockItemId);
+    return this.stockService.getStockItemConsumption(stockItemId);
   }
 
   @Delete("stock-items/:id")
   deleteStockItem(@Param("id", ParseIntPipe) stockItemId: number) {
-    return this.jokerService.deleteStockItem(stockItemId);
+    return this.stockService.deleteStockItem(stockItemId);
   }
 
   @Post("orders")
   createOrder(@Body() dto: CreateJokerOrderDto) {
-    return this.jokerService.createOrder(dto);
+    return this.ordersService.createOrder(dto);
   }
 
   @Patch("orders/:id")
   updateOrder(@Param("id", ParseIntPipe) orderId: number, @Body() dto: UpdateJokerOrderDto) {
-    return this.jokerService.updateOrder(orderId, dto);
+    return this.ordersService.updateOrder(orderId, dto);
   }
 
   @Get("orders")
   listOrders(@Query() query: ListJokerOrdersDto) {
-    return this.jokerService.listOrders(query);
+    return this.ordersService.listOrders(query);
   }
 
   @Get("orders/current-period")
   listCurrentPeriodOrders(@Query("courierId") courierId?: string) {
-    return this.jokerService.listCurrentPeriodOrders(courierId ? Number(courierId) : undefined);
+    return this.ordersService.listCurrentPeriodOrders(courierId ? Number(courierId) : undefined);
   }
 
   @Delete("orders")
   deleteAllOrders() {
-    return this.jokerService.deleteAllOrders();
+    return this.ordersService.deleteAllOrders();
   }
 
   @Get("couriers")
   listCouriers() {
-    return this.jokerService.listCouriers();
+    return this.courierService.listCouriers();
   }
 
   @Patch("couriers/:id")
   updateCourier(@Param("id", ParseIntPipe) courierId: number, @Body() dto: UpdateJokerCourierDto) {
-    return this.jokerService.updateCourier(courierId, dto);
+    return this.courierService.updateCourier(courierId, dto);
   }
 
   @Post("couriers/:id/habilitar")
   enableCourier(@Param("id", ParseIntPipe) courierId: number) {
-    return this.jokerService.enableCourier(courierId);
+    return this.courierService.enableCourier(courierId);
   }
 
   @Post("couriers/:id/liquidar")
   settleCourier(@Param("id", ParseIntPipe) courierId: number, @Body() dto: SettleJokerCourierDto) {
-    return this.jokerService.settleCourier(courierId, dto);
+    return this.courierService.settleCourier(courierId, dto);
   }
 
   @Get("couriers/:id/settlements")
   listCourierSettlements(@Param("id", ParseIntPipe) courierId: number) {
-    return this.jokerService.listCourierSettlements(courierId);
+    return this.courierService.listCourierSettlements(courierId);
   }
 
   @Get("couriers/:id/cash-summary")
   getCourierCashSummary(@Param("id", ParseIntPipe) courierId: number) {
-    return this.jokerService.getCourierCashSummary(courierId);
+    return this.courierService.getCourierCashSummary(courierId);
   }
 
   @Post("couriers/:id/cash-movements")
   addCourierCashMovement(@Param("id", ParseIntPipe) courierId: number, @Body() dto: CreateJokerCourierCashMovementDto) {
-    return this.jokerService.addCourierCashMovement(courierId, dto);
+    return this.courierService.addCourierCashMovement(courierId, dto);
   }
 
   @Get("clients")
   listClients() {
-    return this.jokerService.listClients();
+    return this.accountService.listClients();
   }
 
   @Post("clients")
   createClient(@Body() dto: CreateJokerClientDto) {
-    return this.jokerService.createClient(dto);
+    return this.accountService.createClient(dto);
   }
 
   @Delete("clients/:id")
   deleteClient(@Param("id", ParseIntPipe) clientId: number) {
-    return this.jokerService.deleteClient(clientId);
+    return this.accountService.deleteClient(clientId);
   }
 
   @Get("account-entries")
   listAccountEntries() {
-    return this.jokerService.listAccountEntries();
+    return this.accountService.listAccountEntries();
   }
 
   @Post("account-entries")
   createAccountEntry(@Body() dto: CreateJokerAccountEntryDto) {
-    return this.jokerService.createAccountEntry(dto);
+    return this.accountService.createAccountEntry(dto);
   }
 
   @Delete("account-entries/client/:clientId")
   settleAccount(@Param("clientId", ParseIntPipe) clientId: number) {
-    return this.jokerService.settleAccount(clientId);
+    return this.accountService.settleAccount(clientId);
   }
 
   // Respaldo permanente de consumos ya pagados o de clientes eliminados,
   // para reclamos ("el cliente dice que no debia eso").
   @Get("account-settlements/client/:clientId")
   listAccountSettlements(@Param("clientId", ParseIntPipe) clientId: number) {
-    return this.jokerService.listAccountSettlements(clientId);
+    return this.accountService.listAccountSettlements(clientId);
   }
 
   // QZ Tray pide el certificado como texto plano (no JSON) via
   // setCertificatePromise.
   @Get("qz-certificate")
   getQzCertificate(@Res() res: Response) {
-    res.type("text/plain").send(this.jokerService.getQzCertificate());
+    res.type("text/plain").send(this.printingService.getQzCertificate());
   }
 
   @Post("qz-sign")
   signQzRequest(@Body() dto: SignQzRequestDto) {
-    return this.jokerService.signQzRequest(dto.toSign);
+    return this.printingService.signQzRequest(dto.toSign);
   }
 
   @Get("register/state")
   getRegisterState() {
-    return this.jokerService.getRegisterState();
+    return this.ordersService.getRegisterState();
   }
 
   @Post("register/open")
   openRegister() {
-    return this.jokerService.openRegister();
+    return this.ordersService.openRegister();
   }
 
   @Post("register/close")
   closeRegister(@Body() dto: CloseJokerRegisterDto) {
-    return this.jokerService.closeRegister(dto);
+    return this.ordersService.closeRegister(dto);
   }
 
   @Get("panel/mes/:anio/:mes")
   getMonthSummary(@Param("anio", ParseIntPipe) anio: number, @Param("mes", ParseIntPipe) mes: number) {
-    return this.jokerService.getMonthSummary(anio, mes);
+    return this.reportingService.getMonthSummary(anio, mes);
   }
 
   @Get("panel/historial-meses")
   getMonthHistory(@Query("cantidad") cantidad?: string) {
-    return this.jokerService.getMonthHistory(cantidad ? Number(cantidad) : 6);
+    return this.reportingService.getMonthHistory(cantidad ? Number(cantidad) : 6);
   }
 
   @Patch("cierres/:fecha")
   editarCierreDia(@Param("fecha") fecha: string, @Body() dto: UpdateJokerCierreDiaDto) {
-    return this.jokerService.editarCierreDia(fecha, dto);
+    return this.reportingService.editarCierreDia(fecha, dto);
   }
 }
