@@ -228,17 +228,25 @@ export class OriolSalesService {
         monto: dto.monto
       });
 
-      const columnaVenta = esDolares ? "monto_pagado_dolares" : "monto_pagado_pesos";
-      const columnaCliente = esDolares ? "deuda_dolares" : "deuda";
-
-      await connection.execute(`UPDATE saas_oriol_ventas SET ${columnaVenta} = ${columnaVenta} + ? WHERE id = ?`, [
-        montoAPagar,
-        ventaId
-      ]);
-      await connection.execute(
-        `UPDATE saas_oriol_clientes SET ${columnaCliente} = GREATEST(${columnaCliente} - ?, 0) WHERE id = ?`,
-        [montoAPagar, venta.cliente_id]
-      );
+      if (esDolares) {
+        await connection.execute(`UPDATE saas_oriol_ventas SET monto_pagado_dolares = monto_pagado_dolares + ? WHERE id = ?`, [
+          montoAPagar,
+          ventaId
+        ]);
+        await connection.execute(`UPDATE saas_oriol_clientes SET deuda_dolares = GREATEST(deuda_dolares - ?, 0) WHERE id = ?`, [
+          montoAPagar,
+          venta.cliente_id
+        ]);
+      } else {
+        await connection.execute(`UPDATE saas_oriol_ventas SET monto_pagado_pesos = monto_pagado_pesos + ? WHERE id = ?`, [
+          montoAPagar,
+          ventaId
+        ]);
+        await connection.execute(`UPDATE saas_oriol_clientes SET deuda = GREATEST(deuda - ?, 0) WHERE id = ?`, [
+          montoAPagar,
+          venta.cliente_id
+        ]);
+      }
       await connection.execute(
         `INSERT INTO saas_oriol_pagos_credito (venta_id, cliente_id, monto, moneda, tipo, saldo_anterior, saldo_nuevo, fecha)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
