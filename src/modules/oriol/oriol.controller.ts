@@ -112,6 +112,11 @@ export class OriolController {
     return this.clientsService.getClientHistory(clientId);
   }
 
+  @Delete("clientes/:id")
+  deleteClient(@Param("id", ParseIntPipe) clientId: number) {
+    return this.clientsService.deleteClient(clientId);
+  }
+
   @Get("pagos")
   listPayments() {
     return this.paymentsService.listPayments();

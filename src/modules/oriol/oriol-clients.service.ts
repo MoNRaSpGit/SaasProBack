@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateOriolClientDto } from "./dto/create-oriol-client.dto";
@@ -49,6 +49,33 @@ export class OriolClientsService {
   async getClientHistory(clientId: number): Promise<{ items: OriolSale[] }> {
     const items = await this.salesService.getSalesByClientId(clientId);
     return { items };
+  }
+
+  // No permite borrar un cliente con ventas o pagos ya registrados (la FK
+  // de saas_oriol_ventas/saas_oriol_pagos_credito hacia saas_oriol_clientes
+  // es RESTRICT, no CASCADE) -- es la forma mas simple de no perder
+  // historial real por error. Sirve para limpiar clientes creados de mas
+  // o con el nombre mal, que todavia no tienen nada cargado.
+  async deleteClient(clientId: number): Promise<{ ok: true }> {
+    try {
+      const result = await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_oriol_clientes WHERE id = ?`, [
+        clientId
+      ]);
+      if (!result.affectedRows) {
+        throw new NotFoundException("Cliente no encontrado");
+      }
+      return { ok: true };
+    } catch (error) {
+      throw this.mapReferencedClientError(error);
+    }
+  }
+
+  private mapReferencedClientError(error: unknown) {
+    const mysqlError = error as { code?: string };
+    if (mysqlError.code === "ER_ROW_IS_REFERENCED_2" || mysqlError.code === "ER_ROW_IS_REFERENCED") {
+      return new ConflictException("No se puede eliminar: el cliente tiene ventas o pagos registrados");
+    }
+    return error as Error;
   }
 
   private mapClient(row: OriolClientRow): OriolClient {
