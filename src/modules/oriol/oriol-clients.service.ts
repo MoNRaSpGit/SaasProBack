@@ -51,31 +51,32 @@ export class OriolClientsService {
     return { items };
   }
 
-  // No permite borrar un cliente con ventas o pagos ya registrados (la FK
-  // de saas_oriol_ventas/saas_oriol_pagos_credito hacia saas_oriol_clientes
-  // es RESTRICT, no CASCADE) -- es la forma mas simple de no perder
-  // historial real por error. Sirve para limpiar clientes creados de mas
-  // o con el nombre mal, que todavia no tienen nada cargado.
+  // No permite borrar un cliente con deuda pendiente (en pesos o dolares) --
+  // ahi si podria perderse plata real que el cliente todavia debe. Si no
+  // tiene deuda, se puede borrar aunque tenga ventas/pagos viejos: se
+  // borran en cascada a mano (la FK es RESTRICT, no CASCADE) dentro de la
+  // misma transaccion, ya que esas ventas ya estan saldadas y no hace
+  // falta conservarlas.
   async deleteClient(clientId: number): Promise<{ ok: true }> {
-    try {
-      const result = await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_oriol_clientes WHERE id = ?`, [
-        clientId
-      ]);
-      if (!result.affectedRows) {
+    await this.databaseService.withTransaction(async (connection) => {
+      const [rows] = await connection.query<OriolClientRow[]>(
+        `SELECT deuda, deuda_dolares FROM saas_oriol_clientes WHERE id = ? FOR UPDATE`,
+        [clientId]
+      );
+      const cliente = rows[0];
+      if (!cliente) {
         throw new NotFoundException("Cliente no encontrado");
       }
-      return { ok: true };
-    } catch (error) {
-      throw this.mapReferencedClientError(error);
-    }
-  }
+      if (Number(cliente.deuda) > 0 || Number(cliente.deuda_dolares) > 0) {
+        throw new ConflictException("No se puede eliminar: el cliente tiene deuda pendiente");
+      }
 
-  private mapReferencedClientError(error: unknown) {
-    const mysqlError = error as { code?: string };
-    if (mysqlError.code === "ER_ROW_IS_REFERENCED_2" || mysqlError.code === "ER_ROW_IS_REFERENCED") {
-      return new ConflictException("No se puede eliminar: el cliente tiene ventas o pagos registrados");
-    }
-    return error as Error;
+      await connection.execute(`DELETE FROM saas_oriol_pagos_credito WHERE cliente_id = ?`, [clientId]);
+      await connection.execute(`DELETE FROM saas_oriol_ventas WHERE cliente_id = ?`, [clientId]);
+      await connection.execute<ResultSetHeader>(`DELETE FROM saas_oriol_clientes WHERE id = ?`, [clientId]);
+    });
+
+    return { ok: true };
   }
 
   private mapClient(row: OriolClientRow): OriolClient {
