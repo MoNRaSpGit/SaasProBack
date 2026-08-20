@@ -12,7 +12,7 @@ export type JuezPlayer = {
   cedula: string | null;
   phone: string | null;
   birthDate: string | null;
-  photoDataUrl: string | null;
+  hasPhoto: boolean;
   createdAt: string;
   updatedAt: string;
 };

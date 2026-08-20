@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../../shared/database/database.service";
 import { CreateJuezPlayerDto } from "./dto/create-juez-player.dto";
@@ -15,9 +15,13 @@ type JuezPlayerRow = RowDataPacket & {
   cedula: string | null;
   phone: string | null;
   birth_date: string | Date | null;
-  photo_data_url: string | null;
+  has_photo: number;
   created_at: string | Date;
   updated_at: string | Date;
+};
+
+type JuezPlayerPhotoRow = RowDataPacket & {
+  photo_data_url: string | null;
 };
 
 const PLAYER_COLUMNS = `
@@ -31,7 +35,7 @@ const PLAYER_COLUMNS = `
   cedula,
   phone,
   birth_date,
-  photo_data_url,
+  (photo_data_url IS NOT NULL) AS has_photo,
   created_at,
   updated_at
 `;
@@ -95,6 +99,27 @@ export class JuezPlayersService {
     return { item: this.mapPlayer(rows[0]) };
   }
 
+  async getPlayerPhoto(id: number) {
+    await this.ensureTables();
+
+    const rows = await this.databaseService.query<JuezPlayerPhotoRow[]>(
+      `SELECT photo_data_url FROM saas_juez_players WHERE id = ? LIMIT 1`,
+      [id]
+    );
+
+    const photoDataUrl = rows[0]?.photo_data_url;
+    if (!photoDataUrl) {
+      throw new NotFoundException("El jugador no tiene foto.");
+    }
+
+    const match = /^data:(.+);base64,(.+)$/.exec(photoDataUrl);
+    if (!match) {
+      throw new NotFoundException("El jugador no tiene foto.");
+    }
+
+    return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
+  }
+
   private mapPlayer(row: JuezPlayerRow): JuezPlayer {
     return {
       id: Number(row.id),
@@ -107,7 +132,7 @@ export class JuezPlayersService {
       cedula: row.cedula,
       phone: row.phone,
       birthDate: row.birth_date ? this.toDateOnly(row.birth_date) : null,
-      photoDataUrl: row.photo_data_url,
+      hasPhoto: Boolean(row.has_photo),
       createdAt: this.toIsoString(row.created_at),
       updatedAt: this.toIsoString(row.updated_at)
     };
