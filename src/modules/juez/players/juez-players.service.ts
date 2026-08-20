@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../../shared/database/database.service";
 import { CreateJuezPlayerDto } from "./dto/create-juez-player.dto";
+import { UpdateJuezPlayerDto } from "./dto/update-juez-player.dto";
 import { JuezPlayer } from "./juez-players.types";
 
 type JuezPlayerRow = RowDataPacket & {
@@ -94,6 +95,61 @@ export class JuezPlayersService {
        WHERE id = ?
        LIMIT 1`,
       [result.insertId]
+    );
+
+    return { item: this.mapPlayer(rows[0]) };
+  }
+
+  async updatePlayer(id: number, dto: UpdateJuezPlayerDto) {
+    await this.ensureTables();
+
+    const existing = await this.databaseService.query<JuezPlayerRow[]>(
+      `SELECT ${PLAYER_COLUMNS} FROM saas_juez_players WHERE id = ? LIMIT 1`,
+      [id]
+    );
+    if (!existing.length) {
+      throw new NotFoundException("El jugador no existe.");
+    }
+
+    const setClauses: string[] = [];
+    const params: Array<string | null> = [];
+
+    if (dto.name !== undefined) {
+      setClauses.push("name = ?");
+      params.push(dto.name.trim());
+    }
+    if (dto.lastName !== undefined) {
+      setClauses.push("last_name = ?");
+      params.push(dto.lastName.trim());
+    }
+    if (dto.expiryDate !== undefined) {
+      setClauses.push("expiry_date = ?");
+      params.push(dto.expiryDate);
+    }
+    if (dto.cedula !== undefined) {
+      setClauses.push("cedula = ?");
+      params.push(dto.cedula.trim() || null);
+    }
+    if (dto.phone !== undefined) {
+      setClauses.push("phone = ?");
+      params.push(dto.phone.trim() || null);
+    }
+    if (dto.birthDate !== undefined) {
+      setClauses.push("birth_date = ?");
+      params.push(dto.birthDate || null);
+    }
+    if (dto.photoDataUrl !== undefined) {
+      setClauses.push("photo_data_url = ?");
+      params.push(dto.photoDataUrl || null);
+    }
+
+    if (setClauses.length) {
+      await this.databaseService.execute(`UPDATE saas_juez_players SET ${setClauses.join(", ")} WHERE id = ?`, [...params, id]);
+    }
+
+    const rows = await this.databaseService.query<JuezPlayerRow[]>(
+      `SELECT ${PLAYER_COLUMNS} FROM saas_juez_players WHERE id = ? LIMIT 1`,
+      [id]
     );
 
     return { item: this.mapPlayer(rows[0]) };

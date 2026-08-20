@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post, Res } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Res } from "@nestjs/common";
 import type { Response } from "express";
 import { CreateJuezPlayerDto } from "./dto/create-juez-player.dto";
+import { UpdateJuezPlayerDto } from "./dto/update-juez-player.dto";
 import { JuezPlayersService } from "./juez-players.service";
 
 @Controller("juez-players")
@@ -15,6 +16,11 @@ export class JuezPlayersController {
   @Post()
   createPlayer(@Body() dto: CreateJuezPlayerDto) {
     return this.juezPlayersService.createPlayer(dto);
+  }
+
+  @Patch(":id")
+  updatePlayer(@Param("id") id: string, @Body() dto: UpdateJuezPlayerDto) {
+    return this.juezPlayersService.updatePlayer(Number(id), dto);
   }
 
   // Sirve la foto en binario por separado del listado, para que listar
