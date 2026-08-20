@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, OnModuleInit, UnauthorizedException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException, OnModuleInit, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { compare, hash } from "bcryptjs";
 import { createHash, randomUUID } from "node:crypto";
@@ -8,6 +8,7 @@ import { MailService } from "../../../shared/mail/mail.service";
 import { ConfirmJuezEmailDto } from "./dto/confirm-juez-email.dto";
 import { LoginJuezDto } from "./dto/login-juez.dto";
 import { JuezRole, RegisterJuezDto } from "./dto/register-juez.dto";
+import { UpdateJuezAccountRolesDto } from "./dto/update-juez-account-roles.dto";
 
 type JuezAccountRow = RowDataPacket & {
   id: number;
@@ -159,6 +160,49 @@ export class JuezAuthService implements OnModuleInit {
 
     const verifiedAccount = await this.findAccountByEmail(account.email);
     return { success: true, user: verifiedAccount ? this.toUser(verifiedAccount) : null };
+  }
+
+  async listAccounts() {
+    await this.ensureTables();
+
+    const rows = await this.db.query<JuezAccountRow[]>(
+      `SELECT id, email, password_hash, full_name, city, roles_json, account_role, is_verified, verification_token_hash, verification_expires_at, verified_at, last_login_at
+       FROM saas_juez_accounts
+       WHERE is_verified = 1
+       ORDER BY full_name ASC, email ASC`
+    );
+
+    return { items: rows.map((row) => this.toUser(row)) };
+  }
+
+  async updateAccountRoles(id: number, dto: UpdateJuezAccountRolesDto) {
+    await this.ensureTables();
+
+    const rows = await this.db.query<JuezAccountRow[]>(
+      `SELECT id, email, password_hash, full_name, city, roles_json, account_role, is_verified, verification_token_hash, verification_expires_at, verified_at, last_login_at
+       FROM saas_juez_accounts
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    );
+    if (!rows[0]) {
+      throw new NotFoundException("La cuenta no existe.");
+    }
+
+    await this.db.execute(`UPDATE saas_juez_accounts SET roles_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [
+      JSON.stringify(this.normalizeRoles(dto.roles)),
+      id
+    ]);
+
+    const updated = await this.db.query<JuezAccountRow[]>(
+      `SELECT id, email, password_hash, full_name, city, roles_json, account_role, is_verified, verification_token_hash, verification_expires_at, verified_at, last_login_at
+       FROM saas_juez_accounts
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    return { user: this.toUser(updated[0]) };
   }
 
   private async ensureDefaultAdminAccount() {
