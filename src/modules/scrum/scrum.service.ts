@@ -44,6 +44,15 @@ type ScrumClientDebtPaymentRow = RowDataPacket & {
   paid_at: Date | string;
 };
 
+type ScrumClientAmountChangeRow = RowDataPacket & {
+  id: number;
+  client_id: number;
+  previous_amount: string | number;
+  new_amount: string | number;
+  description: string;
+  changed_at: Date | string;
+};
+
 function toDateOnly(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
   return date.toISOString().slice(0, 10);
@@ -253,12 +262,25 @@ export class ScrumService {
     const nextFrequency = dto.frequency ?? currentClient.frequency;
     const nextPaymentAt = dto.nextPaymentAt ?? currentClient.nextPaymentAt;
 
+    const amountChanged = dto.amount !== undefined && Math.round(dto.amount) !== Math.round(currentClient.amount);
+    if (amountChanged && !dto.amountChangeDescription?.trim()) {
+      throw new BadRequestException("Agrega una descripcion para el cambio de monto.");
+    }
+
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_scrum_clients
        SET name = ?, amount = ?, frequency = ?, next_payment_at = ?
        WHERE id = ?`,
       [nextName, Math.round(nextAmount), nextFrequency, nextPaymentAt, clientId]
     );
+
+    if (amountChanged) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `INSERT INTO saas_scrum_client_amount_changes (client_id, previous_amount, new_amount, description)
+         VALUES (?, ?, ?, ?)`,
+        [clientId, Math.round(currentClient.amount), Math.round(nextAmount), dto.amountChangeDescription!.trim()]
+      );
+    }
 
     return {
       ok: true,
@@ -384,7 +406,23 @@ export class ScrumService {
       paymentsByClientId.set(clientId, list);
     }
 
-    return rows.map((row) => this.mapClient(row, paymentsByClientId.get(Number(row.id)) ?? []));
+    const amountChangeRows = await this.databaseService.query<ScrumClientAmountChangeRow[]>(
+      `SELECT id, client_id, previous_amount, new_amount, description, changed_at
+       FROM saas_scrum_client_amount_changes
+       ORDER BY changed_at ASC, id ASC`
+    );
+
+    const amountChangesByClientId = new Map<number, ScrumClientAmountChangeRow[]>();
+    for (const changeRow of amountChangeRows) {
+      const clientId = Number(changeRow.client_id);
+      const list = amountChangesByClientId.get(clientId) ?? [];
+      list.push(changeRow);
+      amountChangesByClientId.set(clientId, list);
+    }
+
+    return rows.map((row) =>
+      this.mapClient(row, paymentsByClientId.get(Number(row.id)) ?? [], amountChangesByClientId.get(Number(row.id)) ?? [])
+    );
   }
 
   private async getTaskById(taskId: number) {
@@ -461,10 +499,18 @@ export class ScrumService {
       [clientId]
     );
 
-    return this.mapClient(row, paymentRows);
+    const amountChangeRows = await this.databaseService.query<ScrumClientAmountChangeRow[]>(
+      `SELECT id, client_id, previous_amount, new_amount, description, changed_at
+       FROM saas_scrum_client_amount_changes
+       WHERE client_id = ?
+       ORDER BY changed_at ASC, id ASC`,
+      [clientId]
+    );
+
+    return this.mapClient(row, paymentRows, amountChangeRows);
   }
 
-  private mapClient(row: ScrumClientRow, paymentRows: ScrumClientDebtPaymentRow[]) {
+  private mapClient(row: ScrumClientRow, paymentRows: ScrumClientDebtPaymentRow[], amountChangeRows: ScrumClientAmountChangeRow[]) {
     const debtAmount = row.debt_amount === null || row.debt_amount === undefined ? null : Number(row.debt_amount);
     const debtPayments = paymentRows.map((paymentRow) => ({
       id: Number(paymentRow.id),
@@ -473,6 +519,19 @@ export class ScrumService {
     }));
     const debtPaidAmount = debtPayments.reduce((sum, payment) => sum + payment.amount, 0);
     const debtRemaining = debtAmount === null ? null : Math.max(0, Math.round((debtAmount - debtPaidAmount) * 100) / 100);
+
+    const amountHistory = amountChangeRows.map((changeRow) => {
+      const previousAmount = Number(changeRow.previous_amount);
+      const newAmount = Number(changeRow.new_amount);
+      return {
+        id: Number(changeRow.id),
+        previousAmount,
+        newAmount,
+        delta: Math.round((newAmount - previousAmount) * 100) / 100,
+        description: changeRow.description,
+        changedAt: new Date(changeRow.changed_at).toISOString()
+      };
+    });
 
     return {
       id: Number(row.id),
@@ -483,7 +542,8 @@ export class ScrumService {
       debtAmount,
       debtPaidAmount,
       debtRemaining,
-      debtPayments
+      debtPayments,
+      amountHistory
     };
   }
 
@@ -713,6 +773,22 @@ export class ScrumService {
          PRIMARY KEY (id),
          KEY idx_saas_scrum_client_debt_payments_client (client_id),
          CONSTRAINT fk_saas_scrum_client_debt_payments_client
+           FOREIGN KEY (client_id) REFERENCES saas_scrum_clients (id)
+           ON DELETE CASCADE
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_scrum_client_amount_changes (
+         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+         client_id BIGINT UNSIGNED NOT NULL,
+         previous_amount DECIMAL(12, 2) NOT NULL,
+         new_amount DECIMAL(12, 2) NOT NULL,
+         description VARCHAR(255) NOT NULL,
+         changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (id),
+         KEY idx_saas_scrum_client_amount_changes_client (client_id),
+         CONSTRAINT fk_saas_scrum_client_amount_changes_client
            FOREIGN KEY (client_id) REFERENCES saas_scrum_clients (id)
            ON DELETE CASCADE
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`

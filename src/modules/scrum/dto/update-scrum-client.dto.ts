@@ -18,4 +18,11 @@ export class UpdateScrumClientDto {
   @IsOptional()
   @IsISO8601()
   nextPaymentAt?: string;
+
+  // Obligatoria solo cuando "amount" cambia respecto al monto actual (se
+  // valida en el service, no aca, porque depende del monto previo).
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  amountChangeDescription?: string;
 }
