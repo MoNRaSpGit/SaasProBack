@@ -1,8 +1,12 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
+import { CreateScrumDebtDto } from "./dto/create-scrum-debt.dto";
+import { CreateScrumDebtChargeDto } from "./dto/create-scrum-debt-charge.dto";
+import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
+import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
@@ -65,5 +69,30 @@ export class ScrumController {
   @Delete("clients/:id")
   deleteClient(@Param("id", ParseIntPipe) clientId: number) {
     return this.scrumService.deleteClient(clientId);
+  }
+
+  @Post("debts")
+  createDebt(@Body() dto: CreateScrumDebtDto) {
+    return this.scrumService.createDebt(dto);
+  }
+
+  @Patch("debts/:id")
+  updateDebt(@Param("id", ParseIntPipe) debtId: number, @Body() dto: UpdateScrumDebtDto) {
+    return this.scrumService.updateDebt(debtId, dto);
+  }
+
+  @Post("debts/:id/charges")
+  addDebtCharge(@Param("id", ParseIntPipe) debtId: number, @Body() dto: CreateScrumDebtChargeDto) {
+    return this.scrumService.addDebtCharge(debtId, dto);
+  }
+
+  @Post("debts/:id/payments")
+  addDebtPayment(@Param("id", ParseIntPipe) debtId: number, @Body() dto: CreateScrumDebtPaymentDto) {
+    return this.scrumService.addDebtPayment(debtId, dto);
+  }
+
+  @Delete("debts/:id")
+  deleteDebt(@Param("id", ParseIntPipe) debtId: number) {
+    return this.scrumService.deleteDebt(debtId);
   }
 }
