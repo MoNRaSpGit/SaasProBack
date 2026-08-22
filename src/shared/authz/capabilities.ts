@@ -1,15 +1,6 @@
 export type TenantMembershipRole = "admin" | "operario" | "staff";
 
 export type TenantCapability =
-  | "alamcen.shell.read"
-  | "alamcen.products.read"
-  | "alamcen.products.write"
-  | "alamcen.sales.write"
-  | "alamcen.payments.write"
-  | "alamcen.dashboard.read"
-  | "alamcen.dashboard.write"
-  | "alamcen.stock.read"
-  | "alamcen.stock.write"
   | "agro.shell.read"
   | "agro.discovery.read"
   | "agro.discovery.write"
@@ -22,15 +13,6 @@ export type TenantCapability =
   | "camiones.trips.pay";
 
 const ALL_CAPABILITIES: TenantCapability[] = [
-  "alamcen.shell.read",
-  "alamcen.products.read",
-  "alamcen.products.write",
-  "alamcen.sales.write",
-  "alamcen.payments.write",
-  "alamcen.dashboard.read",
-  "alamcen.dashboard.write",
-  "alamcen.stock.read",
-  "alamcen.stock.write",
   "agro.shell.read",
   "agro.discovery.read",
   "agro.discovery.write",
@@ -47,12 +29,6 @@ const ROLE_CAPABILITIES: Record<TenantMembershipRole, TenantCapability[]> = {
   staff: ALL_CAPABILITIES,
   admin: ALL_CAPABILITIES,
   operario: [
-    "alamcen.shell.read",
-    "alamcen.products.read",
-    "alamcen.products.write",
-    "alamcen.sales.write",
-    "alamcen.payments.write",
-    "alamcen.dashboard.read",
     "agro.shell.read",
     "agro.discovery.read",
     "agro.discovery.write",
