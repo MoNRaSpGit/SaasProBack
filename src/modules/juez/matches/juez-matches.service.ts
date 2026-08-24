@@ -133,6 +133,22 @@ export class JuezMatchesService {
     return this.listAssignments();
   }
 
+  async resetAssignment(matchId: number) {
+    await this.ensureTables();
+
+    const match = await this.databaseService.query<RowDataPacket[]>(`SELECT id FROM saas_juez_matches WHERE id = ? LIMIT 1`, [
+      matchId
+    ]);
+    if (!match.length) {
+      throw new NotFoundException("El partido no existe.");
+    }
+
+    await this.databaseService.execute(`DELETE FROM saas_juez_assignments WHERE match_id = ?`, [matchId]);
+    await this.databaseService.execute(`UPDATE saas_juez_matches SET status = 'open' WHERE id = ?`, [matchId]);
+
+    return this.listAssignments();
+  }
+
   private mapMatch(row: JuezMatchRow): JuezMatch {
     return {
       id: String(row.id),

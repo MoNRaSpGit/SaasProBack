@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
 import { JuezMatchesService } from "./juez-matches.service";
 import { CreateJuezMatchDto } from "./dto/create-juez-match.dto";
 import { ToggleJuezAvailabilityDto } from "./dto/toggle-juez-availability.dto";
@@ -36,5 +36,10 @@ export class JuezMatchesController {
   @Post("juez-matches/:id/assignment")
   confirmAssignment(@Param("id") id: string, @Body() dto: ConfirmJuezAssignmentDto) {
     return this.juezMatchesService.confirmAssignment(Number(id), dto);
+  }
+
+  @Delete("juez-matches/:id/assignment")
+  resetAssignment(@Param("id") id: string) {
+    return this.juezMatchesService.resetAssignment(Number(id));
   }
 }
