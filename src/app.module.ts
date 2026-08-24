@@ -6,6 +6,7 @@ import { AgroModule } from "./modules/agro/agro.module";
 import { CamisetasModule } from "./modules/camisetas/camisetas.module";
 import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
+import { DgiModule } from "./modules/dgi/dgi.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
 import { OriolModule } from "./modules/oriol/oriol.module";
@@ -28,6 +29,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     SaasAdminModule,
     CamionesModule,
     CamisetasModule,
+    DgiModule,
     AgroModule,
     ScrumModule,
     CarnetModule,
