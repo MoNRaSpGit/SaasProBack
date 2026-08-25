@@ -73,3 +73,14 @@ export type DgiFeuComprobanteResponse = {
   cae_vencimiento: string;
   url: string;
 };
+
+export type DgiFeuPdfFormat = "A4" | "ticket80";
+
+// GET /comprobantes/{id}/pdf devuelve el PDF envuelto en JSON (no binario
+// directo), con los bytes en base64.
+export type DgiFeuPdfResponse = {
+  file_name: string;
+  mime_type: string;
+  format: "base64";
+  data: string;
+};

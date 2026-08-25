@@ -20,6 +20,11 @@ export class CreateDgiComprobanteDto {
   @IsIn(["UYU", "USD", "EUR"])
   moneda?: string;
 
+  // FEU la exige siempre: 1 = contado, 2 = credito.
+  @IsOptional()
+  @IsIn([1, 2])
+  formaPago?: number;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => DgiClienteDto)

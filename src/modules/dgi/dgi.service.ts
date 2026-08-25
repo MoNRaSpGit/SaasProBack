@@ -1,7 +1,13 @@
 import { BadGatewayException, Injectable } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { CreateDgiComprobanteDto } from "./dto/create-dgi-comprobante.dto";
-import { DgiFeuComprobanteRequest, DgiFeuComprobanteResponse, DgiFeuTokenResponse } from "./dgi.types";
+import {
+  DgiFeuComprobanteRequest,
+  DgiFeuComprobanteResponse,
+  DgiFeuPdfFormat,
+  DgiFeuPdfResponse,
+  DgiFeuTokenResponse
+} from "./dgi.types";
 
 // Cliente contra la API de facturaelectronica.com.uy (FEU). Todo lo
 // referido a "test" pega contra su ambiente de sandbox
@@ -17,6 +23,8 @@ const DEFAULT_TEST_API_URL = "https://api-test.facturaelectronica.com.uy";
 // del cliente si el importe es bajo).
 const DEFAULT_TIPO_COMPROBANTE = 101;
 const DEFAULT_MONEDA = "UYU";
+// forma_pago: 1 = contado, 2 = credito. FEU la exige siempre.
+const DEFAULT_FORMA_PAGO = 1;
 
 // El token dura ~1h segun el flujo OAuth2 estandar que documenta FEU; se
 // renueva un poco antes para no arriesgarse a que expire a mitad de un
@@ -55,6 +63,7 @@ export class DgiService {
       sucursal: dto.sucursal ?? Number(this.requireEnv("DGI_FEU_SUCURSAL")),
       tipo_comprobante: dto.tipoComprobante ?? DEFAULT_TIPO_COMPROBANTE,
       moneda: dto.moneda ?? DEFAULT_MONEDA,
+      forma_pago: dto.formaPago ?? DEFAULT_FORMA_PAGO,
       cliente: dto.cliente
         ? {
             tipo_doc: dto.cliente.tipoDoc,
@@ -100,6 +109,38 @@ export class DgiService {
     }
 
     return { ok: true, item: data as DgiFeuComprobanteResponse };
+  }
+
+  // GET /comprobantes/{id}/pdf devuelve el PDF envuelto en JSON con los
+  // bytes en base64 (no un binario directo), confirmado contra el sandbox
+  // real. tipo=ticket80 da el formato termico 80mm; sin ese query da A4.
+  async getComprobantePdf(comprobanteId: number, tipo: DgiFeuPdfFormat = "ticket80") {
+    const token = await this.getAccessToken();
+    const rutEmisor = this.requireEnv("DGI_FEU_RUT_EMISOR");
+
+    const url = new URL(`${this.getApiUrl()}/comprobantes/${comprobanteId}/pdf`);
+    if (tipo === "ticket80") {
+      url.searchParams.set("tipo", "ticket80");
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Emisor": rutEmisor
+      }
+    });
+
+    const data = (await response.json().catch(() => null)) as DgiFeuPdfResponse | null;
+
+    if (!response.ok || !data?.data) {
+      throw new BadGatewayException({
+        message: "No se pudo obtener el PDF del comprobante.",
+        status: response.status,
+        feuResponse: data
+      });
+    }
+
+    return data;
   }
 
   private async getAccessToken(forceRefresh = false) {
