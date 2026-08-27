@@ -62,6 +62,15 @@ export class CreateJokerOrderDto {
   @MaxLength(160)
   customerName?: string;
 
+  // Cliente elegido cuando se paga "a cuenta" -- se guarda ademas del
+  // nombre libre para poder generar el movimiento de cuenta corriente
+  // recien al aceptar un pedido pendiente (ver JokerOrdersService#acceptOrder).
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  clientId?: number;
+
   // Fecha "logica" del pedido (YYYY-MM-DD), para cargar a mano pedidos a
   // cuenta que se olvidaron y se ingresan varios dias despues. Si no se
   // manda, se usa la fecha real de carga (created_at) como siempre.
@@ -82,4 +91,11 @@ export class CreateJokerOrderDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   deliveryCost?: number;
+
+  // Pedido de mostrador armado por el rol "Usuario": queda en espera hasta
+  // que el Administrador lo acepte (le asigna numero de cocina real recien
+  // ahi) o lo rechace. Sin esto (o en false) se crea confirmado al toque,
+  // como cualquier pedido de siempre.
+  @IsOptional()
+  pending?: boolean;
 }

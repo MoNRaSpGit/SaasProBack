@@ -123,6 +123,21 @@ export class JokerController {
     return this.ordersService.listCurrentPeriodOrders(courierId ? Number(courierId) : undefined);
   }
 
+  @Get("orders/pending")
+  listPendingOrders() {
+    return this.ordersService.listPendingOrders();
+  }
+
+  @Post("orders/:id/accept")
+  acceptOrder(@Param("id", ParseIntPipe) orderId: number) {
+    return this.ordersService.acceptOrder(orderId);
+  }
+
+  @Post("orders/:id/reject")
+  rejectOrder(@Param("id", ParseIntPipe) orderId: number) {
+    return this.ordersService.rejectOrder(orderId);
+  }
+
   @Delete("orders")
   deleteAllOrders() {
     return this.ordersService.deleteAllOrders();

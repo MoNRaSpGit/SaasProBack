@@ -40,13 +40,17 @@ export type JokerOrderItem = {
 
 export type JokerPaymentMethod = "efectivo" | "tarjeta" | "transferencia" | "cuenta";
 
+export type JokerOrderStatus = "confirmado" | "pendiente" | "rechazado";
+
 export type JokerOrder = {
   id: number;
-  displayNumber: number;
+  displayNumber: number | null;
+  status: JokerOrderStatus;
   total: number;
   address: string;
   paymentMethod: JokerPaymentMethod;
   customerName: string | null;
+  clientId: number | null;
   items: JokerOrderItem[];
   createdAt: string;
   orderDate: string | null;

@@ -12,11 +12,13 @@ import { JokerOrder, JokerPaymentMethod, JokerRegisterState } from "./joker.type
 
 type JokerOrderRow = RowDataPacket & {
   id: number;
-  display_number: number;
+  display_number: number | null;
+  status: string;
   total: string | number;
   address: string;
   payment_method: string;
   customer_name: string | null;
+  client_id: number | null;
   items: string;
   created_at: string | Date;
   order_date: string | Date | null;
@@ -32,10 +34,12 @@ type JokerRegisterStateRow = RowDataPacket & {
 const ORDER_COLUMNS = `
   id,
   display_number,
+  status,
   total,
   address,
   payment_method,
   customer_name,
+  client_id,
   items,
   created_at,
   order_date,
@@ -52,16 +56,23 @@ export class JokerOrdersService {
 
   async createOrder(dto: CreateJokerOrderDto): Promise<{ item: JokerOrder }> {
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    const displayNumber = await this.getNextOrderDisplayNumber();
+    const isPending = dto.pending === true;
+    // Un pedido pendiente todavia no "entro" a cocina: no se le asigna
+    // numero (eso pasaria fuera de orden si el admin tarda en aceptarlo) ni
+    // se descuenta stock (para no reservar/oversell mientras espera). Las
+    // dos cosas se hacen recien en acceptOrder.
+    const displayNumber = isPending ? null : await this.getNextOrderDisplayNumber();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, total, address, payment_method, customer_name, items, order_date, courier_id, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_joker_orders (display_number, status, total, address, payment_method, customer_name, client_id, items, order_date, courier_id, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         displayNumber,
+        isPending ? "pendiente" : "confirmado",
         total,
         dto.address?.trim() || "",
         dto.paymentMethod ?? "efectivo",
         dto.customerName?.trim() || null,
+        dto.clientId ?? null,
         JSON.stringify(dto.items),
         dto.orderDate?.trim() || null,
         dto.courierId ?? null,
@@ -77,9 +88,84 @@ export class JokerOrdersService {
       [result.insertId]
     );
 
-    await this.stockService.deductStockForOrderItems(dto.items, Number(result.insertId));
+    if (!isPending) {
+      await this.stockService.deductStockForOrderItems(dto.items, Number(result.insertId));
+    }
 
     return { item: this.mapOrder(rows[0]) };
+  }
+
+  // Pedidos de mostrador en espera de que el Administrador los acepte o
+  // rechace. Se listan todos (no solo del periodo actual) porque un
+  // pedido pendiente puede haber quedado de antes de un cierre de caja.
+  async listPendingOrders(): Promise<{ items: JokerOrder[] }> {
+    const rows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'pendiente' ORDER BY created_at ASC LIMIT 100`
+    );
+    return { items: rows.map((row) => this.mapOrder(row)) };
+  }
+
+  // Acepta un pedido pendiente: recien aca se le asigna el numero real de
+  // cocina (el siguiente disponible EN ESE MOMENTO, no el que le hubiera
+  // tocado al crearse) y se descuenta el stock. created_at se actualiza a
+  // ahora para que aparezca en su lugar cronologico real en el panel y en
+  // los listados de delivery/movimientos, no en el momento en que se
+  // mando desde el mostrador.
+  async acceptOrder(orderId: number): Promise<{ item: JokerOrder }> {
+    const rows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
+      [orderId]
+    );
+    const existing = rows[0];
+    if (!existing) {
+      throw new NotFoundException("Pedido no encontrado");
+    }
+    if (existing.status !== "pendiente") {
+      throw new BadRequestException("Este pedido ya no esta pendiente.");
+    }
+
+    const displayNumber = await this.getNextOrderDisplayNumber();
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_orders SET display_number = ?, status = 'confirmado', created_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [displayNumber, orderId]
+    );
+
+    const items: CreateJokerOrderItemDto[] =
+      typeof existing.items === "string" ? JSON.parse(existing.items) : (existing.items as unknown as CreateJokerOrderItemDto[]);
+    await this.stockService.deductStockForOrderItems(items, orderId);
+
+    const updatedRows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
+      [orderId]
+    );
+    return { item: this.mapOrder(updatedRows[0]) };
+  }
+
+  // Rechaza un pedido pendiente: queda archivado con status 'rechazado'
+  // (no se borra, para que quede registro de que paso), sin numero de
+  // cocina ni descuento de stock.
+  async rejectOrder(orderId: number): Promise<{ item: JokerOrder }> {
+    const rows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
+      [orderId]
+    );
+    const existing = rows[0];
+    if (!existing) {
+      throw new NotFoundException("Pedido no encontrado");
+    }
+    if (existing.status !== "pendiente") {
+      throw new BadRequestException("Este pedido ya no esta pendiente.");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_joker_orders SET status = 'rechazado' WHERE id = ?`, [
+      orderId
+    ]);
+
+    const updatedRows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
+      [orderId]
+    );
+    return { item: this.mapOrder(updatedRows[0]) };
   }
 
   // Edita un pedido ya cargado (ej: el cliente se bajo una coca). El total
@@ -207,8 +293,8 @@ export class JokerOrdersService {
 
     const countRows = await this.databaseService.query<RowDataPacket[]>(
       lastClosedAt
-        ? `SELECT COUNT(*) AS cnt FROM saas_joker_orders WHERE created_at > ?`
-        : `SELECT COUNT(*) AS cnt FROM saas_joker_orders`,
+        ? `SELECT COUNT(*) AS cnt FROM saas_joker_orders WHERE status = 'confirmado' AND created_at > ?`
+        : `SELECT COUNT(*) AS cnt FROM saas_joker_orders WHERE status = 'confirmado'`,
       lastClosedAt ? [lastClosedAt] : []
     );
 
@@ -268,12 +354,12 @@ export class JokerOrdersService {
       dto.courierId
         ? `SELECT ${ORDER_COLUMNS}
            FROM saas_joker_orders
-           WHERE created_at >= ? AND created_at < ? AND courier_id = ?
+           WHERE status = 'confirmado' AND created_at >= ? AND created_at < ? AND courier_id = ?
            ORDER BY created_at DESC
            LIMIT 500`
         : `SELECT ${ORDER_COLUMNS}
            FROM saas_joker_orders
-           WHERE created_at >= ? AND created_at < ?
+           WHERE status = 'confirmado' AND created_at >= ? AND created_at < ?
            ORDER BY created_at DESC
            LIMIT 500`,
       dto.courierId ? [startIso, endIso, dto.courierId] : [startIso, endIso]
@@ -307,7 +393,7 @@ export class JokerOrdersService {
       }
 
       const rows = await this.databaseService.query<JokerOrderRow[]>(
-        `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE courier_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500`,
+        `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' AND courier_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500`,
         [courierId, activeSince]
       );
       return { items: rows.map((row) => this.mapOrder(row)) };
@@ -320,8 +406,8 @@ export class JokerOrdersService {
 
     const rows = await this.databaseService.query<JokerOrderRow[]>(
       lastClosedAt
-        ? `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE created_at > ? ORDER BY created_at DESC LIMIT 500`
-        : `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders ORDER BY created_at DESC LIMIT 500`,
+        ? `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' AND created_at > ? ORDER BY created_at DESC LIMIT 500`
+        : `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' ORDER BY created_at DESC LIMIT 500`,
       lastClosedAt ? [lastClosedAt] : []
     );
 
@@ -336,10 +422,12 @@ export class JokerOrdersService {
     return {
       id: row.id,
       displayNumber: row.display_number,
+      status: row.status as JokerOrder["status"],
       total: Number(row.total),
       address: row.address,
       paymentMethod: this.toPaymentMethod(row.payment_method),
       customerName: row.customer_name,
+      clientId: row.client_id,
       items: typeof row.items === "string" ? JSON.parse(row.items) : row.items,
       createdAt: toIsoString(row.created_at),
       orderDate: row.order_date ? toIsoString(row.order_date).slice(0, 10) : null,
