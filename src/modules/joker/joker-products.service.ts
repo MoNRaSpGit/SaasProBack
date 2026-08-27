@@ -91,35 +91,57 @@ export class JokerProductsService {
     return { items: rows.map((row) => this.mapProduct(row, slotsByComboId.get(row.id))) };
   }
 
+  // Si viene initialStock, ademas del producto se crea de una un insumo
+  // propio (mismo nombre) y una receta 1 a 1 -- pensado para productos
+  // "autonomos" que no comparten stock con nada mas (ej: alcohol en gel,
+  // una gaseosa), para no tener que pasar por la pestana Stock aparte.
+  // Todo en una transaccion: si algo falla a mitad de camino, no queda
+  // el producto creado sin su insumo.
   async createProduct(dto: CreateJokerProductDto): Promise<{ item: JokerProduct }> {
     const name = dto.name.trim();
     const category = dto.category?.trim() || "Otros";
 
-    const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_products
-         (name, category, subcategory, subcategory_detail, brand, price, ingredients, observations, product_type, status, pricing_unit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        name,
-        category,
-        dto.subcategory?.trim() || null,
-        dto.subcategoryDetail?.trim() || null,
-        dto.brand?.trim() || null,
-        dto.price,
-        dto.ingredients?.trim() || null,
-        dto.observations?.trim() || null,
-        dto.productType ?? "simple",
-        dto.status ?? "published",
-        dto.pricingUnit ?? "unidad"
-      ]
-    );
+    const productId = await this.databaseService.withTransaction(async (connection) => {
+      const [result] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_joker_products
+           (name, category, subcategory, subcategory_detail, brand, price, ingredients, observations, product_type, status, pricing_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          name,
+          category,
+          dto.subcategory?.trim() || null,
+          dto.subcategoryDetail?.trim() || null,
+          dto.brand?.trim() || null,
+          dto.price,
+          dto.ingredients?.trim() || null,
+          dto.observations?.trim() || null,
+          dto.productType ?? "simple",
+          dto.status ?? "published",
+          dto.pricingUnit ?? "unidad"
+        ]
+      );
+
+      if (dto.initialStock !== undefined) {
+        const [stockResult] = await connection.execute<ResultSetHeader>(
+          `INSERT INTO saas_joker_stock_items (name, unit, category, quantity) VALUES (?, ?, ?, ?)`,
+          [name, "unidad", "otro", dto.initialStock]
+        );
+
+        await connection.execute(
+          `INSERT INTO saas_joker_product_recipes (product_id, stock_item_id, quantity_per_unit) VALUES (?, ?, ?)`,
+          [result.insertId, stockResult.insertId, 1]
+        );
+      }
+
+      return result.insertId;
+    });
 
     const rows = await this.databaseService.query<JokerProductRow[]>(
       `SELECT ${PRODUCT_COLUMNS}
        FROM saas_joker_products
        WHERE id = ?
        LIMIT 1`,
-      [result.insertId]
+      [productId]
     );
 
     return { item: this.mapProduct(rows[0]) };
