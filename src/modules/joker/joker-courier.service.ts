@@ -109,7 +109,7 @@ export class JokerCourierService {
       const activeSince = courier.active_since;
 
       const orderRows = await this.databaseService.query<Array<RowDataPacket & { delivery_cost: string | number | null }>>(
-        `SELECT delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND created_at > ?`,
+        `SELECT delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND courier_assigned_at > ?`,
         [courierId, activeSince]
       );
       const deliveryCostTotal = orderRows.reduce((sum, row) => sum + Number(row.delivery_cost || 0), 0);
@@ -253,7 +253,7 @@ export class JokerCourierService {
     );
 
     const orderRows = await this.databaseService.query<Array<RowDataPacket & { total: string | number }>>(
-      `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND created_at > ?`,
+      `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
       [courierId, activeSince]
     );
 

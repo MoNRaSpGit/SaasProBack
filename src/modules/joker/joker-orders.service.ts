@@ -23,6 +23,7 @@ type JokerOrderRow = RowDataPacket & {
   created_at: string | Date;
   order_date: string | Date | null;
   courier_id: number | null;
+  courier_assigned_at: string | Date | null;
   delivery_cost: string | number | null;
 };
 
@@ -44,6 +45,7 @@ const ORDER_COLUMNS = `
   created_at,
   order_date,
   courier_id,
+  courier_assigned_at,
   delivery_cost
 `;
 
@@ -63,8 +65,14 @@ export class JokerOrdersService {
     // dos cosas se hacen recien en acceptOrder.
     const displayNumber = isPending ? null : await this.getNextOrderDisplayNumber();
 
+    // courier_assigned_at usa CURRENT_TIMESTAMP de SQL (no un Date de JS
+    // como parametro): la sesion de esta base corre con una zona horaria
+    // distinta a la del proceso Node, y comparar un Date de JS contra
+    // active_since (que si se guarda con CURRENT_TIMESTAMP) quedaba
+    // desfasado por horas, rompiendo el filtro "pedido asignado durante
+    // el turno actual".
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, status, total, address, payment_method, customer_name, client_id, items, order_date, courier_id, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_joker_orders (display_number, status, total, address, payment_method, customer_name, client_id, items, order_date, courier_id, courier_assigned_at, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${dto.courierId ? "CURRENT_TIMESTAMP" : "NULL"}, ?)`,
       [
         displayNumber,
         isPending ? "pendiente" : "confirmado",
@@ -218,9 +226,18 @@ export class JokerOrdersService {
     const nextOrderDate = dto.orderDate !== undefined ? dto.orderDate.trim() || null : existing.order_date;
     const nextCourierId = dto.courierId !== undefined ? dto.courierId : existing.courier_id;
     const nextDeliveryCost = dto.deliveryCost !== undefined ? dto.deliveryCost : existing.delivery_cost;
+    // Se recalcula cada vez que se manda un courierId (aunque sea el mismo
+    // repartidor de nuevo): es lo que usan listCurrentPeriodOrders y
+    // getCourierCashSummary para decidir si el pedido es "del turno
+    // actual" del repartidor, en vez de comparar contra el created_at
+    // original del pedido (que podia ser de antes de que se lo habilitara,
+    // dejando el pedido invisible para el aunque se lo acabara de asignar).
+    // CURRENT_TIMESTAMP de SQL, no un Date de JS como parametro -- ver
+    // comentario en createOrder sobre el desfasaje de zona horaria.
+    const courierAssignedAtClause = dto.courierId !== undefined ? "CURRENT_TIMESTAMP" : "courier_assigned_at";
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, delivery_cost = ? WHERE id = ?`,
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ? WHERE id = ?`,
       [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, orderId]
     );
 
@@ -393,7 +410,7 @@ export class JokerOrdersService {
       }
 
       const rows = await this.databaseService.query<JokerOrderRow[]>(
-        `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' AND courier_id = ? AND created_at > ? ORDER BY created_at DESC LIMIT 500`,
+        `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' AND courier_id = ? AND courier_assigned_at > ? ORDER BY courier_assigned_at DESC LIMIT 500`,
         [courierId, activeSince]
       );
       return { items: rows.map((row) => this.mapOrder(row)) };
