@@ -270,16 +270,17 @@ export class JokerCourierService {
       expensesTotal,
       handoversTotal,
       cashOnHand,
-      movements: movementRows
-        .filter((row) => row.type !== "inicial")
-        .map((row) => ({
-          id: Number(row.id),
-          type: row.type,
-          amount: Number(row.amount),
-          description: row.description,
-          createdAt: toIsoString(row.created_at)
-        }))
-        .reverse()
+      // A diferencia de antes, "inicial" ya no se filtra: el historial
+      // ahora es un registro cronologico completo (caja inicial, gastos,
+      // entregas) tal cual pasaron, en vez de solo mostrar gastos/entregas
+      // con los totales aparte.
+      movements: movementRows.map((row) => ({
+        id: Number(row.id),
+        type: row.type,
+        amount: Number(row.amount),
+        description: row.description,
+        createdAt: toIsoString(row.created_at)
+      }))
     };
   }
 
