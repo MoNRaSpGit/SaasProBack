@@ -252,15 +252,21 @@ export class JokerCourierService {
       [courierId, activeSince]
     );
 
-    const orderRows = await this.databaseService.query<Array<RowDataPacket & { total: string | number }>>(
-      `SELECT total FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
+    // El costo de envio no forma parte de order.total (se guarda aparte),
+    // pero en un pedido efectivo el repartidor cobra los dos juntos --
+    // sin sumar delivery_cost aca, "Cobrado" y "Caja actual" quedaban por
+    // debajo de la plata real que el repartidor tiene en el bolsillo.
+    const orderRows = await this.databaseService.query<
+      Array<RowDataPacket & { total: string | number; delivery_cost: string | number | null }>
+    >(
+      `SELECT total, delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
       [courierId, activeSince]
     );
 
     const initialCash = movementRows.filter((row) => row.type === "inicial").reduce((sum, row) => sum + Number(row.amount), 0);
     const expensesTotal = movementRows.filter((row) => row.type === "gasto").reduce((sum, row) => sum + Number(row.amount), 0);
     const handoversTotal = movementRows.filter((row) => row.type === "entrega").reduce((sum, row) => sum + Number(row.amount), 0);
-    const ordersCashTotal = orderRows.reduce((sum, row) => sum + Number(row.total), 0);
+    const ordersCashTotal = orderRows.reduce((sum, row) => sum + Number(row.total) + Number(row.delivery_cost || 0), 0);
     const cashOnHand = initialCash + ordersCashTotal - expensesTotal - handoversTotal;
 
     return {
