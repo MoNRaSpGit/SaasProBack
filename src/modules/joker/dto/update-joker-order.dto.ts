@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsInt, IsNumber, IsOptional, Matches, Min, ValidateNested } from "class-validator";
+import { IsArray, IsIn, IsInt, IsNumber, IsOptional, Matches, Min, ValidateNested } from "class-validator";
 import { CreateJokerOrderItemDto } from "./create-joker-order.dto";
 
 // A diferencia de CreateJokerOrderDto, acepta lista vacia: si el operario
@@ -28,4 +28,13 @@ export class UpdateJokerOrderDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   deliveryCost?: number;
+
+  // Para corregir un pedido marcado con el metodo de pago equivocado
+  // (ej: se carago "efectivo" pero era "transferencia"). No se acepta
+  // "cuenta" aca -- pasar a/desde cuenta corriente necesita elegir un
+  // cliente, eso se sigue haciendo desde el flujo normal de armar
+  // pedido, no desde esta correccion rapida.
+  @IsOptional()
+  @IsIn(["efectivo", "tarjeta", "transferencia"])
+  paymentMethod?: "efectivo" | "tarjeta" | "transferencia";
 }

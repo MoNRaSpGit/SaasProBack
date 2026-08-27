@@ -226,6 +226,7 @@ export class JokerOrdersService {
     const nextOrderDate = dto.orderDate !== undefined ? dto.orderDate.trim() || null : existing.order_date;
     const nextCourierId = dto.courierId !== undefined ? dto.courierId : existing.courier_id;
     const nextDeliveryCost = dto.deliveryCost !== undefined ? dto.deliveryCost : existing.delivery_cost;
+    const nextPaymentMethod = dto.paymentMethod ?? existing.payment_method;
     // Se recalcula cada vez que se manda un courierId (aunque sea el mismo
     // repartidor de nuevo): es lo que usan listCurrentPeriodOrders y
     // getCourierCashSummary para decidir si el pedido es "del turno
@@ -237,11 +238,22 @@ export class JokerOrdersService {
     const courierAssignedAtClause = dto.courierId !== undefined ? "CURRENT_TIMESTAMP" : "courier_assigned_at";
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ? WHERE id = ?`,
-      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, orderId]
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ? WHERE id = ?`,
+      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, nextPaymentMethod, orderId]
     );
 
-    await this.syncAccountEntryForOrder(orderId, dto.items);
+    // Si el pedido dejo de ser "a cuenta" (se corrigio a efectivo/tarjeta/
+    // transferencia), el movimiento de cuenta corriente vinculado ya no
+    // corresponde -- se borra, igual que cuando se cancela el pedido
+    // entero. dto.paymentMethod nunca puede ser "cuenta" (bloqueado por el
+    // DTO), asi que no hay caso inverso que manejar aca.
+    if (dto.paymentMethod !== undefined && existing.payment_method === "cuenta") {
+      await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_account_entries WHERE order_id = ?`, [
+        orderId
+      ]);
+    } else {
+      await this.syncAccountEntryForOrder(orderId, dto.items);
+    }
 
     const updatedRows = await this.databaseService.query<JokerOrderRow[]>(
       `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE id = ? LIMIT 1`,
