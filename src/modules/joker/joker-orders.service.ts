@@ -237,21 +237,40 @@ export class JokerOrdersService {
     // comentario en createOrder sobre el desfasaje de zona horaria.
     const courierAssignedAtClause = dto.courierId !== undefined ? "CURRENT_TIMESTAMP" : "courier_assigned_at";
 
+    const switchingIntoCuenta = dto.paymentMethod === "cuenta" && existing.payment_method !== "cuenta";
+    const switchingOutOfCuenta = dto.paymentMethod !== undefined && dto.paymentMethod !== "cuenta" && existing.payment_method === "cuenta";
+
+    if (switchingIntoCuenta && !dto.clientId) {
+      throw new BadRequestException("Para pasar a cuenta corriente hay que elegir un cliente");
+    }
+
+    const nextClientId = switchingIntoCuenta ? dto.clientId! : existing.client_id;
+
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ? WHERE id = ?`,
-      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, nextPaymentMethod, orderId]
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ?, client_id = ? WHERE id = ?`,
+      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, nextPaymentMethod, nextClientId, orderId]
     );
 
-    // Si el pedido dejo de ser "a cuenta" (se corrigio a efectivo/tarjeta/
-    // transferencia), el movimiento de cuenta corriente vinculado ya no
-    // corresponde -- se borra, igual que cuando se cancela el pedido
-    // entero. dto.paymentMethod nunca puede ser "cuenta" (bloqueado por el
-    // DTO), asi que no hay caso inverso que manejar aca.
-    if (dto.paymentMethod !== undefined && existing.payment_method === "cuenta") {
+    // Tres caminos, sin pisarse entre si:
+    // - Si el pedido dejo de ser "a cuenta" (se corrigio a efectivo/tarjeta/
+    //   transferencia), el movimiento de cuenta corriente vinculado ya no
+    //   corresponde -- se borra, igual que al cancelar el pedido entero.
+    // - Si el pedido PASA a ser "a cuenta" (correccion rapida desde el
+    //   Panel, antes bloqueada), se crea el movimiento -- mismo mecanismo
+    //   que un pedido nuevo armado "a cuenta" desde Pedidos.
+    // - Si sigue igual (era y sigue sin ser "a cuenta", o era y sigue
+    //   siendo "a cuenta"), se sincroniza el movimiento existente (si hay)
+    //   con los items/total nuevos.
+    if (switchingOutOfCuenta) {
       await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_account_entries WHERE order_id = ?`, [
         orderId
       ]);
-    } else {
+    } else if (switchingIntoCuenta && dto.items.length) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `INSERT INTO saas_joker_account_entries (client_id, order_id, total, items) VALUES (?, ?, ?, ?)`,
+        [nextClientId, orderId, total, JSON.stringify(this.groupItemsForAccountEntry(dto.items))]
+      );
+    } else if (!switchingIntoCuenta) {
       await this.syncAccountEntryForOrder(orderId, dto.items);
     }
 
@@ -285,28 +304,36 @@ export class JokerOrdersService {
     }
 
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-    // Si el mismo producto aparece en mas de una linea (ej. se agrego dos
-    // veces con precios distintos por una promo), el precio unitario que
-    // queda es el promedio ponderado: asi quantity * unitPrice sigue dando
-    // el total real de ese producto.
-    const entryItemsByProduct = new Map<string, { quantity: number; lineTotal: number }>();
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_account_entries SET total = ?, items = ? WHERE id = ?`,
+      [total, JSON.stringify(this.groupItemsForAccountEntry(items)), entry.id]
+    );
+  }
+
+  // Un movimiento de cuenta corriente guarda los items agrupados por
+  // nombre de producto (sin productId, a diferencia del pedido). Si el
+  // mismo producto aparece en mas de una linea (ej. se agrego dos veces con
+  // precios distintos por una promo), el precio unitario que queda es el
+  // promedio ponderado: asi quantity * unitPrice sigue dando el total real
+  // de ese producto. Usado tanto al crear el movimiento (pedido pasa a
+  // "cuenta") como al resincronizarlo (pedido "a cuenta" editado).
+  private groupItemsForAccountEntry(
+    items: CreateJokerOrderItemDto[]
+  ): Array<{ productName: string; quantity: number; unitPrice: number }> {
+    const byProduct = new Map<string, { quantity: number; lineTotal: number }>();
     for (const item of items) {
-      const existingGroup = entryItemsByProduct.get(item.productName) ?? { quantity: 0, lineTotal: 0 };
-      entryItemsByProduct.set(item.productName, {
-        quantity: existingGroup.quantity + item.quantity,
-        lineTotal: existingGroup.lineTotal + item.unitPrice * item.quantity
+      const group = byProduct.get(item.productName) ?? { quantity: 0, lineTotal: 0 };
+      byProduct.set(item.productName, {
+        quantity: group.quantity + item.quantity,
+        lineTotal: group.lineTotal + item.unitPrice * item.quantity
       });
     }
-    const entryItems = [...entryItemsByProduct.entries()].map(([productName, group]) => ({
+    return [...byProduct.entries()].map(([productName, group]) => ({
       productName,
       quantity: group.quantity,
       unitPrice: group.lineTotal / group.quantity
     }));
-
-    await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_account_entries SET total = ?, items = ? WHERE id = ?`,
-      [total, JSON.stringify(entryItems), entry.id]
-    );
   }
 
   // El numero que se imprime en el ticket ("Pedido #N") arranca de nuevo en

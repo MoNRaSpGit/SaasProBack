@@ -30,11 +30,20 @@ export class UpdateJokerOrderDto {
   deliveryCost?: number;
 
   // Para corregir un pedido marcado con el metodo de pago equivocado
-  // (ej: se carago "efectivo" pero era "transferencia"). No se acepta
-  // "cuenta" aca -- pasar a/desde cuenta corriente necesita elegir un
-  // cliente, eso se sigue haciendo desde el flujo normal de armar
-  // pedido, no desde esta correccion rapida.
+  // (ej: se carago "efectivo" pero era "transferencia"). "cuenta" tambien
+  // se acepta, pero solo junto con clientId (ver mas abajo) -- pasar a
+  // cuenta corriente sin cliente no tiene sentido.
   @IsOptional()
-  @IsIn(["efectivo", "tarjeta", "transferencia"])
-  paymentMethod?: "efectivo" | "tarjeta" | "transferencia";
+  @IsIn(["efectivo", "tarjeta", "transferencia", "cuenta"])
+  paymentMethod?: "efectivo" | "tarjeta" | "transferencia" | "cuenta";
+
+  // Obligatorio (y solo usado) cuando paymentMethod pasa a "cuenta" y el
+  // pedido no era "a cuenta" todavia: crea el movimiento de cuenta
+  // corriente vinculado a este pedido, igual que al armar un pedido nuevo
+  // "a cuenta" desde la pantalla de Pedidos.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  clientId?: number;
 }
