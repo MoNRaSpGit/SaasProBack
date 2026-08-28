@@ -97,10 +97,18 @@ export class OriolSalesService {
   async updateSale(saleId: number, dto: UpdateOriolSaleDto): Promise<{ item: OriolSale }> {
     await this.databaseService.withTransaction(async (connection) => {
       const [rows] = await connection.query<RowDataPacket[]>(
-        `SELECT metodo_pago, cliente_id, total_pesos, total_dolares FROM saas_oriol_ventas WHERE id = ?`,
+        `SELECT metodo_pago, cliente_id, total_pesos, total_dolares, detalle FROM saas_oriol_ventas WHERE id = ? FOR UPDATE`,
         [saleId]
       );
-      const current = rows[0] as { metodo_pago: OriolPaymentMethod; cliente_id: number | null; total_pesos: string; total_dolares: string } | undefined;
+      const current = rows[0] as
+        | {
+            metodo_pago: OriolPaymentMethod;
+            cliente_id: number | null;
+            total_pesos: string;
+            total_dolares: string;
+            detalle: string | OriolSaleItem[] | null;
+          }
+        | undefined;
       if (!current) {
         throw new NotFoundException("Venta no encontrada");
       }
@@ -108,14 +116,57 @@ export class OriolSalesService {
       const metodoActual = current.metodo_pago;
       const metodoNuevo = dto.metodoPago ?? metodoActual;
       const clienteIdFinal = dto.clienteId ?? current.cliente_id;
-      const totalPesos = Number(current.total_pesos);
-      const totalDolares = Number(current.total_dolares);
+      // *Actual* = antes de tocar nada (para revertir la deuda vieja si
+      // cambia el metodo). *Final* = despues de sumar itemsNuevos, si hay
+      // (para aplicar la deuda nueva y para el UPDATE de la venta).
+      const totalPesosActual = Number(current.total_pesos);
+      const totalDolaresActual = Number(current.total_dolares);
+      let totalPesosFinal = totalPesosActual;
+      let totalDolaresFinal = totalDolaresActual;
+
+      const sets = ["metodo_pago = ?", "cliente_id = ?"];
+      const params: Array<string | number | null> = [metodoNuevo, clienteIdFinal ?? null];
+
+      // Agregar productos a una boleta ya guardada (p.ej. "volver" desde la
+      // boleta final porque el cliente pide algo mas): suma los items al
+      // detalle existente y recalcula el total, sin tocar los items
+      // originales.
+      if (dto.itemsNuevos?.length) {
+        const detalleActual: OriolSaleItem[] =
+          typeof current.detalle === "string" ? (JSON.parse(current.detalle) as OriolSaleItem[]) : current.detalle ?? [];
+        const { totalPesos: deltaPesos, totalDolares: deltaDolares } = this.sumItemsByCurrency(dto.itemsNuevos);
+        totalPesosFinal += deltaPesos;
+        totalDolaresFinal += deltaDolares;
+
+        sets.push("detalle = ?", "total_pesos = ?", "total_dolares = ?");
+        params.push(JSON.stringify([...detalleActual, ...dto.itemsNuevos]), totalPesosFinal, totalDolaresFinal);
+
+        await this.productsService.decrementStock(connection, dto.itemsNuevos);
+
+        // Caso comun: se agrega producto sin cambiar metodo ni cliente. Si
+        // la boleta sigue a credito, la deuda solo sube por la diferencia
+        // agregada (el resto de la logica de deuda, mas abajo, cubre el
+        // caso en que ademas cambia el metodo o el cliente, usando ya el
+        // total final con los items nuevos incluidos).
+        if (metodoNuevo === "credito" && metodoNuevo === metodoActual && clienteIdFinal === current.cliente_id) {
+          if (!clienteIdFinal) {
+            throw new BadRequestException("Para agregar productos a credito hay que indicar un cliente");
+          }
+          const [updateResult] = await connection.execute<ResultSetHeader>(
+            `UPDATE saas_oriol_clientes SET deuda = deuda + ?, deuda_dolares = deuda_dolares + ? WHERE id = ?`,
+            [deltaPesos, deltaDolares, clienteIdFinal]
+          );
+          if (updateResult.affectedRows === 0) {
+            throw new NotFoundException("Cliente no encontrado");
+          }
+        }
+      }
 
       if (metodoNuevo !== metodoActual) {
         if (metodoActual === "credito" && current.cliente_id) {
           await connection.execute(
             `UPDATE saas_oriol_clientes SET deuda = deuda - ?, deuda_dolares = deuda_dolares - ? WHERE id = ?`,
-            [totalPesos, totalDolares, current.cliente_id]
+            [totalPesosActual, totalDolaresActual, current.cliente_id]
           );
         }
         if (metodoNuevo === "credito") {
@@ -124,7 +175,7 @@ export class OriolSalesService {
           }
           const [updateResult] = await connection.execute<ResultSetHeader>(
             `UPDATE saas_oriol_clientes SET deuda = deuda + ?, deuda_dolares = deuda_dolares + ? WHERE id = ?`,
-            [totalPesos, totalDolares, clienteIdFinal]
+            [totalPesosFinal, totalDolaresFinal, clienteIdFinal]
           );
           if (updateResult.affectedRows === 0) {
             throw new NotFoundException("Cliente no encontrado");
@@ -132,8 +183,6 @@ export class OriolSalesService {
         }
       }
 
-      const sets = ["metodo_pago = ?", "cliente_id = ?"];
-      const params: Array<string | number | null> = [metodoNuevo, clienteIdFinal ?? null];
       if (dto.fecha) {
         sets.push("fecha = ?");
         params.push(dto.fecha);
