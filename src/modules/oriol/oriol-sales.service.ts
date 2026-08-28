@@ -126,6 +126,8 @@ export class OriolSalesService {
 
       const sets = ["metodo_pago = ?", "cliente_id = ?"];
       const params: Array<string | number | null> = [metodoNuevo, clienteIdFinal ?? null];
+      let deltaPesos = 0;
+      let deltaDolares = 0;
 
       // Agregar productos a una boleta ya guardada (p.ej. "volver" desde la
       // boleta final porque el cliente pide algo mas): suma los items al
@@ -134,7 +136,9 @@ export class OriolSalesService {
       if (dto.itemsNuevos?.length) {
         const detalleActual: OriolSaleItem[] =
           typeof current.detalle === "string" ? (JSON.parse(current.detalle) as OriolSaleItem[]) : current.detalle ?? [];
-        const { totalPesos: deltaPesos, totalDolares: deltaDolares } = this.sumItemsByCurrency(dto.itemsNuevos);
+        const suma = this.sumItemsByCurrency(dto.itemsNuevos);
+        deltaPesos = suma.totalPesos;
+        deltaDolares = suma.totalDolares;
         totalPesosFinal += deltaPesos;
         totalDolaresFinal += deltaDolares;
 
@@ -142,27 +146,16 @@ export class OriolSalesService {
         params.push(JSON.stringify([...detalleActual, ...dto.itemsNuevos]), totalPesosFinal, totalDolaresFinal);
 
         await this.productsService.decrementStock(connection, dto.itemsNuevos);
-
-        // Caso comun: se agrega producto sin cambiar metodo ni cliente. Si
-        // la boleta sigue a credito, la deuda solo sube por la diferencia
-        // agregada (el resto de la logica de deuda, mas abajo, cubre el
-        // caso en que ademas cambia el metodo o el cliente, usando ya el
-        // total final con los items nuevos incluidos).
-        if (metodoNuevo === "credito" && metodoNuevo === metodoActual && clienteIdFinal === current.cliente_id) {
-          if (!clienteIdFinal) {
-            throw new BadRequestException("Para agregar productos a credito hay que indicar un cliente");
-          }
-          const [updateResult] = await connection.execute<ResultSetHeader>(
-            `UPDATE saas_oriol_clientes SET deuda = deuda + ?, deuda_dolares = deuda_dolares + ? WHERE id = ?`,
-            [deltaPesos, deltaDolares, clienteIdFinal]
-          );
-          if (updateResult.affectedRows === 0) {
-            throw new NotFoundException("Cliente no encontrado");
-          }
-        }
       }
 
-      if (metodoNuevo !== metodoActual) {
+      // Ajusta la deuda de credito. Dos caminos, sin pisarse entre si:
+      // - Si cambia el metodo y/o el cliente (con o sin itemsNuevos a la
+      //   vez), se revierte el total viejo del cliente viejo y se aplica el
+      //   total final (ya con los items nuevos incluidos) al cliente nuevo.
+      // - Si metodo y cliente quedan igual pero se agregaron items a una
+      //   boleta que sigue a credito, alcanza con sumar la diferencia.
+      const clienteCambio = clienteIdFinal !== current.cliente_id;
+      if (metodoNuevo !== metodoActual || clienteCambio) {
         if (metodoActual === "credito" && current.cliente_id) {
           await connection.execute(
             `UPDATE saas_oriol_clientes SET deuda = deuda - ?, deuda_dolares = deuda_dolares - ? WHERE id = ?`,
@@ -180,6 +173,17 @@ export class OriolSalesService {
           if (updateResult.affectedRows === 0) {
             throw new NotFoundException("Cliente no encontrado");
           }
+        }
+      } else if (dto.itemsNuevos?.length && metodoNuevo === "credito") {
+        if (!clienteIdFinal) {
+          throw new BadRequestException("Para agregar productos a credito hay que indicar un cliente");
+        }
+        const [updateResult] = await connection.execute<ResultSetHeader>(
+          `UPDATE saas_oriol_clientes SET deuda = deuda + ?, deuda_dolares = deuda_dolares + ? WHERE id = ?`,
+          [deltaPesos, deltaDolares, clienteIdFinal]
+        );
+        if (updateResult.affectedRows === 0) {
+          throw new NotFoundException("Cliente no encontrado");
         }
       }
 
