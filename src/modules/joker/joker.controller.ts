@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
+import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerCourierCashMovementDto } from "./dto/create-joker-courier-cash-movement.dto";
 import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
@@ -214,6 +215,27 @@ export class JokerController {
   @Delete("account-entries/client/:clientId")
   settleAccount(@Param("clientId", ParseIntPipe) clientId: number) {
     return this.accountService.settleAccount(clientId);
+  }
+
+  // Pago parcial o total de cuenta corriente -- no borra boletas, ver
+  // JokerAccountService#createAccountPayment.
+  @Post("account-payments")
+  createAccountPayment(@Body() dto: CreateJokerAccountPaymentDto) {
+    return this.accountService.createAccountPayment(dto);
+  }
+
+  // Pagos abiertos de todos los clientes, para calcular "Debe $X" en el
+  // listado (boletas abiertas menos pagos abiertos).
+  @Get("account-payments")
+  listOpenAccountPayments() {
+    return this.accountService.listOpenAccountPayments();
+  }
+
+  // Historial completo (abiertos + ya cerrados) de pagos de un cliente
+  // puntual.
+  @Get("account-payments/client/:clientId")
+  listAccountPaymentsForClient(@Param("clientId", ParseIntPipe) clientId: number) {
+    return this.accountService.listAccountPaymentsForClient(clientId);
   }
 
   // Respaldo permanente de consumos ya pagados o de clientes eliminados,

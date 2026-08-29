@@ -152,6 +152,32 @@ export type JokerAccountSettlement = {
   settledAt: string;
 };
 
+// A que boleta(s) (account entries) correspondio un pago, calculado por
+// orden de antiguedad (FIFO) en el momento de registrarlo -- es una
+// instantanea para mostrar "este pago cubrio tal boleta", no algo que se
+// vuelva a recalcular despues.
+export type JokerAccountPaymentCoveredEntry = {
+  entryId: number;
+  orderId: number | null;
+  entryTotal: number;
+  amountApplied: number;
+};
+
+// Pago (parcial o total) de cuenta corriente. Nunca se borra -- queda de
+// historial permanente aunque el cliente despues vuelva a generar deuda.
+// settledAt no-null significa que este pago fue parte de un ciclo que
+// termino en pago total (las boletas de ese ciclo ya se archivaron); null
+// significa que el ciclo sigue abierto y este pago todavia cuenta para el
+// saldo actual del cliente.
+export type JokerAccountPayment = {
+  id: number;
+  clientId: number;
+  amount: number;
+  coveredEntries: JokerAccountPaymentCoveredEntry[];
+  createdAt: string;
+  settledAt: string | null;
+};
+
 export type JokerStockItemCategory = "comida" | "bebida" | "otro";
 
 export type JokerStockItem = {
