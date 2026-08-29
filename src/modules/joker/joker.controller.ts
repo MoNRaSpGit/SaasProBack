@@ -9,6 +9,7 @@ import { CreateJokerOrderDto } from "./dto/create-joker-order.dto";
 import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
+import { LoginJokerDto } from "./dto/login-joker.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SettleJokerCourierDto } from "./dto/settle-joker-courier.dto";
@@ -19,6 +20,7 @@ import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
 import { JokerAccountService } from "./joker-account.service";
+import { JokerAuthService } from "./joker-auth.service";
 import { JokerCourierService } from "./joker-courier.service";
 import { JokerOrdersService } from "./joker-orders.service";
 import { JokerPrintingService } from "./joker-printing.service";
@@ -35,8 +37,14 @@ export class JokerController {
     private readonly courierService: JokerCourierService,
     private readonly accountService: JokerAccountService,
     private readonly reportingService: JokerReportingService,
-    private readonly printingService: JokerPrintingService
+    private readonly printingService: JokerPrintingService,
+    private readonly authService: JokerAuthService
   ) {}
+
+  @Post("auth/login")
+  login(@Body() dto: LoginJokerDto) {
+    return this.authService.login(dto);
+  }
 
   @Get("products")
   listProducts() {
