@@ -11,6 +11,7 @@ import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { LoginJokerDto } from "./dto/login-joker.dto";
+import { OpenJokerUserRegisterDto } from "./dto/open-joker-user-register.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SettleJokerCourierDto } from "./dto/settle-joker-courier.dto";
@@ -270,6 +271,26 @@ export class JokerController {
   @Post("register/close")
   closeRegister(@Body() dto: CloseJokerRegisterDto) {
     return this.ordersService.closeRegister(dto);
+  }
+
+  @Get("user-register/state")
+  getUserRegisterState() {
+    return this.ordersService.getUserRegisterState();
+  }
+
+  @Post("user-register/open")
+  openUserRegister(@Body() dto: OpenJokerUserRegisterDto) {
+    return this.ordersService.openUserRegister(dto);
+  }
+
+  @Post("user-register/close")
+  closeUserRegister(@Body() dto: CloseJokerRegisterDto) {
+    return this.ordersService.closeUserRegister(dto);
+  }
+
+  @Get("user-register/orders/current-period")
+  listCurrentPeriodOrdersForUser() {
+    return this.ordersService.listCurrentPeriodOrdersForUser();
   }
 
   @Get("panel/mes/:anio/:mes")

@@ -3,17 +3,19 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateJokerOrderDto, CreateJokerOrderItemDto } from "./dto/create-joker-order.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
+import { OpenJokerUserRegisterDto } from "./dto/open-joker-user-register.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { buildStoreDayRangeUtc, getStoreDateLabel, toIsoString } from "./joker.dateUtils";
 import { JokerStockService } from "./joker-stock.service";
 import { JokerAccountEntryRow } from "./joker-account.service";
-import { JokerOrder, JokerPaymentMethod, JokerRegisterState } from "./joker.types";
+import { JokerOrder, JokerOrderOriginRole, JokerPaymentMethod, JokerRegisterState, JokerUserRegisterState } from "./joker.types";
 
 type JokerOrderRow = RowDataPacket & {
   id: number;
   display_number: number | null;
   status: string;
+  origin_role: string;
   total: string | number;
   address: string;
   payment_method: string;
@@ -32,10 +34,18 @@ type JokerRegisterStateRow = RowDataPacket & {
   last_closed_at: string | Date | null;
 };
 
+type JokerUserRegisterStateRow = RowDataPacket & {
+  is_open: number;
+  initial_cash: string | number | null;
+  opened_at: string | Date | null;
+  last_closed_at: string | Date | null;
+};
+
 const ORDER_COLUMNS = `
   id,
   display_number,
   status,
+  origin_role,
   total,
   address,
   payment_method,
@@ -72,10 +82,11 @@ export class JokerOrdersService {
     // desfasado por horas, rompiendo el filtro "pedido asignado durante
     // el turno actual".
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, status, total, address, payment_method, customer_name, client_id, items, order_date, courier_id, courier_assigned_at, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${dto.courierId ? "CURRENT_TIMESTAMP" : "NULL"}, ?)`,
+      `INSERT INTO saas_joker_orders (display_number, status, origin_role, total, address, payment_method, customer_name, client_id, items, order_date, courier_id, courier_assigned_at, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${dto.courierId ? "CURRENT_TIMESTAMP" : "NULL"}, ?)`,
       [
         displayNumber,
         isPending ? "pendiente" : "confirmado",
+        isPending ? "usuario" : "administrador",
         total,
         dto.address?.trim() || "",
         dto.paymentMethod ?? "efectivo",
@@ -403,6 +414,81 @@ export class JokerOrdersService {
     return this.getRegisterState();
   }
 
+  // Caja propia del Usuario (saas_joker_user_register_state), separada de
+  // la caja global de arriba. A diferencia de esa, arranca cerrada y
+  // necesita un monto inicial para poder abrirse.
+  async getUserRegisterState(): Promise<JokerUserRegisterState> {
+    const rows = await this.databaseService.query<JokerUserRegisterStateRow[]>(
+      `SELECT is_open, initial_cash, opened_at, last_closed_at FROM saas_joker_user_register_state WHERE id = 1 LIMIT 1`
+    );
+    const row = rows[0];
+
+    return {
+      isOpen: row ? Boolean(row.is_open) : false,
+      initialCash: row?.initial_cash === null || row?.initial_cash === undefined ? null : Number(row.initial_cash),
+      openedAt: row?.opened_at ? toIsoString(row.opened_at) : null,
+      lastClosedAt: row?.last_closed_at ? toIsoString(row.last_closed_at) : null
+    };
+  }
+
+  async openUserRegister(dto: OpenJokerUserRegisterDto): Promise<JokerUserRegisterState> {
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_user_register_state SET is_open = 1, initial_cash = ?, opened_at = CURRENT_TIMESTAMP WHERE id = 1`,
+      [dto.initialCash]
+    );
+    return this.getUserRegisterState();
+  }
+
+  // Igual que closeRegister, pero sin el chequeo de repartidores (esa caja
+  // es del Administrador, no tiene nada que ver con la del Usuario) y
+  // guardando ademas el monto inicial con el que abrio, para el historico.
+  async closeUserRegister(dto: CloseJokerRegisterDto): Promise<JokerUserRegisterState> {
+    const state = await this.getUserRegisterState();
+    if (!state.isOpen) {
+      throw new BadRequestException("La caja del Usuario no esta abierta.");
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_joker_user_register_closes (closed_at, initial_cash, total_vendido, ganancia, payment_totals, ranking)
+       VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)`,
+      [state.initialCash ?? 0, dto.totalVendido, dto.ganancia, JSON.stringify(dto.paymentTotals), JSON.stringify(dto.ranking)]
+    );
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_joker_user_register_state SET is_open = 0, initial_cash = NULL, opened_at = NULL, last_closed_at = CURRENT_TIMESTAMP WHERE id = 1`
+    );
+
+    return this.getUserRegisterState();
+  }
+
+  // Pedidos del turno actual de la caja del Usuario (desde que la abrio),
+  // solo los que el nacieron ahi (origin_role = 'usuario') -- un pedido
+  // pendiente que el Usuario mando y el Administrador acepto durante este
+  // turno cuenta igual, porque acceptOrder pisa created_at con el momento
+  // de la aceptacion. Si la caja esta cerrada, no hay turno que mostrar.
+  async listCurrentPeriodOrdersForUser(): Promise<{ items: JokerOrder[] }> {
+    // Ojo aca: usar el opened_at CRUDO de la fila (Date de mysql2, misma
+    // zona horaria de la sesion de la base), no el que devuelve
+    // getUserRegisterState() ya convertido a ISO -- comparar ese ISO
+    // (interpretado como UTC) contra un DATETIME de una sesion en otro
+    // huso quedaba desfasado por horas (mismo problema que ya paso una vez
+    // con active_since de los repartidores).
+    const stateRows = await this.databaseService.query<JokerUserRegisterStateRow[]>(
+      `SELECT is_open, opened_at FROM saas_joker_user_register_state WHERE id = 1 LIMIT 1`
+    );
+    const state = stateRows[0];
+    if (!state || !state.is_open || !state.opened_at) {
+      return { items: [] };
+    }
+
+    const rows = await this.databaseService.query<JokerOrderRow[]>(
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' AND origin_role = 'usuario' AND created_at > ? ORDER BY created_at DESC LIMIT 500`,
+      [state.opened_at]
+    );
+
+    return { items: rows.map((row) => this.mapOrder(row)) };
+  }
+
   async listOrders(dto: ListJokerOrdersDto): Promise<{ items: JokerOrder[] }> {
     const dateLabel = dto.date ? String(dto.date).slice(0, 10) : getStoreDateLabel();
     const { startIso, endIso } = buildStoreDayRangeUtc(dateLabel);
@@ -480,6 +566,7 @@ export class JokerOrdersService {
       id: row.id,
       displayNumber: row.display_number,
       status: row.status as JokerOrder["status"],
+      originRole: row.origin_role as JokerOrderOriginRole,
       total: Number(row.total),
       address: row.address,
       paymentMethod: this.toPaymentMethod(row.payment_method),
