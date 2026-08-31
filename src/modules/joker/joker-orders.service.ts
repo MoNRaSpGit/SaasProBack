@@ -227,6 +227,7 @@ export class JokerOrdersService {
     const nextCourierId = dto.courierId !== undefined ? dto.courierId : existing.courier_id;
     const nextDeliveryCost = dto.deliveryCost !== undefined ? dto.deliveryCost : existing.delivery_cost;
     const nextPaymentMethod = dto.paymentMethod ?? existing.payment_method;
+    const nextCustomerName = dto.customerName !== undefined ? dto.customerName.trim() || null : existing.customer_name;
     // Se recalcula cada vez que se manda un courierId (aunque sea el mismo
     // repartidor de nuevo): es lo que usan listCurrentPeriodOrders y
     // getCourierCashSummary para decidir si el pedido es "del turno
@@ -247,8 +248,8 @@ export class JokerOrdersService {
     const nextClientId = switchingIntoCuenta ? dto.clientId! : existing.client_id;
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ?, client_id = ? WHERE id = ?`,
-      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, nextPaymentMethod, nextClientId, orderId]
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ?, client_id = ?, customer_name = ? WHERE id = ?`,
+      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, nextPaymentMethod, nextClientId, nextCustomerName, orderId]
     );
 
     // Tres caminos, sin pisarse entre si:

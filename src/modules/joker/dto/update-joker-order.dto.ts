@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, Matches, Min, ValidateNested } from "class-validator";
+import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
 import { CreateJokerOrderItemDto } from "./create-joker-order.dto";
 
 // A diferencia de CreateJokerOrderDto, acepta lista vacia: si el operario
@@ -46,4 +46,13 @@ export class UpdateJokerOrderDto {
   @IsInt()
   @Min(1)
   clientId?: number;
+
+  // Para marcar/desmarcar un pedido como "Mostrador" (retirado en el local,
+  // sin repartidor) desde el Panel -- reusa el mismo mecanismo que ya
+  // distingue pedidos de mostrador en toda la app (nombre con "MOSTRADOR"),
+  // ver PanelScreen#handleAssignCounter en el frontend.
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  customerName?: string;
 }
