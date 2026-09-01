@@ -12,8 +12,11 @@ type EjemploProductRow = RowDataPacket & {
   name: string;
   price: string | number;
   description: string | null;
+  image_url: string | null;
   created_at: string | Date;
 };
+
+const PRODUCT_COLUMNS = "id, rubro, category, name, price, description, image_url, created_at";
 
 // Datos de ejemplo (inventados, no son un cliente real) para que la demo
 // arranque con contenido apenas se crea la tabla. Cada rubro nuevo que se
@@ -57,11 +60,11 @@ export class EjemploProductsService {
 
     const rows = rubro
       ? await this.databaseService.query<EjemploProductRow[]>(
-          `SELECT id, rubro, category, name, price, description, created_at FROM saas_ejemplo_products WHERE rubro = ? ORDER BY category ASC, name ASC`,
+          `SELECT ${PRODUCT_COLUMNS} FROM saas_ejemplo_products WHERE rubro = ? ORDER BY category ASC, name ASC`,
           [rubro]
         )
       : await this.databaseService.query<EjemploProductRow[]>(
-          `SELECT id, rubro, category, name, price, description, created_at FROM saas_ejemplo_products ORDER BY rubro ASC, category ASC, name ASC`
+          `SELECT ${PRODUCT_COLUMNS} FROM saas_ejemplo_products ORDER BY rubro ASC, category ASC, name ASC`
         );
 
     return { items: rows.map((row) => this.mapProduct(row)) };
@@ -71,8 +74,15 @@ export class EjemploProductsService {
     await this.ensureTables();
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_ejemplo_products (rubro, category, name, price, description) VALUES (?, ?, ?, ?, ?)`,
-      [dto.rubro.trim().toLowerCase(), dto.category.trim(), dto.name.trim(), dto.price, dto.description?.trim() ?? ""]
+      `INSERT INTO saas_ejemplo_products (rubro, category, name, price, description, image_url) VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        dto.rubro.trim().toLowerCase(),
+        dto.category.trim(),
+        dto.name.trim(),
+        dto.price,
+        dto.description?.trim() ?? "",
+        dto.imageUrl?.trim() || null
+      ]
     );
 
     return { item: await this.getProductOrThrow(result.insertId) };
@@ -83,7 +93,7 @@ export class EjemploProductsService {
     await this.getProductOrThrow(productId);
 
     const fields: string[] = [];
-    const values: Array<string | number> = [];
+    const values: Array<string | number | null> = [];
 
     if (dto.category !== undefined) {
       fields.push("category = ?");
@@ -100,6 +110,10 @@ export class EjemploProductsService {
     if (dto.description !== undefined) {
       fields.push("description = ?");
       values.push(dto.description.trim());
+    }
+    if (dto.imageUrl !== undefined) {
+      fields.push("image_url = ?");
+      values.push(dto.imageUrl.trim() || null);
     }
 
     if (fields.length) {
@@ -121,7 +135,7 @@ export class EjemploProductsService {
 
   async getProductOrThrow(productId: number) {
     const rows = await this.databaseService.query<EjemploProductRow[]>(
-      `SELECT id, rubro, category, name, price, description, created_at FROM saas_ejemplo_products WHERE id = ? LIMIT 1`,
+      `SELECT ${PRODUCT_COLUMNS} FROM saas_ejemplo_products WHERE id = ? LIMIT 1`,
       [productId]
     );
     if (!rows.length) {
@@ -138,6 +152,7 @@ export class EjemploProductsService {
       name: row.name,
       price: Number(row.price),
       description: row.description ?? "",
+      imageUrl: row.image_url ?? null,
       createdAt: this.toIsoString(row.created_at)
     };
   }
@@ -170,6 +185,16 @@ export class EjemploProductsService {
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     );
 
+    // image_url se agrego despues (foto del producto para las tarjetas) --
+    // LONGTEXT porque guarda la imagen como data URL base64 ya
+    // redimensionada en el frontend, no una URL corta.
+    const hasImageUrlColumn = await this.hasColumn("saas_ejemplo_products", "image_url");
+    if (!hasImageUrlColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_ejemplo_products ADD COLUMN image_url LONGTEXT NULL DEFAULT NULL AFTER description`
+      );
+    }
+
     const [{ total }] = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
       `SELECT COUNT(*) AS total FROM saas_ejemplo_products`
     );
@@ -182,5 +207,18 @@ export class EjemploProductsService {
         );
       }
     }
+  }
+
+  private async hasColumn(tableName: string, columnName: string) {
+    const rows = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [tableName, columnName]
+    );
+
+    return Number(rows[0]?.total || 0) > 0;
   }
 }

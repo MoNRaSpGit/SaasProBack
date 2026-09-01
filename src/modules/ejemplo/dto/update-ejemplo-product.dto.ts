@@ -19,4 +19,8 @@ export class UpdateEjemploProductDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  @IsOptional()
+  @IsString()
+  imageUrl?: string;
 }
