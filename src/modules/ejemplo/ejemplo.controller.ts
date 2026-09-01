@@ -1,9 +1,12 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Res } from "@nestjs/common";
+import type { Response } from "express";
 import { CreateEjemploClientDto } from "./dto/create-ejemplo-client.dto";
 import { CreateEjemploProductDto } from "./dto/create-ejemplo-product.dto";
 import { CreateEjemploSaleDto } from "./dto/create-ejemplo-sale.dto";
+import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdateEjemploProductDto } from "./dto/update-ejemplo-product.dto";
 import { EjemploClientsService } from "./ejemplo-clients.service";
+import { EjemploPrintingService } from "./ejemplo-printing.service";
 import { EjemploProductsService } from "./ejemplo-products.service";
 import { EjemploSalesService } from "./ejemplo-sales.service";
 
@@ -12,7 +15,8 @@ export class EjemploController {
   constructor(
     private readonly productsService: EjemploProductsService,
     private readonly clientsService: EjemploClientsService,
-    private readonly salesService: EjemploSalesService
+    private readonly salesService: EjemploSalesService,
+    private readonly printingService: EjemploPrintingService
   ) {}
 
   @Get("rubros")
@@ -78,5 +82,18 @@ export class EjemploController {
   @Get("panel/:rubro")
   getPanelSummary(@Param("rubro") rubro: string) {
     return this.salesService.getPanelSummary(rubro);
+  }
+
+  // QZ Tray pide el certificado como texto plano (no JSON) via
+  // XMLHttpRequest -- ver EjemploPrintingService y frontend-ejemplo
+  // services/ejemplo.print.ts.
+  @Get("qz-certificate")
+  getQzCertificate(@Res() res: Response) {
+    res.type("text/plain").send(this.printingService.getQzCertificate());
+  }
+
+  @Post("qz-sign")
+  signQzRequest(@Body() dto: SignQzRequestDto) {
+    return this.printingService.signQzRequest(dto.toSign);
   }
 }
