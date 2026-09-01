@@ -16,8 +16,12 @@ type EjemploSaleRow = RowDataPacket & {
   total: string | number;
   payment_method: EjemploPaymentMethod;
   client_id: number | null;
+  detail: string | null;
   created_at: string | Date;
 };
+
+const SALE_COLUMNS =
+  "id, rubro, product_id, product_name, price, quantity, total, payment_method, client_id, detail, created_at";
 
 type EjemploAccountEntryRow = RowDataPacket & {
   id: number;
@@ -54,8 +58,8 @@ export class EjemploSalesService {
     }
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_ejemplo_sales (rubro, product_id, product_name, price, quantity, total, payment_method, client_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_ejemplo_sales (rubro, product_id, product_name, price, quantity, total, payment_method, client_id, detail)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         product.rubro,
         product.id,
@@ -64,7 +68,8 @@ export class EjemploSalesService {
         quantity,
         total,
         dto.paymentMethod,
-        dto.clientId ? Number(dto.clientId) : null
+        dto.clientId ? Number(dto.clientId) : null,
+        dto.detail?.trim() || null
       ]
     );
 
@@ -82,13 +87,11 @@ export class EjemploSalesService {
     await this.ensureTables();
     const rows = rubro
       ? await this.databaseService.query<EjemploSaleRow[]>(
-          `SELECT id, rubro, product_id, product_name, price, quantity, total, payment_method, client_id, created_at
-           FROM saas_ejemplo_sales WHERE rubro = ? ORDER BY created_at DESC LIMIT 200`,
+          `SELECT ${SALE_COLUMNS} FROM saas_ejemplo_sales WHERE rubro = ? ORDER BY created_at DESC LIMIT 200`,
           [rubro]
         )
       : await this.databaseService.query<EjemploSaleRow[]>(
-          `SELECT id, rubro, product_id, product_name, price, quantity, total, payment_method, client_id, created_at
-           FROM saas_ejemplo_sales ORDER BY created_at DESC LIMIT 200`
+          `SELECT ${SALE_COLUMNS} FROM saas_ejemplo_sales ORDER BY created_at DESC LIMIT 200`
         );
 
     return { items: rows.map((row) => this.mapSale(row)) };
@@ -101,8 +104,7 @@ export class EjemploSalesService {
     todayStart.setHours(0, 0, 0, 0);
 
     const rows = await this.databaseService.query<EjemploSaleRow[]>(
-      `SELECT id, rubro, product_id, product_name, price, quantity, total, payment_method, client_id, created_at
-       FROM saas_ejemplo_sales WHERE rubro = ? AND created_at >= ? ORDER BY created_at DESC`,
+      `SELECT ${SALE_COLUMNS} FROM saas_ejemplo_sales WHERE rubro = ? AND created_at >= ? ORDER BY created_at DESC`,
       [rubro, todayStart]
     );
 
@@ -162,8 +164,7 @@ export class EjemploSalesService {
 
   private async getSaleOrThrow(saleId: number) {
     const rows = await this.databaseService.query<EjemploSaleRow[]>(
-      `SELECT id, rubro, product_id, product_name, price, quantity, total, payment_method, client_id, created_at
-       FROM saas_ejemplo_sales WHERE id = ? LIMIT 1`,
+      `SELECT ${SALE_COLUMNS} FROM saas_ejemplo_sales WHERE id = ? LIMIT 1`,
       [saleId]
     );
     if (!rows.length) {
@@ -183,6 +184,7 @@ export class EjemploSalesService {
       total: Number(row.total),
       paymentMethod: row.payment_method,
       clientId: row.client_id !== null ? String(row.client_id) : null,
+      detail: row.detail ?? null,
       createdAt: this.toIsoString(row.created_at)
     };
   }
@@ -233,6 +235,15 @@ export class EjemploSalesService {
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     );
 
+    // detail se agrego despues (ej: "Canela, Extra shot" elegidos al
+    // personalizar el producto antes de sumarlo a la venta).
+    const hasDetailColumn = await this.hasColumn("saas_ejemplo_sales", "detail");
+    if (!hasDetailColumn) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_ejemplo_sales ADD COLUMN detail VARCHAR(255) NULL DEFAULT NULL AFTER client_id`
+      );
+    }
+
     await this.databaseService.execute(
       `CREATE TABLE IF NOT EXISTS saas_ejemplo_account_entries (
          id INT AUTO_INCREMENT PRIMARY KEY,
@@ -245,5 +256,18 @@ export class EjemploSalesService {
          KEY idx_saas_ejemplo_account_entries_client (client_id)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
     );
+  }
+
+  private async hasColumn(tableName: string, columnName: string) {
+    const rows = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = ?
+         AND COLUMN_NAME = ?`,
+      [tableName, columnName]
+    );
+
+    return Number(rows[0]?.total || 0) > 0;
   }
 }

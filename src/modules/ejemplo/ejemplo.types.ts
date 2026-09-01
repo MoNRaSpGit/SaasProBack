@@ -28,6 +28,7 @@ export type EjemploSale = {
   total: number;
   paymentMethod: EjemploPaymentMethod;
   clientId: string | null;
+  detail: string | null;
   createdAt: string;
 };
 

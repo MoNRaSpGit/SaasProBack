@@ -19,4 +19,11 @@ export class CreateEjemploSaleDto {
   @IsOptional()
   @IsString()
   clientId?: string;
+
+  // Ingredientes/opciones elegidas al personalizar el producto antes de
+  // sumarlo a la venta, ej: "Canela, Extra shot". Solo texto libre para
+  // mostrar en el ticket y en el historial, no afecta el precio.
+  @IsOptional()
+  @IsString()
+  detail?: string;
 }
