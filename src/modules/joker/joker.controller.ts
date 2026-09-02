@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
+import { CreateJokerChatMessageDto } from "./dto/create-joker-chat-message.dto";
 import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerCourierCashMovementDto } from "./dto/create-joker-courier-cash-movement.dto";
@@ -22,6 +23,7 @@ import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
 import { JokerAccountService } from "./joker-account.service";
 import { JokerAuthService } from "./joker-auth.service";
+import { JokerChatService } from "./joker-chat.service";
 import { JokerCourierService } from "./joker-courier.service";
 import { JokerOrdersService } from "./joker-orders.service";
 import { JokerPrintingService } from "./joker-printing.service";
@@ -39,12 +41,25 @@ export class JokerController {
     private readonly accountService: JokerAccountService,
     private readonly reportingService: JokerReportingService,
     private readonly printingService: JokerPrintingService,
-    private readonly authService: JokerAuthService
+    private readonly authService: JokerAuthService,
+    private readonly chatService: JokerChatService
   ) {}
 
   @Post("auth/login")
   login(@Body() dto: LoginJokerDto) {
     return this.authService.login(dto);
+  }
+
+  // Chat interno Administrador <-> Usuario: un solo canal compartido, sin
+  // destinatario ni sala (ver JokerChatService).
+  @Get("chat/messages")
+  listChatMessages() {
+    return this.chatService.listMessages();
+  }
+
+  @Post("chat/messages")
+  sendChatMessage(@Body() dto: CreateJokerChatMessageDto) {
+    return this.chatService.sendMessage(dto);
   }
 
   @Get("products")
