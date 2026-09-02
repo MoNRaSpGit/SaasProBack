@@ -275,14 +275,15 @@ export class JokerCourierService {
     const orderRows = isCounter
       ? await this.databaseService.query<Array<RowDataPacket & { total: string | number; delivery_cost: string | number | null }>>(
           `SELECT total, delivery_cost FROM saas_joker_orders
-           WHERE courier_id IS NULL
+           WHERE status = 'confirmado'
+             AND courier_id IS NULL
              AND (origin_role = 'usuario' OR UPPER(customer_name) LIKE '%MOSTRADOR%')
              AND payment_method = 'efectivo'
              AND created_at > ?`,
           [activeSince]
         )
       : await this.databaseService.query<Array<RowDataPacket & { total: string | number; delivery_cost: string | number | null }>>(
-          `SELECT total, delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
+          `SELECT total, delivery_cost FROM saas_joker_orders WHERE status = 'confirmado' AND courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
           [courierId, activeSince]
         );
 
