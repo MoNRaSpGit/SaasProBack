@@ -13,6 +13,7 @@ type JokerCourierRow = RowDataPacket & {
   status: "inactivo" | "activo";
   active_since: string | Date | null;
   created_at: string | Date;
+  is_counter: number;
 };
 
 type JokerCourierCashMovementRow = RowDataPacket & {
@@ -50,7 +51,9 @@ export class JokerCourierService {
 
   async listCouriers(): Promise<{ items: JokerCourier[] }> {
     const rows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers ORDER BY id ASC`
+      // Mostrador (is_counter=1) siempre primero: es la tarjeta especial
+      // del rol Usuario, tiene que destacarse antes que los repartidores.
+      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers ORDER BY is_counter DESC, id ASC`
     );
 
     return { items: rows.map((row) => this.mapCourier(row)) };
@@ -96,7 +99,7 @@ export class JokerCourierService {
   // repartidores habilitados sin liquidar (ver JokerOrdersService.closeRegister).
   async settleCourier(courierId: number, dto?: SettleJokerCourierDto): Promise<{ item: JokerCourier }> {
     const courierRows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
       [courierId]
     );
     const courier = courierRows[0];
@@ -107,14 +110,21 @@ export class JokerCourierService {
     if (courier.active_since) {
       const summary = await this.getCourierCashSummary(courierId);
       const activeSince = courier.active_since;
+      const isCounter = Boolean(courier.is_counter);
 
-      const orderRows = await this.databaseService.query<Array<RowDataPacket & { delivery_cost: string | number | null }>>(
-        `SELECT delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND courier_assigned_at > ?`,
-        [courierId, activeSince]
-      );
+      // "Mostrador" no cobra costo de envio (nunca tiene repartidor
+      // asignado) ni se le paga por hora (no es una persona) -- todo eso
+      // queda en 0, lo unico que importa de su liquidacion es la caja
+      // (inicial, cobrado, gastos, entregas) que ya trae el summary.
+      const orderRows = isCounter
+        ? []
+        : await this.databaseService.query<Array<RowDataPacket & { delivery_cost: string | number | null }>>(
+            `SELECT delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND courier_assigned_at > ?`,
+            [courierId, activeSince]
+          );
       const deliveryCostTotal = orderRows.reduce((sum, row) => sum + Number(row.delivery_cost || 0), 0);
-      const hourlyRate = dto?.hourlyRate ?? 120;
-      const hoursWorked = dto?.hoursWorked ?? 5;
+      const hourlyRate = isCounter ? 0 : (dto?.hourlyRate ?? 120);
+      const hoursWorked = isCounter ? 0 : (dto?.hoursWorked ?? 5);
       const hoursTotal = hourlyRate * hoursWorked;
       const payoutTotal = hoursTotal + deliveryCostTotal;
 
@@ -187,7 +197,7 @@ export class JokerCourierService {
 
   private async getCourierById(courierId: number): Promise<{ item: JokerCourier }> {
     const rows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
       [courierId]
     );
 
@@ -208,7 +218,7 @@ export class JokerCourierService {
     dto: CreateJokerCourierCashMovementDto
   ): Promise<{ item: JokerCourierCashSummary }> {
     const courierRows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
       [courierId]
     );
     const courier = courierRows[0];
@@ -235,10 +245,11 @@ export class JokerCourierService {
   // en 0.
   async getCourierCashSummary(courierId: number): Promise<JokerCourierCashSummary> {
     const courierRows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
       [courierId]
     );
     const activeSince = courierRows[0]?.active_since ?? null;
+    const isCounter = Boolean(courierRows[0]?.is_counter);
 
     if (!activeSince) {
       return { initialCash: 0, ordersCashTotal: 0, ordersCashCount: 0, expensesTotal: 0, handoversTotal: 0, cashOnHand: 0, movements: [] };
@@ -255,13 +266,25 @@ export class JokerCourierService {
     // El costo de envio no forma parte de order.total (se guarda aparte),
     // pero en un pedido efectivo el repartidor cobra los dos juntos --
     // sin sumar delivery_cost aca, "Cobrado" y "Caja actual" quedaban por
-    // debajo de la plata real que el repartidor tiene en el bolsillo.
-    const orderRows = await this.databaseService.query<
-      Array<RowDataPacket & { total: string | number; delivery_cost: string | number | null }>
-    >(
-      `SELECT total, delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
-      [courierId, activeSince]
-    );
+    // debajo de la plata real que el repartidor tiene en el bolsillo. Para
+    // "Mostrador" (isCounter) no aplica: sus pedidos nunca tienen
+    // delivery_cost (no tienen repartidor asignado), y en vez de
+    // courier_id se identifican por el mismo criterio "de mostrador" que
+    // usa listCurrentPeriodOrders (origin_role='usuario' o nombre con
+    // "MOSTRADOR"), sin repartidor asignado.
+    const orderRows = isCounter
+      ? await this.databaseService.query<Array<RowDataPacket & { total: string | number; delivery_cost: string | number | null }>>(
+          `SELECT total, delivery_cost FROM saas_joker_orders
+           WHERE courier_id IS NULL
+             AND (origin_role = 'usuario' OR UPPER(customer_name) LIKE '%MOSTRADOR%')
+             AND payment_method = 'efectivo'
+             AND created_at > ?`,
+          [activeSince]
+        )
+      : await this.databaseService.query<Array<RowDataPacket & { total: string | number; delivery_cost: string | number | null }>>(
+          `SELECT total, delivery_cost FROM saas_joker_orders WHERE courier_id = ? AND payment_method = 'efectivo' AND courier_assigned_at > ?`,
+          [courierId, activeSince]
+        );
 
     const initialCash = movementRows.filter((row) => row.type === "inicial").reduce((sum, row) => sum + Number(row.amount), 0);
     const expensesTotal = movementRows.filter((row) => row.type === "gasto").reduce((sum, row) => sum + Number(row.amount), 0);
@@ -295,7 +318,8 @@ export class JokerCourierService {
       id: Number(row.id),
       name: row.name,
       status: row.status === "activo" ? "activo" : "inactivo",
-      activeSince: row.active_since ? toIsoString(row.active_since) : null
+      activeSince: row.active_since ? toIsoString(row.active_since) : null,
+      isCounter: Boolean(row.is_counter)
     };
   }
 

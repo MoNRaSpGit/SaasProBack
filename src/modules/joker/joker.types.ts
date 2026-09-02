@@ -44,8 +44,7 @@ export type JokerOrderStatus = "confirmado" | "pendiente" | "rechazado";
 
 // Quien cargo el pedido -- se graba una sola vez al crearlo y no se toca
 // mas, ni siquiera cuando un pedido "pendiente" del Usuario pasa a
-// "confirmado" al aceptarlo. Es lo que separa la caja del Usuario de la
-// del Administrador (ver JokerUserRegisterState mas abajo).
+// "confirmado" al aceptarlo.
 export type JokerOrderOriginRole = "administrador" | "usuario";
 
 export type JokerOrder = {
@@ -72,6 +71,12 @@ export type JokerCourier = {
   name: string;
   status: JokerCourierStatus;
   activeSince: string | null;
+  // "Mostrador": la tarjeta especial (unica) que representa las ventas de
+  // mostrador/rol Usuario en Delivery -- el Administrador la habilita y
+  // liquida igual que a un repartidor, pero sus pedidos y su plata
+  // cobrada salen de las ventas del Usuario, no de pedidos con courier_id
+  // asignado (ver JokerCourierService).
+  isCounter: boolean;
 };
 
 export type JokerCourierCashMovementType = "inicial" | "gasto" | "entrega";
@@ -206,17 +211,6 @@ export type JokerProductRecipeLine = {
 
 export type JokerRegisterState = {
   isOpen: boolean;
-  lastClosedAt: string | null;
-};
-
-// Caja separada del Usuario (saas_joker_user_register_state), distinta de
-// la caja global del Administrador de arriba. A diferencia de esa, arranca
-// cerrada y necesita un monto inicial para abrirse -- initialCash/openedAt
-// quedan null mientras esta cerrada.
-export type JokerUserRegisterState = {
-  isOpen: boolean;
-  initialCash: number | null;
-  openedAt: string | null;
   lastClosedAt: string | null;
 };
 
