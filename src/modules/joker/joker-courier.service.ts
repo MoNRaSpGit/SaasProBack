@@ -45,15 +45,29 @@ type JokerCourierSettlementRow = RowDataPacket & {
   settled_at: string | Date;
 };
 
+const COURIER_COLUMNS = "id, name, status, active_since, created_at, is_counter";
+
 @Injectable()
 export class JokerCourierService {
   constructor(private readonly databaseService: DatabaseService) {}
+
+  // Repetida en varios metodos de aca abajo (settle, addCourierCashMovement,
+  // getCourierCashSummary, getCourierById) -- todos necesitan la fila
+  // cruda del courier (con is_counter/active_since) antes de decidir que
+  // hacer, asi que vive una sola vez aca.
+  private async getCourierRow(courierId: number): Promise<JokerCourierRow | undefined> {
+    const rows = await this.databaseService.query<JokerCourierRow[]>(
+      `SELECT ${COURIER_COLUMNS} FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
+      [courierId]
+    );
+    return rows[0];
+  }
 
   async listCouriers(): Promise<{ items: JokerCourier[] }> {
     const rows = await this.databaseService.query<JokerCourierRow[]>(
       // Mostrador (is_counter=1) siempre primero: es la tarjeta especial
       // del rol Usuario, tiene que destacarse antes que los repartidores.
-      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers ORDER BY is_counter DESC, id ASC`
+      `SELECT ${COURIER_COLUMNS} FROM saas_joker_couriers ORDER BY is_counter DESC, id ASC`
     );
 
     return { items: rows.map((row) => this.mapCourier(row)) };
@@ -98,11 +112,7 @@ export class JokerCourierService {
   // habilitar. El cierre de caja general no se puede hacer mientras haya
   // repartidores habilitados sin liquidar (ver JokerOrdersService.closeRegister).
   async settleCourier(courierId: number, dto?: SettleJokerCourierDto): Promise<{ item: JokerCourier }> {
-    const courierRows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
-      [courierId]
-    );
-    const courier = courierRows[0];
+    const courier = await this.getCourierRow(courierId);
     if (!courier) {
       throw new NotFoundException("Repartidor no encontrado");
     }
@@ -196,12 +206,7 @@ export class JokerCourierService {
   }
 
   private async getCourierById(courierId: number): Promise<{ item: JokerCourier }> {
-    const rows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
-      [courierId]
-    );
-
-    const row = rows[0];
+    const row = await this.getCourierRow(courierId);
     if (!row) {
       throw new NotFoundException("Repartidor no encontrado");
     }
@@ -217,11 +222,7 @@ export class JokerCourierService {
     courierId: number,
     dto: CreateJokerCourierCashMovementDto
   ): Promise<{ item: JokerCourierCashSummary }> {
-    const courierRows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
-      [courierId]
-    );
-    const courier = courierRows[0];
+    const courier = await this.getCourierRow(courierId);
     if (!courier) {
       throw new NotFoundException("Repartidor no encontrado");
     }
@@ -244,12 +245,9 @@ export class JokerCourierService {
   // (active_since null) no tiene turno abierto, asi que la caja arranca
   // en 0.
   async getCourierCashSummary(courierId: number): Promise<JokerCourierCashSummary> {
-    const courierRows = await this.databaseService.query<JokerCourierRow[]>(
-      `SELECT id, name, status, active_since, created_at, is_counter FROM saas_joker_couriers WHERE id = ? LIMIT 1`,
-      [courierId]
-    );
-    const activeSince = courierRows[0]?.active_since ?? null;
-    const isCounter = Boolean(courierRows[0]?.is_counter);
+    const courierRow = await this.getCourierRow(courierId);
+    const activeSince = courierRow?.active_since ?? null;
+    const isCounter = Boolean(courierRow?.is_counter);
 
     if (!activeSince) {
       return { initialCash: 0, ordersCashTotal: 0, ordersCashCount: 0, expensesTotal: 0, handoversTotal: 0, cashOnHand: 0, movements: [] };
