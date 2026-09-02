@@ -235,7 +235,10 @@ export class JokerOrdersService {
 
     const total = dto.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     const nextOrderDate = dto.orderDate !== undefined ? dto.orderDate.trim() || null : existing.order_date;
-    const nextCourierId = dto.courierId !== undefined ? dto.courierId : existing.courier_id;
+    // clearCourier manda por encima de courierId (no deberian venir los dos
+    // juntos, pero si pasara, "sacaselo" gana): es el caso de pasar un
+    // pedido que ya tenia delivery asignado a "Mostrador".
+    const nextCourierId = dto.clearCourier ? null : dto.courierId !== undefined ? dto.courierId : existing.courier_id;
     const nextDeliveryCost = dto.deliveryCost !== undefined ? dto.deliveryCost : existing.delivery_cost;
     const nextPaymentMethod = dto.paymentMethod ?? existing.payment_method;
     const nextCustomerName = dto.customerName !== undefined ? dto.customerName.trim() || null : existing.customer_name;
@@ -247,7 +250,7 @@ export class JokerOrdersService {
     // dejando el pedido invisible para el aunque se lo acabara de asignar).
     // CURRENT_TIMESTAMP de SQL, no un Date de JS como parametro -- ver
     // comentario en createOrder sobre el desfasaje de zona horaria.
-    const courierAssignedAtClause = dto.courierId !== undefined ? "CURRENT_TIMESTAMP" : "courier_assigned_at";
+    const courierAssignedAtClause = dto.clearCourier ? "NULL" : dto.courierId !== undefined ? "CURRENT_TIMESTAMP" : "courier_assigned_at";
 
     const switchingIntoCuenta = dto.paymentMethod === "cuenta" && existing.payment_method !== "cuenta";
     const switchingOutOfCuenta = dto.paymentMethod !== undefined && dto.paymentMethod !== "cuenta" && existing.payment_method === "cuenta";
@@ -461,11 +464,22 @@ export class JokerOrdersService {
     return this.getUserRegisterState();
   }
 
-  // Pedidos del turno actual de la caja del Usuario (desde que la abrio),
-  // solo los que el nacieron ahi (origin_role = 'usuario') -- un pedido
-  // pendiente que el Usuario mando y el Administrador acepto durante este
-  // turno cuenta igual, porque acceptOrder pisa created_at con el momento
-  // de la aceptacion. Si la caja esta cerrada, no hay turno que mostrar.
+  // Pedidos del turno actual de la caja del Usuario (desde que la abrio) --
+  // "de mostrador" en el sentido amplio que se termino usando en toda la
+  // app, no solo los que nacieron del lado Usuario:
+  // 1) origin_role = 'usuario' (el Usuario lo mando y el Administrador lo
+  //    acepto durante este turno) -- cuenta igual aunque el nombre no diga
+  //    "MOSTRADOR", porque acceptOrder pisa created_at con el momento de
+  //    la aceptacion.
+  // 2) origin_role = 'administrador' pero el Administrador lo cargo el
+  //    mismo y lo marco "Mostrador" a mano desde el Panel (mismo mecanismo
+  //    que usa PanelScreen para el chip 🏪: nombre con "MOSTRADOR", ver
+  //    PanelScreen#handleAssignCounter).
+  // En los dos casos, si despues se le asigna un repartidor (delivery), el
+  // pedido deja de contar como mostrador y pasa a ser pura y
+  // exclusivamente del Administrador -- por eso el AND courier_id IS NULL
+  // manda por encima de los dos casos de arriba.
+  // Si la caja del Usuario esta cerrada, no hay turno que mostrar.
   async listCurrentPeriodOrdersForUser(): Promise<{ items: JokerOrder[] }> {
     // Ojo aca: usar el opened_at CRUDO de la fila (Date de mysql2, misma
     // zona horaria de la sesion de la base), no el que devuelve
@@ -482,7 +496,12 @@ export class JokerOrdersService {
     }
 
     const rows = await this.databaseService.query<JokerOrderRow[]>(
-      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders WHERE status = 'confirmado' AND origin_role = 'usuario' AND created_at > ? ORDER BY created_at DESC LIMIT 500`,
+      `SELECT ${ORDER_COLUMNS} FROM saas_joker_orders
+       WHERE status = 'confirmado'
+         AND courier_id IS NULL
+         AND (origin_role = 'usuario' OR UPPER(customer_name) LIKE '%MOSTRADOR%')
+         AND created_at > ?
+       ORDER BY created_at DESC LIMIT 500`,
       [state.opened_at]
     );
 

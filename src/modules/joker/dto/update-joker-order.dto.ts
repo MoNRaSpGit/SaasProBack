@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from "class-validator";
 import { CreateJokerOrderItemDto } from "./create-joker-order.dto";
 
 // A diferencia de CreateJokerOrderDto, acepta lista vacia: si el operario
@@ -55,4 +55,15 @@ export class UpdateJokerOrderDto {
   @IsString()
   @MaxLength(160)
   customerName?: string;
+
+  // Saca el repartidor asignado (vuelve a "Sin designar" o a "Mostrador",
+  // segun lo que se mande junto con esto). courierId no sirve para esto:
+  // al no mandarlo, el pedido conserva el que ya tenia (ver
+  // JokerOrdersService#updateOrder) -- hace falta esta bandera aparte para
+  // poder mandar explicitamente "sacaselo", que es lo que necesita
+  // PanelScreen#handleAssignCounter cuando el pedido que se pasa a
+  // Mostrador ya tenia un delivery asignado.
+  @IsOptional()
+  @IsBoolean()
+  clearCourier?: boolean;
 }
