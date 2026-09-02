@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsInt, IsNumber, IsString, Min, ValidateNested } from "class-validator";
+import { IsArray, IsInt, IsNumber, IsOptional, IsString, Min, ValidateNested } from "class-validator";
 
 class CloseJokerRegisterPaymentTotalsDto {
   @Type(() => Number)
@@ -52,4 +52,13 @@ export class CloseJokerRegisterDto {
   @ValidateNested({ each: true })
   @Type(() => CloseJokerRegisterRankingItemDto)
   ranking!: CloseJokerRegisterRankingItemDto[];
+
+  // Cuanto de totalVendido vino de mostrador/rol Usuario -- solo lo manda
+  // el cierre de la caja general (PanelScreen), para archivar el
+  // desglose por origen junto con el resto del cierre.
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  mostradorTotal?: number;
 }
