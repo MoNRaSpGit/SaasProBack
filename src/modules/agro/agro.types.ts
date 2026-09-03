@@ -31,6 +31,11 @@ export type AgroWorkspaceData = {
   rainfallRecords: unknown[];
   sanitaryRecords: unknown[];
   monthlyExchangeRates: unknown[];
+  // Historial de ediciones/borrados de movimientos de animales -- ver
+  // AgroAuditEntry en el frontend. Se agrego despues que el resto, por
+  // eso parseWorkspaceJson lo trata como opcional (arrays viejos en la
+  // base no lo tienen todavia).
+  auditLog: unknown[];
 };
 
 export type AgroWorkspaceRecord = {

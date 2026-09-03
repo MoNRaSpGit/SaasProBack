@@ -85,7 +85,8 @@ export class AgroService {
           accountingEntries: dto.accountingEntries,
           rainfallRecords: dto.rainfallRecords,
           sanitaryRecords: dto.sanitaryRecords,
-          monthlyExchangeRates: dto.monthlyExchangeRates
+          monthlyExchangeRates: dto.monthlyExchangeRates,
+          auditLog: dto.auditLog ?? []
         } satisfies AgroWorkspaceData)
       ]
     );
@@ -282,7 +283,8 @@ export class AgroService {
       accountingEntries: Array.isArray(workspace.accountingEntries) ? workspace.accountingEntries : [],
       rainfallRecords: Array.isArray(workspace.rainfallRecords) ? workspace.rainfallRecords : [],
       sanitaryRecords: Array.isArray(workspace.sanitaryRecords) ? workspace.sanitaryRecords : [],
-      monthlyExchangeRates: Array.isArray(workspace.monthlyExchangeRates) ? workspace.monthlyExchangeRates : []
+      monthlyExchangeRates: Array.isArray(workspace.monthlyExchangeRates) ? workspace.monthlyExchangeRates : [],
+      auditLog: Array.isArray(workspace.auditLog) ? workspace.auditLog : []
     };
   }
 
@@ -294,7 +296,8 @@ export class AgroService {
       accountingEntries: dto.accountingEntries,
       rainfallRecords: dto.rainfallRecords,
       sanitaryRecords: dto.sanitaryRecords,
-      monthlyExchangeRates: dto.monthlyExchangeRates
+      monthlyExchangeRates: dto.monthlyExchangeRates,
+      auditLog: dto.auditLog ?? []
     };
   }
 
@@ -347,7 +350,8 @@ export class AgroService {
       workspace.accountingEntries.length +
       workspace.rainfallRecords.length +
       workspace.sanitaryRecords.length +
-      workspace.monthlyExchangeRates.length
+      workspace.monthlyExchangeRates.length +
+      workspace.auditLog.length
     );
   }
 
@@ -362,7 +366,8 @@ export class AgroService {
         accountingEntries: [],
         rainfallRecords: [],
         sanitaryRecords: [],
-        monthlyExchangeRates: []
+        monthlyExchangeRates: [],
+        auditLog: []
       },
       updatedAt: null,
       rowVersion: 0

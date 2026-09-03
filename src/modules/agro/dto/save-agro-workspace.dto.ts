@@ -36,4 +36,9 @@ export class SaveAgroWorkspaceDto {
 
   @IsArray()
   monthlyExchangeRates!: unknown[];
+
+  // Opcional: clientes viejos (build anterior a esto) todavia no lo mandan.
+  @IsOptional()
+  @IsArray()
+  auditLog?: unknown[];
 }

@@ -51,7 +51,8 @@ function tenRecordsWorkspaceJson(): AgroWorkspaceData {
     accountingEntries: [],
     rainfallRecords: [],
     sanitaryRecords: [],
-    monthlyExchangeRates: []
+    monthlyExchangeRates: [],
+    auditLog: []
   };
 }
 
@@ -97,7 +98,8 @@ describe("AgroService", () => {
         accountingEntries: [],
         rainfallRecords: [],
         sanitaryRecords: [],
-        monthlyExchangeRates: []
+        monthlyExchangeRates: [],
+        auditLog: []
       });
       expect(workspace.updatedAt).toBeNull();
       expect(workspace.rowVersion).toBe(0);
@@ -222,7 +224,8 @@ describe("AgroService", () => {
         accountingEntries: [],
         rainfallRecords: [],
         sanitaryRecords: [],
-        monthlyExchangeRates: []
+        monthlyExchangeRates: [],
+        auditLog: []
       };
       const currentRow = {
         id: 1,
@@ -279,7 +282,8 @@ describe("AgroService", () => {
         accountingEntries: [],
         rainfallRecords: [],
         sanitaryRecords: [],
-        monthlyExchangeRates: []
+        monthlyExchangeRates: [],
+        auditLog: []
       };
       const currentRow = {
         id: 1,
