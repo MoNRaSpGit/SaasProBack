@@ -51,6 +51,15 @@ export class CreateJokerOrderDto {
   @MaxLength(200)
   address?: string;
 
+  // Nota general del pedido (ej. "Pedido para las 9:30"), distinta del
+  // detalle por producto (item.detail). Antes solo se usaba para el
+  // ticket impreso al toque y se perdia -- ahora se guarda para que
+  // sobreviva hasta que se acepte un pedido pendiente y se reimprima ahi.
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  note?: string;
+
   @IsOptional()
   @IsIn(["efectivo", "tarjeta", "transferencia", "cuenta"])
   paymentMethod?: "efectivo" | "tarjeta" | "transferencia" | "cuenta";

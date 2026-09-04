@@ -17,6 +17,7 @@ type JokerOrderRow = RowDataPacket & {
   origin_role: string;
   total: string | number;
   address: string;
+  note: string | null;
   payment_method: string;
   customer_name: string | null;
   client_id: number | null;
@@ -40,6 +41,7 @@ const ORDER_COLUMNS = `
   origin_role,
   total,
   address,
+  note,
   payment_method,
   customer_name,
   client_id,
@@ -74,13 +76,14 @@ export class JokerOrdersService {
     // desfasado por horas, rompiendo el filtro "pedido asignado durante
     // el turno actual".
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_orders (display_number, status, origin_role, total, address, payment_method, customer_name, client_id, items, order_date, courier_id, courier_assigned_at, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${dto.courierId ? "CURRENT_TIMESTAMP" : "NULL"}, ?)`,
+      `INSERT INTO saas_joker_orders (display_number, status, origin_role, total, address, note, payment_method, customer_name, client_id, items, order_date, courier_id, courier_assigned_at, delivery_cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${dto.courierId ? "CURRENT_TIMESTAMP" : "NULL"}, ?)`,
       [
         displayNumber,
         isPending ? "pendiente" : "confirmado",
         isPending ? "usuario" : "administrador",
         total,
         dto.address?.trim() || "",
+        dto.note?.trim() || null,
         dto.paymentMethod ?? "efectivo",
         dto.customerName?.trim() || null,
         dto.clientId ?? null,
@@ -518,6 +521,7 @@ export class JokerOrdersService {
       originRole: row.origin_role as JokerOrderOriginRole,
       total: Number(row.total),
       address: row.address,
+      note: row.note,
       paymentMethod: this.toPaymentMethod(row.payment_method),
       customerName: row.customer_name,
       clientId: row.client_id,
