@@ -61,6 +61,8 @@ export type JokerOrder = {
   displayNumber: number | null;
   status: JokerOrderStatus;
   originRole: JokerOrderOriginRole;
+  editedByRole: JokerOrderOriginRole | null;
+  editedAt: string | null;
   total: number;
   address: string;
   note: string | null;

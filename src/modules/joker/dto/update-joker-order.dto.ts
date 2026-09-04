@@ -66,4 +66,13 @@ export class UpdateJokerOrderDto {
   @IsOptional()
   @IsBoolean()
   clearCourier?: boolean;
+
+  // Rol que hizo esta edicion (Administrador o Usuario) -- el cliente
+  // pidio que quede registro de quien toco un pedido, sobre todo ahora que
+  // los dos roles pueden editar desde el Historial de ventas. Se guarda
+  // junto con la fecha/hora de esta edicion; queda solo la ULTIMA, no un
+  // historial completo.
+  @IsOptional()
+  @IsIn(["administrador", "usuario"])
+  editedByRole?: "administrador" | "usuario";
 }

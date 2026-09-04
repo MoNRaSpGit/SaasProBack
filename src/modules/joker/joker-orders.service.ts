@@ -15,6 +15,8 @@ type JokerOrderRow = RowDataPacket & {
   display_number: number | null;
   status: string;
   origin_role: string;
+  edited_by_role: string | null;
+  edited_at: string | Date | null;
   total: string | number;
   address: string;
   note: string | null;
@@ -39,6 +41,8 @@ const ORDER_COLUMNS = `
   display_number,
   status,
   origin_role,
+  edited_by_role,
+  edited_at,
   total,
   address,
   note,
@@ -256,9 +260,27 @@ export class JokerOrdersService {
 
     const nextClientId = switchingIntoCuenta ? dto.clientId! : existing.client_id;
 
+    // edited_by_role/edited_at solo se tocan cuando el llamado trae quien
+    // edito (hoy, el modal de "Editar pedido" desde Panel/Historial) --
+    // el resto de los usos de updateOrder (asignar repartidor, cambiar
+    // forma de pago rapido, eliminar) no lo mandan, y no corresponde
+    // pisar el ultimo editor real por una de esas acciones puntuales.
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ?, client_id = ?, customer_name = ? WHERE id = ?`,
-      [total, JSON.stringify(dto.items), nextOrderDate, nextCourierId, nextDeliveryCost, nextPaymentMethod, nextClientId, nextCustomerName, orderId]
+      `UPDATE saas_joker_orders SET total = ?, items = ?, order_date = ?, courier_id = ?, courier_assigned_at = ${courierAssignedAtClause}, delivery_cost = ?, payment_method = ?, client_id = ?, customer_name = ?${
+        dto.editedByRole ? ", edited_by_role = ?, edited_at = CURRENT_TIMESTAMP" : ""
+      } WHERE id = ?`,
+      [
+        total,
+        JSON.stringify(dto.items),
+        nextOrderDate,
+        nextCourierId,
+        nextDeliveryCost,
+        nextPaymentMethod,
+        nextClientId,
+        nextCustomerName,
+        ...(dto.editedByRole ? [dto.editedByRole] : []),
+        orderId
+      ]
     );
 
     // Tres caminos, sin pisarse entre si:
@@ -519,6 +541,8 @@ export class JokerOrdersService {
       displayNumber: row.display_number,
       status: row.status as JokerOrder["status"],
       originRole: row.origin_role as JokerOrderOriginRole,
+      editedByRole: row.edited_by_role as JokerOrderOriginRole | null,
+      editedAt: row.edited_at ? toIsoString(row.edited_at) : null,
       total: Number(row.total),
       address: row.address,
       note: row.note,
