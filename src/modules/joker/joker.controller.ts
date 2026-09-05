@@ -5,6 +5,7 @@ import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerAdminExpenseDto } from "./dto/create-joker-admin-expense.dto";
 import { CreateJokerChatMessageDto } from "./dto/create-joker-chat-message.dto";
+import { UpdateJokerChatMessageDto } from "./dto/update-joker-chat-message.dto";
 import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerCourierCashMovementDto } from "./dto/create-joker-courier-cash-movement.dto";
@@ -63,6 +64,16 @@ export class JokerController {
   @Post("chat/messages")
   sendChatMessage(@Body() dto: CreateJokerChatMessageDto) {
     return this.chatService.sendMessage(dto);
+  }
+
+  @Patch("chat/messages/:id")
+  updateChatMessage(@Param("id", ParseIntPipe) messageId: number, @Body() dto: UpdateJokerChatMessageDto) {
+    return this.chatService.updateMessage(messageId, dto);
+  }
+
+  @Delete("chat/messages/:id")
+  deleteChatMessage(@Param("id", ParseIntPipe) messageId: number) {
+    return this.chatService.deleteMessage(messageId);
   }
 
   @Get("products")

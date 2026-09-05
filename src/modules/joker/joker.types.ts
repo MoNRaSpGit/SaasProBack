@@ -5,6 +5,8 @@ export type JokerChatMessage = {
   senderRole: JokerChatSenderRole;
   message: string;
   createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
 };
 
 export type JokerProductType = "simple" | "extra";
