@@ -27,7 +27,7 @@ function loadEnvFile() {
 // hoy en el catalogo. Si se agregan sodas nuevas a esas categorias despues,
 // hay que sumarlas aca a mano (no se resuelve por categoria en vivo, para
 // no arrastrar productos nuevos sin revisar).
-const REFRESCOS_CHICOS = [249, 250, 251, 252, 253, 254, 255, 256, 257, 258];
+const REFRESCOS_CHICOS = [249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 292]; // 292 = Pepsi Black (500ml), agregada 01/09/2026
 const REFRESCOS_GRANDES = [228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248];
 
 // Hamburguesa Especial, Hamburguesa Americana BBQ, Hamburguesa 4Q
