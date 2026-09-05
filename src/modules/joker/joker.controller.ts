@@ -3,6 +3,7 @@ import type { Response } from "express";
 import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
+import { CreateJokerAdminExpenseDto } from "./dto/create-joker-admin-expense.dto";
 import { CreateJokerChatMessageDto } from "./dto/create-joker-chat-message.dto";
 import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
@@ -22,6 +23,7 @@ import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { UpdateJokerProductDto } from "./dto/update-joker-product.dto";
 import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
 import { JokerAccountService } from "./joker-account.service";
+import { JokerAdminExpensesService } from "./joker-admin-expenses.service";
 import { JokerAuthService } from "./joker-auth.service";
 import { JokerChatService } from "./joker-chat.service";
 import { JokerCourierService } from "./joker-courier.service";
@@ -39,6 +41,7 @@ export class JokerController {
     private readonly ordersService: JokerOrdersService,
     private readonly courierService: JokerCourierService,
     private readonly accountService: JokerAccountService,
+    private readonly adminExpensesService: JokerAdminExpensesService,
     private readonly reportingService: JokerReportingService,
     private readonly printingService: JokerPrintingService,
     private readonly authService: JokerAuthService,
@@ -200,6 +203,21 @@ export class JokerController {
   @Post("couriers/:id/cash-movements")
   addCourierCashMovement(@Param("id", ParseIntPipe) courierId: number, @Body() dto: CreateJokerCourierCashMovementDto) {
     return this.courierService.addCourierCashMovement(courierId, dto);
+  }
+
+  @Get("admin-expenses")
+  listAdminExpenses() {
+    return this.adminExpensesService.listCurrentPeriodExpenses();
+  }
+
+  @Post("admin-expenses")
+  addAdminExpense(@Body() dto: CreateJokerAdminExpenseDto) {
+    return this.adminExpensesService.addExpense(dto);
+  }
+
+  @Delete("admin-expenses/:id")
+  deleteAdminExpense(@Param("id", ParseIntPipe) expenseId: number) {
+    return this.adminExpensesService.deleteExpense(expenseId);
   }
 
   @Get("clients")

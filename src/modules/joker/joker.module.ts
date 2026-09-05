@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../../shared/database/database.module";
 import { JokerController } from "./joker.controller";
 import { JokerAccountService } from "./joker-account.service";
+import { JokerAdminExpensesService } from "./joker-admin-expenses.service";
 import { JokerAuthService } from "./joker-auth.service";
 import { JokerChatService } from "./joker-chat.service";
 import { JokerCourierService } from "./joker-courier.service";
@@ -20,6 +21,7 @@ import { JokerStockService } from "./joker-stock.service";
     JokerOrdersService,
     JokerCourierService,
     JokerAccountService,
+    JokerAdminExpensesService,
     JokerReportingService,
     JokerPrintingService,
     JokerAuthService,

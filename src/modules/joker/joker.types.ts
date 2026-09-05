@@ -221,6 +221,17 @@ export type JokerProductRecipeLine = {
   quantityPerUnit: number;
 };
 
+// Gasto del Administrador durante el turno (mozzarella, bombones, etc.) --
+// reemplaza al ranking de productos en el Panel de control y en el ticket
+// de cierre de caja, que no se usaba. Se resetea con cada cierre (se
+// filtra por created_at > last_closed_at, igual que los pedidos).
+export type JokerAdminExpense = {
+  id: number;
+  description: string;
+  amount: number;
+  createdAt: string;
+};
+
 export type JokerRegisterState = {
   isOpen: boolean;
   lastClosedAt: string | null;
@@ -240,6 +251,8 @@ export type JokerRegisterClose = {
   ganancia: number;
   paymentTotals: JokerRegisterPaymentTotals;
   ranking: JokerRegisterCloseRankingItem[];
+  adminExpenses?: Array<{ description: string; amount: number }>;
+  adminExpensesTotal?: number;
 };
 
 // ---------- Mes (dia comercial: 5am a 5am, ver STORE_DAY_START_HOUR) ----------

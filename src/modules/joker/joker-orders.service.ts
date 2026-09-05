@@ -425,9 +425,17 @@ export class JokerOrdersService {
     }
 
     await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_joker_register_closes (closed_at, total_vendido, ganancia, payment_totals, ranking, mostrador_total)
-       VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?)`,
-      [dto.totalVendido, dto.ganancia, JSON.stringify(dto.paymentTotals), JSON.stringify(dto.ranking), dto.mostradorTotal ?? null]
+      `INSERT INTO saas_joker_register_closes (closed_at, total_vendido, ganancia, payment_totals, ranking, mostrador_total, admin_expenses, admin_expenses_total)
+       VALUES (CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        dto.totalVendido,
+        dto.ganancia,
+        JSON.stringify(dto.paymentTotals),
+        JSON.stringify(dto.ranking),
+        dto.mostradorTotal ?? null,
+        dto.adminExpenses ? JSON.stringify(dto.adminExpenses) : null,
+        dto.adminExpensesTotal ?? null
+      ]
     );
 
     await this.databaseService.execute<ResultSetHeader>(

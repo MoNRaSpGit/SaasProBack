@@ -33,6 +33,16 @@ class CloseJokerRegisterRankingItemDto {
   quantity!: number;
 }
 
+class CloseJokerRegisterAdminExpenseDto {
+  @IsString()
+  description!: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount!: number;
+}
+
 export class CloseJokerRegisterDto {
   @Type(() => Number)
   @IsNumber()
@@ -61,4 +71,18 @@ export class CloseJokerRegisterDto {
   @IsNumber()
   @Min(0)
   mostradorTotal?: number;
+
+  // Gastos del Administrador del turno (mozzarella, bombones, etc.) --
+  // reemplaza al ranking en el ticket, se archiva igual que este.
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CloseJokerRegisterAdminExpenseDto)
+  adminExpenses?: CloseJokerRegisterAdminExpenseDto[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  adminExpensesTotal?: number;
 }
