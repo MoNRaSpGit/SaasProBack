@@ -4,6 +4,7 @@ import { BulkApplyJokerRecipeDto } from "./dto/bulk-apply-joker-recipe.dto";
 import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerAdminExpenseDto } from "./dto/create-joker-admin-expense.dto";
+import { ListJokerAdminExpensesDto } from "./dto/list-joker-admin-expenses.dto";
 import { CreateJokerChatMessageDto } from "./dto/create-joker-chat-message.dto";
 import { UpdateJokerChatMessageDto } from "./dto/update-joker-chat-message.dto";
 import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
@@ -217,8 +218,8 @@ export class JokerController {
   }
 
   @Get("admin-expenses")
-  listAdminExpenses() {
-    return this.adminExpensesService.listCurrentPeriodExpenses();
+  listAdminExpenses(@Query() query: ListJokerAdminExpensesDto) {
+    return this.adminExpensesService.listExpenses(query);
   }
 
   @Post("admin-expenses")
