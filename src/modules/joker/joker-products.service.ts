@@ -31,6 +31,7 @@ type JokerComboSlotRow = RowDataPacket & {
   slot_label: string;
   slot_quantity: number;
   option_product_ids: string;
+  option_category: string | null;
   sort_order: number;
 };
 
@@ -71,19 +72,38 @@ export class JokerProductsService {
     );
 
     const slotRows = await this.databaseService.query<JokerComboSlotRow[]>(
-      `SELECT id, combo_product_id, slot_label, slot_quantity, option_product_ids, sort_order
+      `SELECT id, combo_product_id, slot_label, slot_quantity, option_product_ids, option_category, sort_order
        FROM saas_joker_combo_slots
        ORDER BY combo_product_id ASC, sort_order ASC`
     );
 
+    // Productos publicados por categoria -- para resolver EN VIVO las
+    // opciones de los slots que tienen option_category (ver mas abajo),
+    // en vez de la lista fija de option_product_ids de siempre. Asi, un
+    // refresco chico nuevo entra solo como opcion del combo apenas se
+    // publica, sin tener que tocar nada a mano (ver seed-joker-combo-
+    // slots.js). Solo "published": un borrador no deberia poder elegirse
+    // todavia.
+    const publishedIdsByCategory = new Map<string, number[]>();
+    for (const row of rows) {
+      if (row.status !== "published") continue;
+      const list = publishedIdsByCategory.get(row.category) ?? [];
+      list.push(row.id);
+      publishedIdsByCategory.set(row.category, list);
+    }
+
     const slotsByComboId = new Map<number, JokerComboSlot[]>();
     for (const row of slotRows) {
       const list = slotsByComboId.get(row.combo_product_id) ?? [];
+      const optionProductIds = row.option_category
+        ? publishedIdsByCategory.get(row.option_category) ?? []
+        : typeof row.option_product_ids === "string"
+          ? JSON.parse(row.option_product_ids)
+          : row.option_product_ids;
       list.push({
         label: row.slot_label,
         quantity: row.slot_quantity,
-        optionProductIds:
-          typeof row.option_product_ids === "string" ? JSON.parse(row.option_product_ids) : row.option_product_ids
+        optionProductIds
       });
       slotsByComboId.set(row.combo_product_id, list);
     }
