@@ -8,6 +8,7 @@ import { UpdateJokerOrderDto } from "./dto/update-joker-order.dto";
 import { buildStoreDayRangeUtc, getStoreDateLabel, toIsoString } from "./joker.dateUtils";
 import { JokerStockService } from "./joker-stock.service";
 import { JokerAccountEntryRow } from "./joker-account.service";
+import { logAccountEntryAudit } from "./joker-account-audit.util";
 import { JokerOrder, JokerOrderOriginRole, JokerPaymentMethod, JokerRegisterState } from "./joker.types";
 
 type JokerOrderRow = RowDataPacket & {
@@ -294,16 +295,47 @@ export class JokerOrdersService {
     //   siendo "a cuenta"), se sincroniza el movimiento existente (si hay)
     //   con los items/total nuevos.
     if (switchingOutOfCuenta) {
+      const previousEntryRows = await this.databaseService.query<JokerAccountEntryRow[]>(
+        `SELECT id, client_id, order_id, total, items, created_at FROM saas_joker_account_entries WHERE order_id = ? LIMIT 1`,
+        [orderId]
+      );
+      const previousEntry = previousEntryRows[0];
+
       await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_account_entries WHERE order_id = ?`, [
         orderId
       ]);
+
+      if (previousEntry) {
+        await logAccountEntryAudit(this.databaseService, {
+          clientId: previousEntry.client_id,
+          entryId: previousEntry.id,
+          orderId,
+          action: "eliminado",
+          reason: "metodo_pago_cambiado",
+          actorRole: dto.editedByRole ?? null,
+          previousTotal: Number(previousEntry.total),
+          previousItems: typeof previousEntry.items === "string" ? JSON.parse(previousEntry.items) : previousEntry.items
+        });
+      }
     } else if (switchingIntoCuenta && dto.items.length) {
-      await this.databaseService.execute<ResultSetHeader>(
+      const groupedItems = this.groupItemsForAccountEntry(dto.items);
+      const insertResult = await this.databaseService.execute<ResultSetHeader>(
         `INSERT INTO saas_joker_account_entries (client_id, order_id, total, items) VALUES (?, ?, ?, ?)`,
-        [nextClientId, orderId, total, JSON.stringify(this.groupItemsForAccountEntry(dto.items))]
+        [nextClientId, orderId, total, JSON.stringify(groupedItems)]
       );
+
+      await logAccountEntryAudit(this.databaseService, {
+        clientId: nextClientId!,
+        entryId: insertResult.insertId,
+        orderId,
+        action: "creado",
+        reason: "metodo_pago_cambiado",
+        actorRole: dto.editedByRole ?? null,
+        newTotal: total,
+        newItems: groupedItems
+      });
     } else if (!switchingIntoCuenta) {
-      await this.syncAccountEntryForOrder(orderId, dto.items);
+      await this.syncAccountEntryForOrder(orderId, dto.items, dto.editedByRole ?? null);
     }
 
     const updatedRows = await this.databaseService.query<JokerOrderRow[]>(
@@ -322,7 +354,11 @@ export class JokerOrdersService {
   // directo (en vez de inyectar JokerAccountService) porque es una
   // actualizacion mecanica ligada 1 a 1 con la edicion del pedido, no logica
   // de cuenta corriente en si.
-  private async syncAccountEntryForOrder(orderId: number, items: CreateJokerOrderItemDto[]): Promise<void> {
+  private async syncAccountEntryForOrder(
+    orderId: number,
+    items: CreateJokerOrderItemDto[],
+    actorRole: string | null = null
+  ): Promise<void> {
     const entryRows = await this.databaseService.query<JokerAccountEntryRow[]>(
       `SELECT id, client_id, order_id, total, items, created_at FROM saas_joker_account_entries WHERE order_id = ? LIMIT 1`,
       [orderId]
@@ -330,17 +366,44 @@ export class JokerOrdersService {
     const entry = entryRows[0];
     if (!entry) return;
 
+    const previousTotal = Number(entry.total);
+    const previousItems = typeof entry.items === "string" ? JSON.parse(entry.items) : entry.items;
+
     if (!items.length) {
       await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_joker_account_entries WHERE id = ?`, [entry.id]);
+      await logAccountEntryAudit(this.databaseService, {
+        clientId: entry.client_id,
+        entryId: entry.id,
+        orderId,
+        action: "eliminado",
+        reason: "pedido_cancelado",
+        actorRole,
+        previousTotal,
+        previousItems
+      });
       return;
     }
 
     const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    const groupedItems = this.groupItemsForAccountEntry(items);
 
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_joker_account_entries SET total = ?, items = ? WHERE id = ?`,
-      [total, JSON.stringify(this.groupItemsForAccountEntry(items)), entry.id]
+      [total, JSON.stringify(groupedItems), entry.id]
     );
+
+    await logAccountEntryAudit(this.databaseService, {
+      clientId: entry.client_id,
+      entryId: entry.id,
+      orderId,
+      action: "editado",
+      reason: "pedido_editado",
+      actorRole,
+      previousTotal,
+      previousItems,
+      newTotal: total,
+      newItems: groupedItems
+    });
   }
 
   // Un movimiento de cuenta corriente guarda los items agrupados por

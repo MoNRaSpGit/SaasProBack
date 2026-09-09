@@ -5,6 +5,7 @@ import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto
 import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { allocatePaymentFifo } from "./joker-account-payment.logic";
+import { logAccountEntryAudit } from "./joker-account-audit.util";
 import { toIsoString } from "./joker.dateUtils";
 import { JokerAccountEntry, JokerAccountPayment, JokerAccountPaymentCoveredEntry, JokerAccountSettlement, JokerClient } from "./joker.types";
 
@@ -144,6 +145,16 @@ export class JokerAccountService implements OnModuleInit {
        WHERE e.id = ? LIMIT 1`,
       [result.insertId]
     );
+
+    await logAccountEntryAudit(this.databaseService, {
+      clientId: dto.clientId,
+      entryId: result.insertId,
+      orderId: dto.orderId ?? null,
+      action: "creado",
+      reason: "pedido_a_cuenta",
+      newTotal: dto.total,
+      newItems: dto.items
+    });
 
     return { item: this.mapAccountEntry(rows[0]) };
   }
