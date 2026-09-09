@@ -36,8 +36,14 @@ const SLOTS = [
   // aca cuando se agrega uno nuevo).
   { comboProductId: 72, slotLabel: "Hamburguesa", slotQuantity: 1, optionProductIds: COMBO_2_BURGERS, sortOrder: 0 },
   { comboProductId: 72, slotLabel: "Refresco", slotQuantity: 1, optionCategory: "Refrescos Chicos", sortOrder: 1 },
-  // Combo Nº4 (id 74): hamburguesa doble carne a eleccion + refresco chico
-  { comboProductId: 74, slotLabel: "Hamburguesa (doble carne)", slotQuantity: 1, optionProductIds: COMBO_4_BURGERS, sortOrder: 0 },
+  // Combo Nº4 (id 74): hamburguesa doble carne a eleccion + refresco chico.
+  // slotLabel es solo "Hamburguesa" (no "Hamburguesa (doble carne)") a
+  // proposito: el propio nombre de cada opcion (Hamburguesa Especial Doble
+  // Carne, etc.) ya dice que es doble carne, asi que si el label fuera mas
+  // largo que "Hamburguesa" el nombre no "empieza igual" y el detalle del
+  // pedido queda con el prefijo repetido ("Hamburguesa (doble carne):
+  // Hamburguesa 4Q 2.0") -- ver CustomizeProductModal#nameStartsWithSlot.
+  { comboProductId: 74, slotLabel: "Hamburguesa", slotQuantity: 1, optionProductIds: COMBO_4_BURGERS, sortOrder: 0 },
   { comboProductId: 74, slotLabel: "Refresco", slotQuantity: 1, optionCategory: "Refrescos Chicos", sortOrder: 1 },
   // Combo Nº7 (id 77): las 3 hamburguesas son siempre clasicas (receta fija,
   // ver mas abajo), solo el refresco grande queda a eleccion (misma logica
