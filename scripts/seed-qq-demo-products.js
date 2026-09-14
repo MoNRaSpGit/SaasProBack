@@ -28,7 +28,11 @@ const PRODUCTS = [
   { name: "Paramount+", category: "paramount+", description: "Perfil individual · 1 mes", price: 119, currency: "UYU" },
   { name: "Apple TV+", category: "apple tv+", description: "1 pantalla · 1 mes", price: 149, currency: "UYU" },
   { name: "Star+", category: "star+", description: "Perfil individual · 1 mes", price: 149, currency: "UYU" },
-  { name: "Crunchyroll", category: "crunchyroll", description: "Cuenta individual · 1 mes", price: 129, currency: "UYU" }
+  { name: "Crunchyroll", category: "crunchyroll", description: "Cuenta individual · 1 mes", price: 129, currency: "UYU" },
+  { name: "Xbox Game Pass Ultimate", category: "xbox game pass", description: "1 mes · catálogo completo", price: 249, currency: "UYU" },
+  { name: "PlayStation Plus", category: "playstation plus", description: "Plan Extra · 1 mes", price: 279, currency: "UYU" },
+  { name: "Steam Wallet", category: "steam", description: "Carga U$S 20", price: 899, currency: "UYU" },
+  { name: "Nintendo Switch Online", category: "nintendo online", description: "Membresía individual · 12 meses", price: 599, currency: "UYU" }
 ];
 
 async function main() {
