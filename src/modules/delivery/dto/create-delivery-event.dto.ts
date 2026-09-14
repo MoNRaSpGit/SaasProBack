@@ -16,11 +16,10 @@ export class CreateDeliveryEventDto {
   @MaxLength(500)
   notes?: string;
 
-  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  slots?: number;
+  slots!: number;
 
   @Type(() => Number)
   @IsInt()

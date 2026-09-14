@@ -50,6 +50,25 @@ const SIGNUP_DATE_COLUMNS = `
   DATE_FORMAT(s.created_at, '%Y-%m-%dT%H:%i:%S') AS created_at
 `;
 
+// Misma idea que joker.dateUtils.ts: la hora "de pared" de Montevideo via
+// Intl, para comparar contra starts_at (que se guarda tal cual la tipeo el
+// administrador, sin conversion de zona) sin arrastrar la timezone del
+// proceso de Node.
+function getMontevideoNowIso(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Montevideo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}`;
+}
+
 @Injectable()
 export class DeliveryService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -168,6 +187,9 @@ export class DeliveryService {
     }
     if (event.status !== "abierto") {
       throw new BadRequestException("Este evento ya no esta abierto para anotarse");
+    }
+    if (event.starts_at < getMontevideoNowIso()) {
+      throw new BadRequestException("Este evento ya paso, no te podes anotar");
     }
 
     if (event.slots !== null) {
