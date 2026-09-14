@@ -10,9 +10,13 @@ import {
   Patch,
   Post,
   Query,
+  Req,
+  Res,
   UnauthorizedException
 } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { CreateQqProductDto } from "./dto/create-qq-product.dto";
+import { UploadQqProductImageDto } from "./dto/upload-qq-product-image.dto";
 import { UpdateQqProductDto } from "./dto/update-qq-product.dto";
 import { QqAuthService } from "./qq-auth.service";
 import { QqProductsService } from "./qq-products.service";
@@ -56,6 +60,40 @@ export class QqController {
   async deleteProduct(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
     await this.requireAdmin(authorization);
     return this.productsService.deleteProduct(id);
+  }
+
+  // Sirve la imagen en binario (no en el JSON del producto) con cache
+  // fuerte via ETag -- mismo criterio que frontend-piloto.
+  @Get("products/:id/image")
+  async getProductImage(@Param("id", ParseIntPipe) productId: number, @Req() req: Request, @Res() res: Response) {
+    const image = await this.productsService.getProductImage(productId);
+    if (!image) {
+      res.status(404).end();
+      return;
+    }
+
+    const etag = `"${image.sourceHash}"`;
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    res.set({
+      "Content-Type": image.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      ETag: etag
+    });
+    res.send(image.buffer);
+  }
+
+  @Post("products/:id/image")
+  async uploadProductImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UploadQqProductImageDto
+  ) {
+    await this.requireAdmin(authorization);
+    return this.productsService.setProductImage(id, dto.dataUri);
   }
 
   private async requireAdmin(authorization: string | undefined) {

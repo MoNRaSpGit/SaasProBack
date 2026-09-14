@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateQqProductDto } from "./dto/create-qq-product.dto";
@@ -12,9 +13,16 @@ type QqProductRow = RowDataPacket & {
   price: string | number;
   currency: string;
   image_url: string | null;
+  has_image: number;
   category: string | null;
   status: "published" | "draft";
   created_at: string;
+};
+
+type QqProductImageRow = RowDataPacket & {
+  image_data: Buffer;
+  mime_type: string;
+  source_hash: string;
 };
 
 // created_at se trae siempre con DATE_FORMAT (nunca la columna DATETIME
@@ -23,9 +31,18 @@ type QqProductRow = RowDataPacket & {
 // mismo criterio ya usado en delivery.service.ts.
 const PRODUCT_COLUMNS = `
   id, name, description, price, currency,
-  image_url, category, status,
+  image_url, has_image, category, status,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%S') AS created_at
 `;
+
+// data:<mime>;base64,<payload> -- lo que manda el frontend despues de
+// redimensionar/comprimir la imagen con canvas (ver
+// ProductFormModal#resizeImageFile). Mismo criterio que frontend-piloto.
+function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(value.trim());
+  if (!match) return null;
+  return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
+}
 
 @Injectable()
 export class QqProductsService {
@@ -103,6 +120,49 @@ export class QqProductsService {
     return { ok: true };
   }
 
+  // Imagen del producto: se guarda en saas_qq_product_images (binario, no
+  // base64) y se sirve por separado via GET /qq/products/:id/image, con
+  // cache headers (ver qq.controller.ts). Devuelve null si el producto no
+  // tiene imagen o el hash no coincide con el guardado (invalida cache
+  // del lado del cliente).
+  async getProductImage(productId: number): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
+    const rows = await this.databaseService.query<QqProductImageRow[]>(
+      `SELECT image_data, mime_type, source_hash FROM saas_qq_product_images WHERE product_id = ? LIMIT 1`,
+      [productId]
+    );
+    if (!rows[0]) return null;
+    return { buffer: rows[0].image_data, mimeType: rows[0].mime_type, sourceHash: rows[0].source_hash };
+  }
+
+  // Acepta un data URI base64 -- el frontend ya la redimensiono/comprimio
+  // ANTES de mandarla (canvas del lado del cliente), asi que lo que llega
+  // aca ya es "prudente" en tamaño, esto no hace ningun procesamiento.
+  async setProductImage(productId: number, dataUri: string): Promise<{ item: QqProduct }> {
+    const parsed = parseImageDataUri(dataUri);
+    if (!parsed) {
+      throw new BadRequestException("La imagen debe ser un data URI base64 válido.");
+    }
+
+    const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_qq_product_images (product_id, image_data, mime_type, source_hash, byte_size)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         image_data = VALUES(image_data),
+         mime_type = VALUES(mime_type),
+         source_hash = VALUES(source_hash),
+         byte_size = VALUES(byte_size)`,
+      [productId, parsed.buffer, parsed.mimeType, sourceHash, parsed.buffer.length]
+    );
+
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_qq_products SET has_image = 1 WHERE id = ?`, [
+      productId
+    ]);
+
+    return this.getProductOrThrow(productId);
+  }
+
   private async getProductOrThrow(productId: number): Promise<{ item: QqProduct }> {
     const rows = await this.databaseService.query<QqProductRow[]>(
       `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE id = ? LIMIT 1`,
@@ -123,6 +183,7 @@ export class QqProductsService {
       price: Number(row.price),
       currency: row.currency,
       imageUrl: row.image_url,
+      hasImage: Boolean(row.has_image),
       category: row.category,
       status: row.status,
       createdAt: row.created_at
