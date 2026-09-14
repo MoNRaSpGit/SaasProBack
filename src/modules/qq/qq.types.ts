@@ -1,3 +1,12 @@
+export type QqUserRole = "administrador" | "usuario";
+
+export type QqUser = {
+  id: number;
+  email: string;
+  fullName: string | null;
+  role: QqUserRole;
+};
+
 export type QqProductStatus = "published" | "draft";
 
 export type QqProduct = {
