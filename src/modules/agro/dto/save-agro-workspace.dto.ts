@@ -41,4 +41,10 @@ export class SaveAgroWorkspaceDto {
   @IsOptional()
   @IsArray()
   auditLog?: unknown[];
+
+  // Idem auditLog, pero para Contabilidad (ver AgroAccountingAuditEntry en
+  // el frontend) -- opcional por la misma razon.
+  @IsOptional()
+  @IsArray()
+  accountingAuditLog?: unknown[];
 }

@@ -36,6 +36,9 @@ export type AgroWorkspaceData = {
   // eso parseWorkspaceJson lo trata como opcional (arrays viejos en la
   // base no lo tienen todavia).
   auditLog: unknown[];
+  // Idem auditLog, pero para Contabilidad -- ver AgroAccountingAuditEntry
+  // en el frontend. Mismo criterio: opcional/con default [].
+  accountingAuditLog: unknown[];
 };
 
 export type AgroWorkspaceRecord = {
