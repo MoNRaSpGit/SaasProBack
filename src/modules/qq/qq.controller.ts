@@ -15,12 +15,15 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { CreateQqClientDto } from "./dto/create-qq-client.dto";
 import { CreateQqProductDto } from "./dto/create-qq-product.dto";
 import { UploadQqCarouselImageDto } from "./dto/upload-qq-carousel-image.dto";
 import { UploadQqProductImageDto } from "./dto/upload-qq-product-image.dto";
+import { UpdateQqClientDto } from "./dto/update-qq-client.dto";
 import { UpdateQqProductDto } from "./dto/update-qq-product.dto";
 import { QqAuthService } from "./qq-auth.service";
 import { QqCarouselService } from "./qq-carousel.service";
+import { QqClientsService } from "./qq-clients.service";
 import { QqProductsService } from "./qq-products.service";
 
 function extractBearerToken(authorization: string | undefined): string | undefined {
@@ -33,7 +36,8 @@ export class QqController {
   constructor(
     private readonly productsService: QqProductsService,
     private readonly authService: QqAuthService,
-    private readonly carouselService: QqCarouselService
+    private readonly carouselService: QqCarouselService,
+    private readonly clientsService: QqClientsService
   ) {}
 
   // Ver el catalogo es publico -- solo cargar/editar/borrar productos
@@ -140,6 +144,37 @@ export class QqController {
       ETag: etag
     });
     res.send(image.buffer);
+  }
+
+  // Cuenta corriente de clientes (15/09/2026) -- a diferencia de
+  // productos/carrusel, esto es SOLO para el admin (email/telefono de
+  // clientes reales, nada publico aca).
+  @Get("clients")
+  async listClients(@Headers("authorization") authorization: string | undefined) {
+    await this.requireAdmin(authorization);
+    return this.clientsService.listClients();
+  }
+
+  @Post("clients")
+  async createClient(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateQqClientDto) {
+    await this.requireAdmin(authorization);
+    return this.clientsService.createClient(dto);
+  }
+
+  @Patch("clients/:id")
+  async updateClient(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateQqClientDto
+  ) {
+    await this.requireAdmin(authorization);
+    return this.clientsService.updateClient(id, dto);
+  }
+
+  @Delete("clients/:id")
+  async deleteClient(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    await this.requireAdmin(authorization);
+    return this.clientsService.deleteClient(id);
   }
 
   private async requireAdmin(authorization: string | undefined) {

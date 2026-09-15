@@ -24,3 +24,12 @@ export type QqProduct = {
   status: QqProductStatus;
   createdAt: string;
 };
+
+export type QqClient = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  dueDate: string;
+  createdAt: string;
+};
