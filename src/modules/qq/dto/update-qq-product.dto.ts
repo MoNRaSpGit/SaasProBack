@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateIf } from "class-validator";
 
 export class UpdateQqProductDto {
   @IsOptional()
@@ -12,11 +12,20 @@ export class UpdateQqProductDto {
   @MaxLength(500)
   description?: string;
 
-  @IsOptional()
+  // null explicito = "borrar este precio" (el producto se queda con
+  // uno solo) -- distinto de undefined, que significa "no tocar este
+  // campo". Igual que en accountPrice mas abajo.
+  @ValidateIf((dto) => dto.accountPrice !== undefined && dto.accountPrice !== null)
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  price?: number;
+  accountPrice?: number | null;
+
+  @ValidateIf((dto) => dto.profilePrice !== undefined && dto.profilePrice !== null)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  profilePrice?: number | null;
 
   @IsOptional()
   @IsString()

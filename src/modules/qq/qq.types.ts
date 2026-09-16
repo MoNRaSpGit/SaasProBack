@@ -13,7 +13,12 @@ export type QqProduct = {
   id: number;
   name: string;
   description: string | null;
-  price: number;
+  // Dos precios independientes (16/09/2026) -- "hay tarjetas que llevan
+  // los dos, otras que no". Al menos uno de los dos siempre esta
+  // cargado (se valida en el DTO/service), pero nunca los dos a la vez
+  // son obligatorios.
+  accountPrice: number | null;
+  profilePrice: number | null;
   currency: string;
   imageUrl: string | null;
   // true si el admin subio una foto (se sirve por GET

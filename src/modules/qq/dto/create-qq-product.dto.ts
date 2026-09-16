@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Min, ValidateIf } from "class-validator";
 
 export class CreateQqProductDto {
   @IsString()
@@ -11,10 +11,21 @@ export class CreateQqProductDto {
   @MaxLength(500)
   description?: string;
 
+  // Los dos precios son opcionales CADA UNO, pero no los dos a la vez --
+  // "hay tarjetas que llevan los dos, otras que no" (16/09/2026). La
+  // validacion de "al menos uno" vive en el service (ahi es mas facil
+  // dar un mensaje de error claro que con un decorador cruzado).
+  @ValidateIf((dto) => dto.accountPrice !== undefined)
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  price!: number;
+  accountPrice?: number;
+
+  @ValidateIf((dto) => dto.profilePrice !== undefined)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  profilePrice?: number;
 
   @IsOptional()
   @IsString()
