@@ -17,6 +17,7 @@ import {
 import type { Request, Response } from "express";
 import { CreateQqClientDto } from "./dto/create-qq-client.dto";
 import { CreateQqProductDto } from "./dto/create-qq-product.dto";
+import { ReorderQqProductDto } from "./dto/reorder-qq-product.dto";
 import { UploadQqCarouselImageDto } from "./dto/upload-qq-carousel-image.dto";
 import { UploadQqProductImageDto } from "./dto/upload-qq-product-image.dto";
 import { UpdateQqClientDto } from "./dto/update-qq-client.dto";
@@ -67,6 +68,19 @@ export class QqController {
   async deleteProduct(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
     await this.requireAdmin(authorization);
     return this.productsService.deleteProduct(id);
+  }
+
+  // Orden manual del catalogo (16/09/2026): mover un producto a un
+  // puesto swapea con el que ya estaba ahi (ver
+  // qq-products.service.ts#reorderProduct).
+  @Patch("products/:id/position")
+  async reorderProduct(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: ReorderQqProductDto
+  ) {
+    await this.requireAdmin(authorization);
+    return this.productsService.reorderProduct(id, dto.position);
   }
 
   // Sirve la imagen en binario (no en el JSON del producto) con cache

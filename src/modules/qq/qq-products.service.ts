@@ -17,6 +17,7 @@ type QqProductRow = RowDataPacket & {
   has_image: number;
   category: string | null;
   status: "published" | "draft";
+  sort_order: number;
   created_at: string;
 };
 
@@ -32,7 +33,7 @@ type QqProductImageRow = RowDataPacket & {
 // mismo criterio ya usado en delivery.service.ts.
 const PRODUCT_COLUMNS = `
   id, name, description, account_price, profile_price, currency,
-  image_url, has_image, category, status,
+  image_url, has_image, category, status, sort_order,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%S') AS created_at
 `;
 
@@ -51,16 +52,19 @@ export class QqProductsService {
 
   // Buscador "estilo Netflix": si no viene texto, trae todo lo publicado;
   // si viene, filtra por nombre (contiene, sin distinguir mayusculas).
+  // Ordenado por sort_order (16/09/2026, orden manual del admin), no por
+  // fecha -- el catalogo publico respeta el orden que se ve en
+  // "Productos".
   async listProducts(search?: string): Promise<{ items: QqProduct[] }> {
     const trimmedSearch = search?.trim();
 
     const rows = trimmedSearch
       ? await this.databaseService.query<QqProductRow[]>(
-          `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE status = 'published' AND name LIKE ? ORDER BY created_at DESC LIMIT 200`,
+          `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE status = 'published' AND name LIKE ? ORDER BY sort_order ASC LIMIT 200`,
           [`%${trimmedSearch}%`]
         )
       : await this.databaseService.query<QqProductRow[]>(
-          `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE status = 'published' ORDER BY created_at DESC LIMIT 200`
+          `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE status = 'published' ORDER BY sort_order ASC LIMIT 200`
         );
 
     return { items: rows.map((row) => this.mapProduct(row)) };
@@ -71,9 +75,14 @@ export class QqProductsService {
       throw new BadRequestException("Ingresá al menos un precio (de cuenta o de perfil).");
     }
 
+    // Se agrega siempre al final (mismo criterio que el carrusel).
+    const [{ nextOrder }] = await this.databaseService.query<Array<RowDataPacket & { nextOrder: number }>>(
+      `SELECT COALESCE(MAX(sort_order), 0) + 1 AS nextOrder FROM saas_qq_products`
+    );
+
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_qq_products (name, description, account_price, profile_price, currency, image_url, category, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_qq_products (name, description, account_price, profile_price, currency, image_url, category, status, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dto.name.trim(),
         dto.description?.trim() || null,
@@ -82,11 +91,50 @@ export class QqProductsService {
         dto.currency ?? "UYU",
         dto.imageUrl?.trim() || null,
         dto.category?.trim() || null,
-        dto.status ?? "published"
+        dto.status ?? "published",
+        nextOrder
       ]
     );
 
     return this.getProductOrThrow(result.insertId);
+  }
+
+  // Reordenar (16/09/2026): "si la cambio al puesto numero 1, la 1
+  // pasaria al puesto de la que cambie" -- swap simple entre la tarjeta
+  // movida y la que ya estaba ocupando ese puesto (si hay alguna).
+  async reorderProduct(productId: number, newPosition: number): Promise<{ item: QqProduct }> {
+    const rows = await this.databaseService.query<QqProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE id = ? LIMIT 1`,
+      [productId]
+    );
+    const product = rows[0];
+    if (!product) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+
+    if (newPosition === product.sort_order) {
+      return { item: this.mapProduct(product) };
+    }
+
+    const swapRows = await this.databaseService.query<QqProductRow[]>(
+      `SELECT id FROM saas_qq_products WHERE sort_order = ? AND id != ? LIMIT 1`,
+      [newPosition, productId]
+    );
+    const swapWith = swapRows[0];
+
+    if (swapWith) {
+      await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_qq_products SET sort_order = ? WHERE id = ?`, [
+        product.sort_order,
+        swapWith.id
+      ]);
+    }
+
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_qq_products SET sort_order = ? WHERE id = ?`, [
+      newPosition,
+      productId
+    ]);
+
+    return this.getProductOrThrow(productId);
   }
 
   async updateProduct(productId: number, dto: UpdateQqProductDto): Promise<{ item: QqProduct }> {
@@ -200,6 +248,7 @@ export class QqProductsService {
       hasImage: Boolean(row.has_image),
       category: row.category,
       status: row.status,
+      position: row.sort_order,
       createdAt: row.created_at
     };
   }
