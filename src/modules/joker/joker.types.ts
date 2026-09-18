@@ -1,14 +1,3 @@
-export type JokerChatSenderRole = "administrador" | "usuario";
-
-export type JokerChatMessage = {
-  id: number;
-  senderRole: JokerChatSenderRole;
-  message: string;
-  createdAt: string;
-  editedAt: string | null;
-  deletedAt: string | null;
-};
-
 export type JokerProductType = "simple" | "extra";
 export type JokerProductStatus = "draft" | "published";
 export type JokerPricingUnit = "unidad" | "kg";

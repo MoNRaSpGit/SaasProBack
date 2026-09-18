@@ -5,8 +5,6 @@ import { CloseJokerRegisterDto } from "./dto/close-joker-register.dto";
 import { CreateJokerAccountEntryDto } from "./dto/create-joker-account-entry.dto";
 import { CreateJokerAdminExpenseDto } from "./dto/create-joker-admin-expense.dto";
 import { ListJokerAdminExpensesDto } from "./dto/list-joker-admin-expenses.dto";
-import { CreateJokerChatMessageDto } from "./dto/create-joker-chat-message.dto";
-import { UpdateJokerChatMessageDto } from "./dto/update-joker-chat-message.dto";
 import { CreateJokerAccountPaymentDto } from "./dto/create-joker-account-payment.dto";
 import { CreateJokerClientDto } from "./dto/create-joker-client.dto";
 import { CreateJokerCourierCashMovementDto } from "./dto/create-joker-courier-cash-movement.dto";
@@ -27,7 +25,6 @@ import { UpdateJokerStockItemDto } from "./dto/update-joker-stock-item.dto";
 import { JokerAccountService } from "./joker-account.service";
 import { JokerAdminExpensesService } from "./joker-admin-expenses.service";
 import { JokerAuthService } from "./joker-auth.service";
-import { JokerChatService } from "./joker-chat.service";
 import { JokerCourierService } from "./joker-courier.service";
 import { JokerOrdersService } from "./joker-orders.service";
 import { JokerPrintingService } from "./joker-printing.service";
@@ -46,35 +43,12 @@ export class JokerController {
     private readonly adminExpensesService: JokerAdminExpensesService,
     private readonly reportingService: JokerReportingService,
     private readonly printingService: JokerPrintingService,
-    private readonly authService: JokerAuthService,
-    private readonly chatService: JokerChatService
+    private readonly authService: JokerAuthService
   ) {}
 
   @Post("auth/login")
   login(@Body() dto: LoginJokerDto) {
     return this.authService.login(dto);
-  }
-
-  // Chat interno Administrador <-> Usuario: un solo canal compartido, sin
-  // destinatario ni sala (ver JokerChatService).
-  @Get("chat/messages")
-  listChatMessages() {
-    return this.chatService.listMessages();
-  }
-
-  @Post("chat/messages")
-  sendChatMessage(@Body() dto: CreateJokerChatMessageDto) {
-    return this.chatService.sendMessage(dto);
-  }
-
-  @Patch("chat/messages/:id")
-  updateChatMessage(@Param("id", ParseIntPipe) messageId: number, @Body() dto: UpdateJokerChatMessageDto) {
-    return this.chatService.updateMessage(messageId, dto);
-  }
-
-  @Delete("chat/messages/:id")
-  deleteChatMessage(@Param("id", ParseIntPipe) messageId: number) {
-    return this.chatService.deleteMessage(messageId);
   }
 
   @Get("products")
