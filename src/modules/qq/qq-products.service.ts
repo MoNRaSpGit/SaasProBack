@@ -224,7 +224,9 @@ export class QqProductsService {
     return this.getProductOrThrow(productId);
   }
 
-  private async getProductOrThrow(productId: number): Promise<{ item: QqProduct }> {
+  // Publico (no private) para que el controller pueda tomar el "antes" de
+  // una edicion/borrado y dejarlo en el registro de auditoria.
+  async getProductOrThrow(productId: number): Promise<{ item: QqProduct }> {
     const rows = await this.databaseService.query<QqProductRow[]>(
       `SELECT ${PRODUCT_COLUMNS} FROM saas_qq_products WHERE id = ? LIMIT 1`,
       [productId]

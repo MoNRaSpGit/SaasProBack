@@ -80,7 +80,9 @@ export class QqClientsService {
     return { ok: true };
   }
 
-  private async getClientOrThrow(clientId: number): Promise<{ item: QqClient }> {
+  // Publico (no private): mismo motivo que getProductOrThrow -- el
+  // controller necesita el "antes" para la auditoria.
+  async getClientOrThrow(clientId: number): Promise<{ item: QqClient }> {
     const rows = await this.databaseService.query<QqClientRow[]>(
       `SELECT ${CLIENT_COLUMNS} FROM saas_qq_clients WHERE id = ? LIMIT 1`,
       [clientId]
