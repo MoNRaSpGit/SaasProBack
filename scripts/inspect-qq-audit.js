@@ -39,7 +39,8 @@ const ACTION_LABELS = {
   upload_image: "FOTO",
   register: "REGISTRO",
   login: "LOGIN",
-  login_failed: "LOGIN FALLIDO"
+  login_failed: "LOGIN FALLIDO",
+  checkout_whatsapp: "COMPRA POR WHATSAPP"
 };
 
 const ENTITY_LABELS = {
@@ -47,7 +48,8 @@ const ENTITY_LABELS = {
   product_image: "Foto de producto",
   carousel_image: "Carrusel",
   client: "Cliente",
-  user: "Usuario"
+  user: "Usuario",
+  cart: "Carrito"
 };
 
 const FIELD_LABELS = {
@@ -94,6 +96,10 @@ function summarizeDetails(row) {
       .join("; ");
   }
   if (d.position) return `posicion: ${d.position[0]} -> ${d.position[1]}`;
+  if (Array.isArray(d.items)) {
+    // Compra por WhatsApp: detalle del carrito.
+    return d.items.map((item) => `${item.quantity}x ${item.name} (${item.variant}, $${item.unitPrice}/mes)`).join("; ");
+  }
   const parts = [];
   if (d.category) parts.push(`categoria ${d.category}`);
   if (d.accountPrice != null) parts.push(`cuenta $${d.accountPrice}`);
@@ -162,6 +168,29 @@ async function main() {
       `${formatWhen(row.occurred_at)} | ${ACTION_LABELS[row.action] || row.action} | ${ENTITY_LABELS[row.entity_type] || row.entity_type}` +
         `${row.entity_label ? ` "${row.entity_label}"` : ""}${row.entity_id ? ` [#${row.entity_id}]` : ""} | por ${who}${detail ? `\n    ${detail}` : ""}`
     );
+  }
+
+  // Resumen de intenciones de compra (toques en "Comprar por WhatsApp"):
+  // OJO, no son ventas confirmadas -- el pedido se cierra por WhatsApp,
+  // afuera del sistema.
+  const checkouts = rows.filter((row) => row.action === "checkout_whatsapp");
+  if (checkouts.length) {
+    let totalMensual = 0;
+    let suscripciones = 0;
+    for (const row of checkouts) {
+      try {
+        const d = JSON.parse(row.details || "{}");
+        totalMensual += Number(d.total) || 0;
+        suscripciones += (d.items || []).reduce((sum, item) => sum + item.quantity, 0);
+      } catch {
+        // detalle ilegible: se cuenta el toque igual, sin sumar importes.
+      }
+    }
+    console.log("\n" + "-".repeat(100));
+    console.log(
+      `Intenciones de compra por WhatsApp: ${checkouts.length} pedido(s), ${suscripciones} suscripcion(es), $${totalMensual}/mes en total`
+    );
+    console.log("(intencion declarada por el cliente al tocar el boton, no venta confirmada)");
   }
 }
 

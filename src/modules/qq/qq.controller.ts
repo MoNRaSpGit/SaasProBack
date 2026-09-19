@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -22,6 +24,7 @@ import { UploadQqCarouselImageDto } from "./dto/upload-qq-carousel-image.dto";
 import { UploadQqProductImageDto } from "./dto/upload-qq-product-image.dto";
 import { UpdateQqClientDto } from "./dto/update-qq-client.dto";
 import { UpdateQqProductDto } from "./dto/update-qq-product.dto";
+import { WhatsAppCheckoutDto } from "./dto/whatsapp-checkout-qq.dto";
 import { diffFields, QqAuditService } from "./qq-audit.service";
 import { QqAuthService } from "./qq-auth.service";
 import { QqCarouselService } from "./qq-carousel.service";
@@ -48,6 +51,40 @@ const PRODUCT_AUDIT_FIELDS = [
   "imageUrl"
 ] as const;
 const CLIENT_AUDIT_FIELDS = ["name", "email", "phone", "dueDate"] as const;
+
+// Limite del punto de entrada publico de "Comprar por WhatsApp" (ver
+// reportWhatsAppCheckout): como cualquiera puede llamarlo, se topea por IP
+// para que nadie pueda llenar el registro. En memoria (se reinicia con el
+// servidor) -- alcanza para frenar abuso, no es un dato que importe.
+const CHECKOUT_REPORT_LIMIT = 15;
+const CHECKOUT_REPORT_WINDOW_MS = 60 * 60 * 1000;
+const checkoutReportsByIp = new Map<string, number[]>();
+
+function isCheckoutReportAllowed(ip: string): boolean {
+  const now = Date.now();
+  const recent = (checkoutReportsByIp.get(ip) ?? []).filter((timestamp) => now - timestamp < CHECKOUT_REPORT_WINDOW_MS);
+  if (recent.length >= CHECKOUT_REPORT_LIMIT) {
+    checkoutReportsByIp.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  checkoutReportsByIp.set(ip, recent);
+
+  if (checkoutReportsByIp.size > 2000) {
+    for (const [key, timestamps] of checkoutReportsByIp) {
+      if (timestamps.every((timestamp) => now - timestamp >= CHECKOUT_REPORT_WINDOW_MS)) {
+        checkoutReportsByIp.delete(key);
+      }
+    }
+  }
+  return true;
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return first || req.ip || "desconocida";
+}
 
 @Controller("qq")
 export class QqController {
@@ -258,6 +295,28 @@ export class QqController {
       ETag: etag
     });
     res.send(image.buffer);
+  }
+
+  // "Comprar por WhatsApp" (19/09/2026, pedido explicito: contabilizar las
+  // ventas cuando detectamos ese click). OJO: qq no tiene checkout -- el
+  // pedido se cierra por WhatsApp, afuera del sistema -- asi que esto
+  // registra una INTENCION de compra (el cliente toco el boton con este
+  // carrito), no una venta confirmada. Es publico (sin login), por eso se
+  // topea por IP y siempre responde 200 aunque no registre nada: nunca debe
+  // poner trabas ni errores en el camino del cliente hacia WhatsApp.
+  @HttpCode(HttpStatus.OK)
+  @Post("events/whatsapp-checkout")
+  async reportWhatsAppCheckout(@Req() req: Request, @Body() dto: WhatsAppCheckoutDto) {
+    if (isCheckoutReportAllowed(getClientIp(req))) {
+      const itemCount = dto.items.reduce((sum, item) => sum + item.quantity, 0);
+      await this.auditService.record({
+        action: "checkout_whatsapp",
+        entityType: "cart",
+        entityLabel: `${itemCount} suscripcion(es) por $${dto.total}/mes`,
+        details: { total: dto.total, items: dto.items }
+      });
+    }
+    return { ok: true };
   }
 
   // Cuenta corriente de clientes (15/09/2026) -- a diferencia de

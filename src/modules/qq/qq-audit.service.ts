@@ -10,9 +10,10 @@ export type QqAuditAction =
   | "upload_image"
   | "register"
   | "login"
-  | "login_failed";
+  | "login_failed"
+  | "checkout_whatsapp";
 
-export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user";
+export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart";
 
 export type QqAuditEvent = {
   action: QqAuditAction;
