@@ -187,8 +187,15 @@ describe("backend smoke", () => {
     process.env.NODE_ENV = "production";
 
     const productionOrigins = getAllowedCorsOrigins();
-    expect(productionOrigins).toEqual(["https://monraspgit.github.io"]);
+    expect(productionOrigins).toEqual([
+      "https://monraspgit.github.io",
+      "https://qqdigital.net",
+      "https://www.qqdigital.net"
+    ]);
     expect(isCorsOriginAllowed("https://monraspgit.github.io", productionOrigins)).toBe(true);
+    expect(isCorsOriginAllowed("https://qqdigital.net", productionOrigins)).toBe(true);
+    expect(isCorsOriginAllowed("https://www.qqdigital.net", productionOrigins)).toBe(true);
+    expect(isCorsOriginAllowed("https://otro-dominio.com", productionOrigins)).toBe(false);
     expect(isCorsOriginAllowed("http://localhost:5174", productionOrigins)).toBe(false);
 
     process.env.NODE_ENV = "development";

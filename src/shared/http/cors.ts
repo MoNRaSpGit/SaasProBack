@@ -1,4 +1,12 @@
-const OFFICIAL_FRONTEND_ORIGINS = ["https://monraspgit.github.io"] as const;
+// Dominio propio de frontend-qq (18/09/2026): se aceptan las dos variantes
+// (con y sin www) porque GitHub Pages redirige de una a la otra segun como
+// este el DNS, y el navegador manda como Origin la que el usuario termine
+// viendo en la barra -- si falta una, el catalogo no carga por CORS.
+const OFFICIAL_FRONTEND_ORIGINS = [
+  "https://monraspgit.github.io",
+  "https://qqdigital.net",
+  "https://www.qqdigital.net"
+] as const;
 const LOCAL_DEV_FRONTEND_ORIGINS = ["http://localhost:5173", "http://localhost:5174"] as const;
 
 function isPrivateNetworkHostname(hostname: string) {
