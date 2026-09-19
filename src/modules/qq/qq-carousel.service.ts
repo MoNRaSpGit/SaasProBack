@@ -16,10 +16,20 @@ type QqCarouselImageBinaryRow = RowDataPacket & {
   source_hash: string;
 };
 
+// version: primeros 12 caracteres del hash del binario. El frontend la agrega
+// a la URL de la imagen (?v=...) porque el endpoint la sirve con
+// "Cache-Control: immutable" por un anio: si se reemplaza el contenido de una
+// imagen (mismo id), sin esto los navegadores que ya la tenian seguian
+// mostrando la vieja (solo se veia bien en incognito).
 export type QqCarouselImage = {
   id: number;
   createdAt: string;
+  version: string;
 };
+
+function toCarouselImage(row: QqCarouselImageRow): QqCarouselImage {
+  return { id: row.id, createdAt: row.created_at, version: row.source_hash.slice(0, 12) };
+}
 
 // data:<mime>;base64,<payload> -- mismo criterio que qq-products.service.ts
 // (la imagen ya llega redimensionada/comprimida del lado del cliente).
@@ -44,7 +54,7 @@ export class QqCarouselService {
     const rows = await this.databaseService.query<QqCarouselImageRow[]>(
       `SELECT ${CAROUSEL_COLUMNS} FROM saas_qq_carousel_images ORDER BY sort_order ASC, created_at ASC`
     );
-    return { items: rows.map((row) => ({ id: row.id, createdAt: row.created_at })) };
+    return { items: rows.map(toCarouselImage) };
   }
 
   async getCarouselImage(imageId: number): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
@@ -77,7 +87,7 @@ export class QqCarouselService {
       `SELECT ${CAROUSEL_COLUMNS} FROM saas_qq_carousel_images WHERE id = ? LIMIT 1`,
       [result.insertId]
     );
-    return { item: { id: rows[0].id, createdAt: rows[0].created_at } };
+    return { item: toCarouselImage(rows[0]) };
   }
 
   async deleteImage(imageId: number): Promise<{ ok: true }> {
