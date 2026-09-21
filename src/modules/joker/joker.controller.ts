@@ -13,6 +13,8 @@ import { CreateJokerProductDto } from "./dto/create-joker-product.dto";
 import { CreateJokerStockItemDto } from "./dto/create-joker-stock-item.dto";
 import { ListJokerOrdersDto } from "./dto/list-joker-orders.dto";
 import { LoginJokerDto } from "./dto/login-joker.dto";
+import { CreateJokerPaymentAccountDto } from "./dto/create-joker-payment-account.dto";
+import { UpdateJokerPaymentAccountDto } from "./dto/update-joker-payment-account.dto";
 import { RestockJokerStockItemDto } from "./dto/restock-joker-stock-item.dto";
 import { SetJokerProductRecipeDto } from "./dto/set-joker-product-recipe.dto";
 import { SettleJokerCourierDto } from "./dto/settle-joker-courier.dto";
@@ -27,6 +29,7 @@ import { JokerAdminExpensesService } from "./joker-admin-expenses.service";
 import { JokerAuthService } from "./joker-auth.service";
 import { JokerCourierService } from "./joker-courier.service";
 import { JokerOrdersService } from "./joker-orders.service";
+import { JokerPaymentAccountsService } from "./joker-payment-accounts.service";
 import { JokerPrintingService } from "./joker-printing.service";
 import { JokerProductsService } from "./joker-products.service";
 import { JokerReportingService } from "./joker-reporting.service";
@@ -43,7 +46,8 @@ export class JokerController {
     private readonly adminExpensesService: JokerAdminExpensesService,
     private readonly reportingService: JokerReportingService,
     private readonly printingService: JokerPrintingService,
-    private readonly authService: JokerAuthService
+    private readonly authService: JokerAuthService,
+    private readonly paymentAccountsService: JokerPaymentAccountsService
   ) {}
 
   @Post("auth/login")
@@ -219,6 +223,26 @@ export class JokerController {
   @Delete("clients/:id")
   deleteClient(@Param("id", ParseIntPipe) clientId: number) {
     return this.accountService.deleteClient(clientId);
+  }
+
+  @Get("payment-methods")
+  listPaymentMethods() {
+    return this.paymentAccountsService.listPaymentMethods();
+  }
+
+  @Post("payment-methods")
+  createPaymentMethod(@Body() dto: CreateJokerPaymentAccountDto) {
+    return this.paymentAccountsService.createPaymentMethod(dto);
+  }
+
+  @Patch("payment-methods/:id")
+  updatePaymentMethod(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdateJokerPaymentAccountDto) {
+    return this.paymentAccountsService.updatePaymentMethod(id, dto);
+  }
+
+  @Delete("payment-methods/:id")
+  deletePaymentMethod(@Param("id", ParseIntPipe) id: number) {
+    return this.paymentAccountsService.deletePaymentMethod(id);
   }
 
   @Get("account-entries")

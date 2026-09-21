@@ -6,6 +6,7 @@ import { JokerAdminExpensesService } from "./joker-admin-expenses.service";
 import { JokerAuthService } from "./joker-auth.service";
 import { JokerCourierService } from "./joker-courier.service";
 import { JokerOrdersService } from "./joker-orders.service";
+import { JokerPaymentAccountsService } from "./joker-payment-accounts.service";
 import { JokerPrintingService } from "./joker-printing.service";
 import { JokerProductsService } from "./joker-products.service";
 import { JokerReportingService } from "./joker-reporting.service";
@@ -23,7 +24,8 @@ import { JokerStockService } from "./joker-stock.service";
     JokerAdminExpensesService,
     JokerReportingService,
     JokerPrintingService,
-    JokerAuthService
+    JokerAuthService,
+    JokerPaymentAccountsService
   ]
 })
 export class JokerModule {}
