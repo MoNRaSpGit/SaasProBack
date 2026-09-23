@@ -1,10 +1,13 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
+import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
 import { diffFields, PilotoAuditService } from "./piloto-audit.service";
+import { PilotoPriceEntriesService } from "./piloto-price-entries.service";
 import { PilotoPrintingService } from "./piloto-printing.service";
 import { PilotoService } from "./piloto.service";
 
@@ -15,7 +18,8 @@ export class PilotoController {
   constructor(
     private readonly pilotoService: PilotoService,
     private readonly auditService: PilotoAuditService,
-    private readonly printingService: PilotoPrintingService
+    private readonly printingService: PilotoPrintingService,
+    private readonly priceEntriesService: PilotoPriceEntriesService
   ) {}
 
   @Get("products")
@@ -116,5 +120,27 @@ export class PilotoController {
   @Post("qz-sign")
   signQzRequest(@Body() dto: SignQzRequestDto) {
     return this.printingService.signQzRequest(dto.toSign);
+  }
+
+  // "Precios" -- Modo Pro (23/09/2026): lista de precios por categoria,
+  // independiente de los productos del escaner.
+  @Get("price-entries")
+  listPriceEntries() {
+    return this.priceEntriesService.listPriceEntries();
+  }
+
+  @Post("price-entries")
+  createPriceEntry(@Body() dto: CreatePilotoPriceEntryDto) {
+    return this.priceEntriesService.createPriceEntry(dto);
+  }
+
+  @Patch("price-entries/:id")
+  updatePriceEntry(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdatePilotoPriceEntryDto) {
+    return this.priceEntriesService.updatePriceEntry(id, dto);
+  }
+
+  @Delete("price-entries/:id")
+  deletePriceEntry(@Param("id", ParseIntPipe) id: number) {
+    return this.priceEntriesService.deletePriceEntry(id);
   }
 }
