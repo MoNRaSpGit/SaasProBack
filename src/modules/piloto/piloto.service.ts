@@ -196,6 +196,24 @@ export class PilotoService {
     return { item: product };
   }
 
+  // Usado por el controller antes de updateProduct, para poder auditar el
+  // "antes" contra el "despues" (ver PilotoAuditService.diffFields).
+  async getProductOrThrow(productId: number): Promise<{ item: PilotoProduct }> {
+    const rows = await this.databaseService.query<PilotoProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_piloto_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    if (!rows[0]) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+
+    return { item: this.mapProduct(rows[0]) };
+  }
+
   async updateProduct(productId: number, dto: UpdatePilotoProductDto): Promise<{ item: PilotoProduct }> {
     const existingRows = await this.databaseService.query<PilotoProductRow[]>(
       `SELECT ${PRODUCT_COLUMNS}

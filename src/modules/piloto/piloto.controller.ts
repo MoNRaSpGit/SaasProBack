@@ -3,11 +3,17 @@ import type { Request, Response } from "express";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
+import { diffFields, PilotoAuditService } from "./piloto-audit.service";
 import { PilotoService } from "./piloto.service";
+
+const PRODUCT_AUDIT_FIELDS = ["name", "price"] as const;
 
 @Controller("piloto")
 export class PilotoController {
-  constructor(private readonly pilotoService: PilotoService) {}
+  constructor(
+    private readonly pilotoService: PilotoService,
+    private readonly auditService: PilotoAuditService
+  ) {}
 
   @Get("products")
   listProducts(@Query("search") search?: string) {
@@ -20,18 +26,51 @@ export class PilotoController {
   }
 
   @Post("products")
-  createProduct(@Body() dto: CreatePilotoProductDto) {
-    return this.pilotoService.createProduct(dto);
+  async createProduct(@Body() dto: CreatePilotoProductDto) {
+    const result = await this.pilotoService.createProduct(dto);
+    await this.auditService.record({
+      action: "create",
+      entityType: "product",
+      entityId: result.item.id,
+      entityLabel: result.item.name,
+      details: { barcode: result.item.barcode, price: result.item.price, stock: result.item.stock, status: result.item.status }
+    });
+    return result;
   }
 
   @Patch("products/:id")
-  updateProduct(@Param("id", ParseIntPipe) productId: number, @Body() dto: UpdatePilotoProductDto) {
-    return this.pilotoService.updateProduct(productId, dto);
+  async updateProduct(@Param("id", ParseIntPipe) productId: number, @Body() dto: UpdatePilotoProductDto) {
+    const before = await this.pilotoService.getProductOrThrow(productId);
+    const result = await this.pilotoService.updateProduct(productId, dto);
+    const changes = diffFields(before.item, result.item, PRODUCT_AUDIT_FIELDS);
+    if (changes) {
+      await this.auditService.record({
+        action: "update",
+        entityType: "product",
+        entityId: productId,
+        entityLabel: result.item.name,
+        details: { changes }
+      });
+    }
+    return result;
   }
 
   @Post("sales")
-  createSale(@Body() dto: CreatePilotoSaleDto) {
-    return this.pilotoService.createSale(dto);
+  async createSale(@Body() dto: CreatePilotoSaleDto) {
+    const result = await this.pilotoService.createSale(dto);
+    await this.auditService.record({
+      action: "sale",
+      entityType: "sale",
+      entityId: result.item.id,
+      entityLabel: `Venta #${result.item.id}`,
+      details: {
+        paymentMethod: result.item.paymentMethod,
+        totalAmount: result.item.totalAmount,
+        itemsCount: result.item.itemsCount,
+        items: dto.items.map((item) => ({ name: item.name, quantity: item.quantity, price: item.price }))
+      }
+    });
+    return result;
   }
 
   @Post("cache/product-lookup/reset")
