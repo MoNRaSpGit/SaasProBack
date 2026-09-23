@@ -35,3 +35,34 @@ export type PilotoPriceEntry = {
   createdAt: string;
   updatedAt: string;
 };
+
+// "Panel de control" -- Modo Pro (24/09/2026, pedido explicito): ventas,
+// ganancia (30% de las ventas) y el detalle de cada venta del dia
+// ("Movimientos"). PROFIT_MARGIN_RATIO vive en un solo lugar para no
+// repetir el 0.3 en mas de un archivo.
+export const PILOTO_PROFIT_MARGIN_RATIO = 0.3;
+
+export type PilotoSaleMovementItem = {
+  name: string;
+  quantity: number;
+};
+
+export type PilotoSaleMovement = {
+  id: number;
+  // Numero de venta DEL DIA (1, 2, 3...), no el id interno -- mas facil
+  // de leer para el usuario que el id real de la base.
+  displayNumber: number;
+  createdAt: string;
+  totalAmount: number;
+  paymentMethod: PilotoPaymentMethod;
+  items: PilotoSaleMovementItem[];
+};
+
+export type PilotoSalesSummary = {
+  date: string;
+  salesCount: number;
+  totalAmount: number;
+  profitAmount: number;
+  profitMarginRatio: number;
+  sales: PilotoSaleMovement[];
+};

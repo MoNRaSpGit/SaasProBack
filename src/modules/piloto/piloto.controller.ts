@@ -143,4 +143,12 @@ export class PilotoController {
   deletePriceEntry(@Param("id", ParseIntPipe) id: number) {
     return this.priceEntriesService.deletePriceEntry(id);
   }
+
+  // "Panel de control" -- Modo Pro (24/09/2026): ventas, ganancia
+  // (30% de las ventas) y el detalle de cada venta del dia. Sin `date`
+  // (YYYY-MM-DD), es el dia de hoy (Montevideo).
+  @Get("sales/summary")
+  getSalesSummary(@Query("date") date?: string) {
+    return this.pilotoService.getSalesSummary(date);
+  }
 }

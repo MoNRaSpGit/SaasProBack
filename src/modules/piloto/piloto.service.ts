@@ -5,7 +5,8 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
-import { PilotoProduct, PilotoSale } from "./piloto.types";
+import { buildDayRangeUtc, getTodayDateLabel } from "./piloto.dateUtils";
+import { PILOTO_PROFIT_MARGIN_RATIO, PilotoPaymentMethod, PilotoProduct, PilotoSale, PilotoSaleMovement, PilotoSalesSummary } from "./piloto.types";
 
 type PilotoProductRow = RowDataPacket & {
   id: number;
@@ -374,5 +375,67 @@ export class PilotoService {
 
   private toIsoString(value: string | Date) {
     return value instanceof Date ? value.toISOString() : value;
+  }
+
+  // "Panel de control" -- Modo Pro (24/09/2026, pedido explicito): ventas
+  // del dia, ganancia (30% de esas ventas) y el detalle de cada venta
+  // ("Movimientos": Venta #1, articulos, etc). Sin parametro `date`, es
+  // el dia de hoy (Montevideo). Solo lee, no escribe nada.
+  async getSalesSummary(dateLabel?: string): Promise<PilotoSalesSummary> {
+    const date = dateLabel || getTodayDateLabel();
+    const { startIso, endIso } = buildDayRangeUtc(date);
+
+    const saleRows = await this.databaseService.query<
+      Array<
+        RowDataPacket & {
+          id: number;
+          total_amount: string | number;
+          payment_method: PilotoPaymentMethod;
+          created_at: string;
+        }
+      >
+    >(
+      `SELECT id, total_amount, payment_method, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
+       FROM saas_piloto_sales
+       WHERE status = 'confirmed' AND created_at >= ? AND created_at < ?
+       ORDER BY created_at ASC`,
+      [startIso, endIso]
+    );
+
+    const itemsBySaleId = new Map<number, { name: string; quantity: number }[]>();
+    if (saleRows.length) {
+      const saleIds = saleRows.map((row) => Number(row.id));
+      const placeholders = saleIds.map(() => "?").join(", ");
+      const itemRows = await this.databaseService.query<Array<RowDataPacket & { sale_id: number; product_name: string; quantity: number }>>(
+        `SELECT sale_id, product_name, quantity FROM saas_piloto_sale_items WHERE sale_id IN (${placeholders}) ORDER BY id ASC`,
+        saleIds
+      );
+
+      for (const row of itemRows) {
+        const list = itemsBySaleId.get(row.sale_id) ?? [];
+        list.push({ name: row.product_name, quantity: Number(row.quantity) });
+        itemsBySaleId.set(row.sale_id, list);
+      }
+    }
+
+    const sales: PilotoSaleMovement[] = saleRows.map((row, index) => ({
+      id: Number(row.id),
+      displayNumber: index + 1,
+      createdAt: `${row.created_at}Z`,
+      totalAmount: Number(row.total_amount),
+      paymentMethod: row.payment_method,
+      items: itemsBySaleId.get(Number(row.id)) ?? []
+    }));
+
+    const totalAmount = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    return {
+      date,
+      salesCount: sales.length,
+      totalAmount,
+      profitAmount: Math.round(totalAmount * PILOTO_PROFIT_MARGIN_RATIO * 100) / 100,
+      profitMarginRatio: PILOTO_PROFIT_MARGIN_RATIO,
+      sales
+    };
   }
 }
