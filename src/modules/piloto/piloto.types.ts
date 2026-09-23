@@ -45,6 +45,10 @@ export const PILOTO_PROFIT_MARGIN_RATIO = 0.3;
 export type PilotoSaleMovementItem = {
   name: string;
   quantity: number;
+  // Pedido explicito (24/09/2026): "hacerle click a la venta que muestre
+  // en detalle los productos, uno arriba del otro, con el precio".
+  unitPrice: number;
+  lineTotal: number;
 };
 
 export type PilotoSaleMovement = {

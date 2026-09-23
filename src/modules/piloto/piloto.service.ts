@@ -6,7 +6,15 @@ import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
 import { buildDayRangeUtc, getTodayDateLabel } from "./piloto.dateUtils";
-import { PILOTO_PROFIT_MARGIN_RATIO, PilotoPaymentMethod, PilotoProduct, PilotoSale, PilotoSaleMovement, PilotoSalesSummary } from "./piloto.types";
+import {
+  PILOTO_PROFIT_MARGIN_RATIO,
+  PilotoPaymentMethod,
+  PilotoProduct,
+  PilotoSale,
+  PilotoSaleMovement,
+  PilotoSaleMovementItem,
+  PilotoSalesSummary
+} from "./piloto.types";
 
 type PilotoProductRow = RowDataPacket & {
   id: number;
@@ -402,18 +410,33 @@ export class PilotoService {
       [startIso, endIso]
     );
 
-    const itemsBySaleId = new Map<number, { name: string; quantity: number }[]>();
+    const itemsBySaleId = new Map<number, PilotoSaleMovementItem[]>();
     if (saleRows.length) {
       const saleIds = saleRows.map((row) => Number(row.id));
       const placeholders = saleIds.map(() => "?").join(", ");
-      const itemRows = await this.databaseService.query<Array<RowDataPacket & { sale_id: number; product_name: string; quantity: number }>>(
-        `SELECT sale_id, product_name, quantity FROM saas_piloto_sale_items WHERE sale_id IN (${placeholders}) ORDER BY id ASC`,
+      const itemRows = await this.databaseService.query<
+        Array<
+          RowDataPacket & {
+            sale_id: number;
+            product_name: string;
+            quantity: number;
+            unit_price: string | number;
+            line_total: string | number;
+          }
+        >
+      >(
+        `SELECT sale_id, product_name, quantity, unit_price, line_total FROM saas_piloto_sale_items WHERE sale_id IN (${placeholders}) ORDER BY id ASC`,
         saleIds
       );
 
       for (const row of itemRows) {
         const list = itemsBySaleId.get(row.sale_id) ?? [];
-        list.push({ name: row.product_name, quantity: Number(row.quantity) });
+        list.push({
+          name: row.product_name,
+          quantity: Number(row.quantity),
+          unitPrice: Number(row.unit_price),
+          lineTotal: Number(row.line_total)
+        });
         itemsBySaleId.set(row.sale_id, list);
       }
     }
