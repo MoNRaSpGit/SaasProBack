@@ -2,8 +2,10 @@ import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Re
 import type { Request, Response } from "express";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
+import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
 import { diffFields, PilotoAuditService } from "./piloto-audit.service";
+import { PilotoPrintingService } from "./piloto-printing.service";
 import { PilotoService } from "./piloto.service";
 
 const PRODUCT_AUDIT_FIELDS = ["name", "price"] as const;
@@ -12,7 +14,8 @@ const PRODUCT_AUDIT_FIELDS = ["name", "price"] as const;
 export class PilotoController {
   constructor(
     private readonly pilotoService: PilotoService,
-    private readonly auditService: PilotoAuditService
+    private readonly auditService: PilotoAuditService,
+    private readonly printingService: PilotoPrintingService
   ) {}
 
   @Get("products")
@@ -101,5 +104,17 @@ export class PilotoController {
       ETag: etag
     });
     res.send(image.buffer);
+  }
+
+  // QZ Tray pide el certificado como texto plano (no JSON) via
+  // GET/POST directo -- ver PilotoPrintingService.
+  @Get("qz-certificate")
+  getQzCertificate(@Res() res: Response) {
+    res.type("text/plain").send(this.printingService.getQzCertificate());
+  }
+
+  @Post("qz-sign")
+  signQzRequest(@Body() dto: SignQzRequestDto) {
+    return this.printingService.signQzRequest(dto.toSign);
   }
 }
