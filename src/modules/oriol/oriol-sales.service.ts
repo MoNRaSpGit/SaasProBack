@@ -199,6 +199,88 @@ export class OriolSalesService {
     return this.getSale(saleId);
   }
 
+  // Cambiar la cantidad de UN producto dentro de una venta ya guardada
+  // (pedido explicito, 26/09/2026: "-1+" en la boleta recien confirmada).
+  // A diferencia de itemsNuevos (que solo agrega productos), esto edita un
+  // item que YA estaba en el detalle: ajusta el total, el stock (la
+  // diferencia, para arriba o para abajo) y, si es a credito, la deuda del
+  // cliente -- todo en la misma transaccion.
+  async updateSaleItemQuantity(saleId: number, productId: number, cantidad: number): Promise<{ item: OriolSale }> {
+    await this.databaseService.withTransaction(async (connection) => {
+      const [rows] = await connection.query<RowDataPacket[]>(
+        `SELECT metodo_pago, cliente_id, total_pesos, total_dolares, monto_pagado_pesos, monto_pagado_dolares, detalle
+         FROM saas_oriol_ventas WHERE id = ? FOR UPDATE`,
+        [saleId]
+      );
+      const current = rows[0] as
+        | {
+            metodo_pago: OriolPaymentMethod;
+            cliente_id: number | null;
+            total_pesos: string;
+            total_dolares: string;
+            monto_pagado_pesos: string;
+            monto_pagado_dolares: string;
+            detalle: string | OriolSaleItem[] | null;
+          }
+        | undefined;
+      if (!current) {
+        throw new NotFoundException("Venta no encontrada");
+      }
+
+      const detalle: OriolSaleItem[] =
+        typeof current.detalle === "string" ? (JSON.parse(current.detalle) as OriolSaleItem[]) : current.detalle ?? [];
+      const item = detalle.find((entry) => entry.id === productId);
+      if (!item) {
+        throw new NotFoundException("Ese producto no forma parte de esta venta");
+      }
+
+      const delta = cantidad - item.cantidad;
+      if (delta === 0) {
+        return;
+      }
+
+      // Pedido explicito (26/09/2026): "por ahora quiero que el stock no
+      // bloquee nada" -- todavia no se usa el stock real como limite. El
+      // numero de stock se sigue ajustando igual (decrementStock, mas abajo)
+      // para que no quede desincronizado, pero nunca frena la venta.
+
+      const deltaAmount = delta * item.precio;
+      const totalPesosActual = Number(current.total_pesos);
+      const totalDolaresActual = Number(current.total_dolares);
+      const totalPesosFinal = item.currency === "USD" ? totalPesosActual : totalPesosActual + deltaAmount;
+      const totalDolaresFinal = item.currency === "USD" ? totalDolaresActual + deltaAmount : totalDolaresActual;
+
+      if (current.metodo_pago === "credito") {
+        const montoPagado = item.currency === "USD" ? Number(current.monto_pagado_dolares) : Number(current.monto_pagado_pesos);
+        const totalFinalMismaMoneda = item.currency === "USD" ? totalDolaresFinal : totalPesosFinal;
+        if (totalFinalMismaMoneda < montoPagado) {
+          throw new BadRequestException(
+            "No se puede bajar la cantidad: ya se pagó más de lo que quedaría esta boleta. Registrá antes una corrección del pago."
+          );
+        }
+      }
+
+      const nuevoDetalle = detalle.map((entry) => (entry.id === productId ? { ...entry, cantidad } : entry));
+
+      await connection.execute(
+        `UPDATE saas_oriol_ventas SET detalle = ?, total_pesos = ?, total_dolares = ? WHERE id = ?`,
+        [JSON.stringify(nuevoDetalle), totalPesosFinal, totalDolaresFinal, saleId]
+      );
+
+      if (current.metodo_pago === "credito" && current.cliente_id) {
+        const campoDeuda = item.currency === "USD" ? "deuda_dolares" : "deuda";
+        await connection.execute(`UPDATE saas_oriol_clientes SET ${campoDeuda} = ${campoDeuda} + ? WHERE id = ?`, [
+          deltaAmount,
+          current.cliente_id
+        ]);
+      }
+
+      await this.productsService.decrementStock(connection, [{ id: productId, cantidad: delta }]);
+    });
+
+    return this.getSale(saleId);
+  }
+
   async getSale(saleId: number): Promise<{ item: OriolSale }> {
     const rows = await this.databaseService.query<OriolSaleRow[]>(
       `SELECT ${SALE_COLUMNS} FROM saas_oriol_ventas WHERE id = ? LIMIT 1`,

@@ -9,6 +9,7 @@ import { UpdateOriolCierreDiaDto } from "./dto/update-oriol-cierre-dia.dto";
 import { UpdateOriolConfigDto } from "./dto/update-oriol-config.dto";
 import { UpdateOriolProductDto } from "./dto/update-oriol-product.dto";
 import { UpdateOriolSaleDto } from "./dto/update-oriol-sale.dto";
+import { UpdateOriolSaleItemQuantityDto } from "./dto/update-oriol-sale-item-quantity.dto";
 import { UpdateOriolStockDto } from "./dto/update-oriol-stock.dto";
 import { UpdateOriolTasaDolarDto } from "./dto/update-oriol-tasa-dolar.dto";
 import { OriolClientsService } from "./oriol-clients.service";
@@ -85,6 +86,17 @@ export class OriolController {
   @Patch("ventas/:id")
   updateSale(@Param("id", ParseIntPipe) saleId: number, @Body() dto: UpdateOriolSaleDto) {
     return this.salesService.updateSale(saleId, dto);
+  }
+
+  // Cambiar la cantidad de un producto DENTRO de una venta ya guardada
+  // (pedido explicito, 26/09/2026) -- ver OriolSalesService.updateSaleItemQuantity.
+  @Patch("ventas/:id/items/:productId")
+  updateSaleItemQuantity(
+    @Param("id", ParseIntPipe) saleId: number,
+    @Param("productId", ParseIntPipe) productId: number,
+    @Body() dto: UpdateOriolSaleItemQuantityDto
+  ) {
+    return this.salesService.updateSaleItemQuantity(saleId, productId, dto.cantidad);
   }
 
   @Post("ventas/:id/pagos-credito")
