@@ -42,3 +42,12 @@ export type QqClient = {
   dueDate: string;
   createdAt: string;
 };
+
+// Codigo de descuento (28/09/2026, pedido explicito): un solo codigo
+// activo a la vez, configurable por el admin. Si "enabled" es false, el
+// carrito no muestra el input de codigo -- ver CartDrawer.tsx.
+export type QqDiscountConfig = {
+  code: string;
+  percentage: number;
+  enabled: boolean;
+};

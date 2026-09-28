@@ -6,11 +6,12 @@ import { QqAuthService } from "./qq-auth.service";
 import { QqCarouselService } from "./qq-carousel.service";
 import { QqClientsService } from "./qq-clients.service";
 import { QqController } from "./qq.controller";
+import { QqDiscountService } from "./qq-discount.service";
 import { QqProductsService } from "./qq-products.service";
 
 @Module({
   imports: [DatabaseModule],
   controllers: [QqController, QqAuthController],
-  providers: [QqProductsService, QqAuthService, QqCarouselService, QqClientsService, QqAuditService]
+  providers: [QqProductsService, QqAuthService, QqCarouselService, QqClientsService, QqAuditService, QqDiscountService]
 })
 export class QqModule {}

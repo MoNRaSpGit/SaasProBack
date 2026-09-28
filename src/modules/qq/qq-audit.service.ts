@@ -13,7 +13,7 @@ export type QqAuditAction =
   | "login_failed"
   | "checkout_whatsapp";
 
-export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart";
+export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config";
 
 export type QqAuditEvent = {
   action: QqAuditAction;

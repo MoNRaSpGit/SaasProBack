@@ -23,12 +23,14 @@ import { ReorderQqProductDto } from "./dto/reorder-qq-product.dto";
 import { UploadQqCarouselImageDto } from "./dto/upload-qq-carousel-image.dto";
 import { UploadQqProductImageDto } from "./dto/upload-qq-product-image.dto";
 import { UpdateQqClientDto } from "./dto/update-qq-client.dto";
+import { UpdateQqDiscountConfigDto } from "./dto/update-qq-discount-config.dto";
 import { UpdateQqProductDto } from "./dto/update-qq-product.dto";
 import { WhatsAppCheckoutDto } from "./dto/whatsapp-checkout-qq.dto";
 import { diffFields, QqAuditService } from "./qq-audit.service";
 import { QqAuthService } from "./qq-auth.service";
 import { QqCarouselService } from "./qq-carousel.service";
 import { QqClientsService } from "./qq-clients.service";
+import { QqDiscountService } from "./qq-discount.service";
 import { QqProductsService } from "./qq-products.service";
 import { QqUser } from "./qq.types";
 
@@ -51,6 +53,7 @@ const PRODUCT_AUDIT_FIELDS = [
   "imageUrl"
 ] as const;
 const CLIENT_AUDIT_FIELDS = ["name", "email", "phone", "dueDate"] as const;
+const DISCOUNT_CONFIG_AUDIT_FIELDS = ["code", "percentage", "enabled"] as const;
 
 // Limite del punto de entrada publico de "Comprar por WhatsApp" (ver
 // reportWhatsAppCheckout): como cualquiera puede llamarlo, se topea por IP
@@ -93,7 +96,8 @@ export class QqController {
     private readonly authService: QqAuthService,
     private readonly carouselService: QqCarouselService,
     private readonly clientsService: QqClientsService,
-    private readonly auditService: QqAuditService
+    private readonly auditService: QqAuditService,
+    private readonly discountService: QqDiscountService
   ) {}
 
   // Ver el catalogo es publico -- solo cargar/editar/borrar productos
@@ -379,6 +383,35 @@ export class QqController {
       actor: admin,
       details: { dueDate: before.item.dueDate }
     });
+    return result;
+  }
+
+  // Codigo de descuento (28/09/2026, pedido explicito): ver es publico
+  // (el carrito necesita saber si mostrar el input), cambiarlo exige
+  // admin -- mismo criterio que carrusel/productos.
+  @Get("discount-config")
+  getDiscountConfig() {
+    return this.discountService.getConfig();
+  }
+
+  @Patch("discount-config")
+  async updateDiscountConfig(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() dto: UpdateQqDiscountConfigDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.discountService.getConfig();
+    const result = await this.discountService.updateConfig(dto);
+    const changes = diffFields(before.item, result.item, DISCOUNT_CONFIG_AUDIT_FIELDS);
+    if (changes) {
+      await this.auditService.record({
+        action: "update",
+        entityType: "discount_config",
+        entityLabel: "Código de descuento",
+        actor: admin,
+        details: { changes }
+      });
+    }
     return result;
   }
 
