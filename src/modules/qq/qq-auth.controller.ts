@@ -58,6 +58,23 @@ export class QqAuthController {
     }
   }
 
+  // Atajo pedido explicitamente (28/09/2026): 5 clicks en el logo del
+  // header, sin contrasena. Queda igual auditado que un login normal para
+  // poder notar si se usa.
+  @HttpCode(HttpStatus.OK)
+  @Post("quick-admin-login")
+  async quickAdminLogin() {
+    const result = await this.authService.quickAdminLogin();
+    await this.auditService.record({
+      action: "login",
+      entityType: "user",
+      entityId: result.user.id,
+      entityLabel: result.user.email,
+      actor: result.user
+    });
+    return result;
+  }
+
   @HttpCode(HttpStatus.OK)
   @Post("logout")
   async logout(@Headers("authorization") authorization: string | undefined) {

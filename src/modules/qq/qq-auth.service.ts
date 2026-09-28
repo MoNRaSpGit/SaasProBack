@@ -79,6 +79,24 @@ export class QqAuthService {
     return { ok: true };
   }
 
+  // Atajo pedido explicitamente (28/09/2026): 5 clicks en el logo del
+  // header inician sesion como administrador sin pedir contrasena. No
+  // valida nada por diseno -- el pedido fue asi, tal cual. Toma el primer
+  // usuario con rol administrador (hoy solo existe admin@qq.com) y le
+  // emite una sesion real, igual que un login normal.
+  async quickAdminLogin(): Promise<{ user: QqUser; token: string }> {
+    const rows = await this.databaseService.query<QqUserRow[]>(
+      `SELECT id, email, password_hash, full_name, role FROM saas_qq_users WHERE role = 'administrador' ORDER BY id ASC LIMIT 1`
+    );
+    const row = rows[0];
+    if (!row) {
+      throw new UnauthorizedException("No hay una cuenta de administrador configurada");
+    }
+
+    const token = await this.createSession(row.id);
+    return { user: this.mapUser(row), token };
+  }
+
   // Usado tanto para "quien soy" (GET /qq/auth/me) como por el guard que
   // protege alta/edicion/borrado de productos.
   async getUserForToken(token: string | undefined): Promise<QqUser | null> {
