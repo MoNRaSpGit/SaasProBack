@@ -59,12 +59,14 @@ export class GymService {
       );
     }
 
+    const previousData = currentRows[0] ? this.mapWorkspaceRow(currentRows[0]).data : null;
     const nextData: GymWorkspaceData = {
       expenses: dto.expenses as GymWorkspaceData["expenses"],
       tasks: dto.tasks as GymWorkspaceData["tasks"],
       movements: dto.movements as GymWorkspaceData["movements"],
       // Si un cliente viejo no manda alumnos, se conservan los que ya habia.
-      students: (dto.students ?? (currentRows[0] ? this.mapWorkspaceRow(currentRows[0]).data.students : [])) as GymWorkspaceData["students"],
+      students: (dto.students ?? previousData?.students ?? []) as GymWorkspaceData["students"],
+      checkIns: (dto.checkIns ?? previousData?.checkIns ?? []) as GymWorkspaceData["checkIns"],
       auditLog: dto.auditLog as GymWorkspaceData["auditLog"]
     };
 
@@ -92,6 +94,7 @@ export class GymService {
       tasks: current.data.tasks,
       movements: current.data.movements,
       students: current.data.students,
+      checkIns: current.data.checkIns,
       auditLog: [this.buildAuditEntry("login", "Se abrio la app"), ...current.data.auditLog]
     });
   }
@@ -108,8 +111,12 @@ export class GymService {
   private mapWorkspaceRow(row: GymWorkspaceRow): GymWorkspaceRecord {
     const data = typeof row.workspace_json === "string" ? JSON.parse(row.workspace_json) : row.workspace_json;
     return {
-      // Workspaces guardados antes de la pestana Alumnos no traen "students".
-      data: { ...(data as GymWorkspaceData), students: (data as GymWorkspaceData).students ?? [] },
+      // Workspaces guardados antes de Alumnos/Ingresar no traen estos campos.
+      data: {
+        ...(data as GymWorkspaceData),
+        students: (data as GymWorkspaceData).students ?? [],
+        checkIns: (data as GymWorkspaceData).checkIns ?? []
+      },
       rowVersion: row.row_version,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
     };

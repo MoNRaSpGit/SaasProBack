@@ -23,6 +23,10 @@ export class SaveGymWorkspaceDto {
   @IsArray()
   students?: unknown[];
 
+  @IsOptional()
+  @IsArray()
+  checkIns?: unknown[];
+
   @IsArray()
   auditLog!: unknown[];
 }

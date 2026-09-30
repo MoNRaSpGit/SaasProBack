@@ -44,6 +44,14 @@ export type GymStudent = {
   createdAt: string;
 };
 
+export type GymCheckIn = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  timestamp: string;
+  wasOverdue: boolean;
+};
+
 export type GymAuditAction =
   | "login"
   | "expense_created"
@@ -57,7 +65,8 @@ export type GymAuditAction =
   | "student_created"
   | "student_renewed"
   | "student_updated"
-  | "student_deleted";
+  | "student_deleted"
+  | "student_checkin";
 
 export type GymAuditEntry = {
   id: string;
@@ -71,6 +80,7 @@ export type GymWorkspaceData = {
   tasks: GymTask[];
   movements: GymMovement[];
   students: GymStudent[];
+  checkIns: GymCheckIn[];
   auditLog: GymAuditEntry[];
 };
 
@@ -81,5 +91,5 @@ export type GymWorkspaceRecord = {
 };
 
 export function emptyGymWorkspaceData(): GymWorkspaceData {
-  return { expenses: [], tasks: [], movements: [], students: [], auditLog: [] };
+  return { expenses: [], tasks: [], movements: [], students: [], checkIns: [], auditLog: [] };
 }
