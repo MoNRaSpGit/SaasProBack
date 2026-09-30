@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS saas_agro_voice_debug_logs (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT NULL,
+  user_agent VARCHAR(500) NULL,
+  transcript TEXT NULL,
+  raw_results_json JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

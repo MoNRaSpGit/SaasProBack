@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable } from "@nestjs/comm
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { SaveAgroDiscoveryResponseDto } from "./dto/save-agro-discovery-response.dto";
+import { SaveAgroVoiceDebugLogDto } from "./dto/save-agro-voice-debug-log.dto";
 import { SaveAgroWorkspaceDto } from "./dto/save-agro-workspace.dto";
 import {
   AGRO_DISCOVERY_MODULE_KEY,
@@ -443,5 +444,20 @@ export class AgroService {
     const seconds = String(date.getUTCSeconds()).padStart(2, "0");
 
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
+  // Debug TEMPORAL (30/09/2026) para el bug de transcript duplicado en
+  // Android: el celular manda lo que escucho crudo (event.results de la
+  // Web Speech API) y se guarda tal cual para leerlo desde el backend
+  // con scripts/read-voice-debug-log.js -- sacar esto (endpoint, tabla y
+  // el envio desde el frontend) una vez encontrada la causa real.
+  async logVoiceDebug(currentUser: AgroRequestUser, dto: SaveAgroVoiceDebugLogDto) {
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_agro_voice_debug_logs (tenant_id, user_agent, transcript, raw_results_json)
+       VALUES (?, ?, ?, ?)`,
+      [currentUser.tenantId, dto.userAgent, dto.transcript, JSON.stringify(dto.rawResults)]
+    );
+
+    return { ok: true };
   }
 }
