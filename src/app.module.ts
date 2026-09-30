@@ -9,6 +9,7 @@ import { CamionesModule } from "./modules/camiones/camiones.module";
 import { DeliveryModule } from "./modules/delivery/delivery.module";
 import { DgiModule } from "./modules/dgi/dgi.module";
 import { EjemploModule } from "./modules/ejemplo/ejemplo.module";
+import { GymModule } from "./modules/gym/gym.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
 import { OriolModule } from "./modules/oriol/oriol.module";
@@ -37,6 +38,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     EjemploModule,
     AgroModule,
     ScrumModule,
+    GymModule,
     CarnetModule,
     JuezModule,
     PilotoModule,
