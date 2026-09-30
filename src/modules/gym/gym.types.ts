@@ -30,6 +30,20 @@ export type GymMovement = {
   createdAt: string;
 };
 
+export type GymStudentPlan = "mensual" | "trimestral" | "semestral" | "anual";
+
+export type GymStudent = {
+  id: string;
+  name: string;
+  phone: string;
+  fee: number | null;
+  plan: GymStudentPlan;
+  dueDate: string;
+  note: string;
+  lastPaidAt: string | null;
+  createdAt: string;
+};
+
 export type GymAuditAction =
   | "login"
   | "expense_created"
@@ -39,7 +53,11 @@ export type GymAuditAction =
   | "task_moved"
   | "task_deleted"
   | "movement_created"
-  | "movement_deleted";
+  | "movement_deleted"
+  | "student_created"
+  | "student_renewed"
+  | "student_updated"
+  | "student_deleted";
 
 export type GymAuditEntry = {
   id: string;
@@ -52,6 +70,7 @@ export type GymWorkspaceData = {
   expenses: GymExpense[];
   tasks: GymTask[];
   movements: GymMovement[];
+  students: GymStudent[];
   auditLog: GymAuditEntry[];
 };
 
@@ -62,5 +81,5 @@ export type GymWorkspaceRecord = {
 };
 
 export function emptyGymWorkspaceData(): GymWorkspaceData {
-  return { expenses: [], tasks: [], movements: [], auditLog: [] };
+  return { expenses: [], tasks: [], movements: [], students: [], auditLog: [] };
 }

@@ -18,6 +18,11 @@ export class SaveGymWorkspaceDto {
   @IsArray()
   movements!: unknown[];
 
+  // Opcional para no romper clientes viejos que todavia no mandan alumnos.
+  @IsOptional()
+  @IsArray()
+  students?: unknown[];
+
   @IsArray()
   auditLog!: unknown[];
 }
