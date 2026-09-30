@@ -9,6 +9,7 @@ export type GymUser = {
   id: number;
   username: string;
   fullName: string | null;
+  workspaceKey: string;
 };
 
 type GymUserRow = RowDataPacket & {
@@ -16,6 +17,7 @@ type GymUserRow = RowDataPacket & {
   username: string;
   password_hash: string;
   full_name: string | null;
+  workspace_key: string;
 };
 
 type GymSessionRow = RowDataPacket & {
@@ -34,7 +36,7 @@ export class GymAuthService {
 
   async login(dto: LoginGymUserDto): Promise<{ user: GymUser; token: string }> {
     const rows = await this.databaseService.query<GymUserRow[]>(
-      `SELECT id, username, password_hash, full_name FROM saas_gym_users WHERE username = ? LIMIT 1`,
+      `SELECT id, username, password_hash, full_name, workspace_key FROM saas_gym_users WHERE username = ? LIMIT 1`,
       [dto.username.trim().toLowerCase()]
     );
     const row = rows[0];
@@ -50,6 +52,15 @@ export class GymAuthService {
       expiresAt
     ]);
     return { user: this.mapUser(row), token };
+  }
+
+  // Para dejar el intento fallido en la auditoria del workspace correcto.
+  async findWorkspaceKeyForUsername(username: string): Promise<string | null> {
+    const rows = await this.databaseService.query<GymUserRow[]>(
+      `SELECT workspace_key FROM saas_gym_users WHERE username = ? LIMIT 1`,
+      [username.trim().toLowerCase()]
+    );
+    return rows[0]?.workspace_key ?? null;
   }
 
   async logout(token: string): Promise<void> {
@@ -78,14 +89,14 @@ export class GymAuthService {
     }
 
     const userRows = await this.databaseService.query<GymUserRow[]>(
-      `SELECT id, username, password_hash, full_name FROM saas_gym_users WHERE id = ? LIMIT 1`,
+      `SELECT id, username, password_hash, full_name, workspace_key FROM saas_gym_users WHERE id = ? LIMIT 1`,
       [session.user_id]
     );
     return userRows[0] ? this.mapUser(userRows[0]) : null;
   }
 
   private mapUser(row: GymUserRow): GymUser {
-    return { id: row.id, username: row.username, fullName: row.full_name };
+    return { id: row.id, username: row.username, fullName: row.full_name, workspaceKey: row.workspace_key };
   }
 }
 

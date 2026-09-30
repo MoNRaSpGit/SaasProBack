@@ -4,8 +4,6 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { SaveGymWorkspaceDto } from "./dto/save-gym-workspace.dto";
 import { emptyGymWorkspaceData, GymAuditAction, GymWorkspaceData, GymWorkspaceRecord } from "./gym.types";
 
-const GYM_WORKSPACE_KEY = "public";
-
 type GymWorkspaceRow = RowDataPacket & {
   id: number;
   workspace_key: string;
@@ -14,22 +12,20 @@ type GymWorkspaceRow = RowDataPacket & {
   updated_at: string | Date;
 };
 
-// Un unico workspace global, igual de espiritu que el workspace de Agro
-// pero sin el aislamiento por tenant_id. Desde 30/09/2026 hay login real
-// (usuario/contrasena, ver gym-auth.service.ts), pero todos los usuarios
-// del gym comparten este mismo workspace -- si algun dia hay mas de un
-// gimnasio, esto pasa a filtrar por tenant igual que agro.service.ts.
+// Workspace en JSON, mismo espiritu que el de Agro. Cada usuario apunta a
+// un workspace_key (saas_gym_users.workspace_key): ale e invitado
+// comparten 'public'; un usuario demo puede tener el suyo, vacio.
 @Injectable()
 export class GymService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async getWorkspace(): Promise<GymWorkspaceRecord> {
+  async getWorkspace(workspaceKey: string): Promise<GymWorkspaceRecord> {
     const rows = await this.databaseService.query<GymWorkspaceRow[]>(
       `SELECT id, workspace_key, workspace_json, row_version, updated_at
        FROM saas_gym_workspaces
        WHERE workspace_key = ?
        LIMIT 1`,
-      [GYM_WORKSPACE_KEY]
+      [workspaceKey]
     );
 
     if (!rows[0]) {
@@ -39,13 +35,13 @@ export class GymService {
     return this.mapWorkspaceRow(rows[0]);
   }
 
-  async saveWorkspace(dto: SaveGymWorkspaceDto): Promise<GymWorkspaceRecord> {
+  async saveWorkspace(workspaceKey: string, dto: SaveGymWorkspaceDto): Promise<GymWorkspaceRecord> {
     const currentRows = await this.databaseService.query<GymWorkspaceRow[]>(
       `SELECT id, workspace_key, workspace_json, row_version, updated_at
        FROM saas_gym_workspaces
        WHERE workspace_key = ?
        LIMIT 1`,
-      [GYM_WORKSPACE_KEY]
+      [workspaceKey]
     );
 
     if (
@@ -77,16 +73,16 @@ export class GymService {
          workspace_json = VALUES(workspace_json),
          row_version = row_version + 1,
          updated_at = CURRENT_TIMESTAMP`,
-      [GYM_WORKSPACE_KEY, JSON.stringify(nextData)]
+      [workspaceKey, JSON.stringify(nextData)]
     );
 
-    return this.getWorkspace();
+    return this.getWorkspace(workspaceKey);
   }
 
   // Agrega una entrada a la auditoria del workspace (logins, intentos fallidos).
-  async recordAudit(action: GymAuditAction, details: string): Promise<GymWorkspaceRecord> {
-    const current = await this.getWorkspace();
-    return this.saveWorkspace({
+  async recordAudit(workspaceKey: string, action: GymAuditAction, details: string): Promise<GymWorkspaceRecord> {
+    const current = await this.getWorkspace(workspaceKey);
+    return this.saveWorkspace(workspaceKey, {
       expectedRowVersion: current.rowVersion || null,
       expenses: current.data.expenses,
       tasks: current.data.tasks,

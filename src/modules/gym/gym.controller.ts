@@ -15,14 +15,14 @@ export class GymController {
 
   @Get("workspace")
   async getWorkspace(@Headers("authorization") authorization: string | undefined) {
-    await this.gymAuthService.requireUser(authorization);
-    return this.gymService.getWorkspace();
+    const user = await this.gymAuthService.requireUser(authorization);
+    return this.gymService.getWorkspace(user.workspaceKey);
   }
 
   @Put("workspace")
   async saveWorkspace(@Headers("authorization") authorization: string | undefined, @Body() dto: SaveGymWorkspaceDto) {
-    await this.gymAuthService.requireUser(authorization);
-    return this.gymService.saveWorkspace(dto);
+    const user = await this.gymAuthService.requireUser(authorization);
+    return this.gymService.saveWorkspace(user.workspaceKey, dto);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -30,12 +30,16 @@ export class GymController {
   async login(@Body() dto: LoginGymUserDto) {
     try {
       const result = await this.gymAuthService.login(dto);
-      await this.gymService.recordAudit("login", `Inicio de sesión: ${result.user.fullName ?? result.user.username}`);
+      await this.gymService.recordAudit(result.user.workspaceKey, "login", `Inicio de sesión: ${result.user.fullName ?? result.user.username}`);
       return result;
     } catch (error) {
       // Intentos fallidos tambien quedan (solo el usuario probado, nunca la contrasena).
-      if (error instanceof UnauthorizedException) {
-        await this.gymService.recordAudit("login_failed", `Intento fallido de inicio de sesión: ${dto.username.trim()}`);
+      // Usuario inexistente -> no se registra en ningun workspace.
+      const workspaceKey = error instanceof UnauthorizedException
+        ? await this.gymAuthService.findWorkspaceKeyForUsername(dto.username)
+        : null;
+      if (workspaceKey) {
+        await this.gymService.recordAudit(workspaceKey, "login_failed", `Intento fallido de inicio de sesión: ${dto.username.trim()}`);
       }
       throw error;
     }
