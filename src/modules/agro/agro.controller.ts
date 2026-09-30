@@ -6,7 +6,6 @@ import { AgroAuthGuard } from "./agro-auth.guard";
 import { AgroService } from "./agro.service";
 import { AgroRequestUser } from "./agro.types";
 import { SaveAgroDiscoveryResponseDto } from "./dto/save-agro-discovery-response.dto";
-import { SaveAgroVoiceDebugLogDto } from "./dto/save-agro-voice-debug-log.dto";
 import { SaveAgroWorkspaceDto } from "./dto/save-agro-workspace.dto";
 
 @Controller("agro")
@@ -59,14 +58,5 @@ export class AgroController {
     @Body() dto: SaveAgroDiscoveryResponseDto
   ) {
     return this.agroService.saveDiscoveryResponse(currentUser, dto);
-  }
-
-  // Debug TEMPORAL (30/09/2026) del bug de transcript duplicado en
-  // Android -- ver comentario en agro.service.ts#logVoiceDebug.
-  @UseGuards(AgroAuthGuard, CapabilityGuard)
-  @RequireCapability("agro.shell.read")
-  @Post("voice-debug-log")
-  logVoiceDebug(@CurrentAgroUser() currentUser: AgroRequestUser, @Body() dto: SaveAgroVoiceDebugLogDto) {
-    return this.agroService.logVoiceDebug(currentUser, dto);
   }
 }
