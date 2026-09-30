@@ -14,11 +14,11 @@ type GymWorkspaceRow = RowDataPacket & {
   updated_at: string | Date;
 };
 
-// Sin tenant/login real todavia (pedido explicito, 30/09/2026: "por ahora
-// que estamos en fase de pruebas que ese login entre directo") -- un
-// unico workspace global, igual de espiritu que el workspace de Agro pero
-// sin el aislamiento por tenant_id. Cuando se agregue login de verdad,
-// esto pasa a filtrar por tenant igual que agro.service.ts.
+// Un unico workspace global, igual de espiritu que el workspace de Agro
+// pero sin el aislamiento por tenant_id. Desde 30/09/2026 hay login real
+// (usuario/contrasena, ver gym-auth.service.ts), pero todos los usuarios
+// del gym comparten este mismo workspace -- si algun dia hay mas de un
+// gimnasio, esto pasa a filtrar por tenant igual que agro.service.ts.
 @Injectable()
 export class GymService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -83,10 +83,8 @@ export class GymService {
     return this.getWorkspace();
   }
 
-  // Login "pasa directo" (sin usuario/contrasena todavia): igual queda un
-  // rastro en la auditoria de cuando se toco "Ingresar", para no perder
-  // el habito de auditar desde el dia 1.
-  async recordLogin(): Promise<GymWorkspaceRecord> {
+  // Agrega una entrada a la auditoria del workspace (logins, intentos fallidos).
+  async recordAudit(action: GymAuditAction, details: string): Promise<GymWorkspaceRecord> {
     const current = await this.getWorkspace();
     return this.saveWorkspace({
       expectedRowVersion: current.rowVersion || null,
@@ -95,7 +93,7 @@ export class GymService {
       movements: current.data.movements,
       students: current.data.students,
       checkIns: current.data.checkIns,
-      auditLog: [this.buildAuditEntry("login", "Se abrio la app"), ...current.data.auditLog]
+      auditLog: [this.buildAuditEntry(action, details), ...current.data.auditLog]
     });
   }
 

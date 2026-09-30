@@ -54,6 +54,7 @@ export type GymCheckIn = {
 
 export type GymAuditAction =
   | "login"
+  | "login_failed"
   | "expense_created"
   | "expense_paid"
   | "expense_deleted"
