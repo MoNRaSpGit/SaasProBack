@@ -13,6 +13,7 @@ import { GymModule } from "./modules/gym/gym.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
 import { OriolModule } from "./modules/oriol/oriol.module";
+import { PeluqueriaModule } from "./modules/peluqueria/peluqueria.module";
 import { PilotoModule } from "./modules/piloto/piloto.module";
 import { QqModule } from "./modules/qq/qq.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
@@ -44,7 +45,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     PilotoModule,
     QqModule,
     JokerModule,
-    OriolModule
+    OriolModule,
+    PeluqueriaModule
   ],
   controllers: [HealthController],
   providers: []
