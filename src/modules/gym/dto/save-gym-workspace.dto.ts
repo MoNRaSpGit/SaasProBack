@@ -12,8 +12,13 @@ export class SaveGymWorkspaceDto {
   @IsArray()
   expenses!: unknown[];
 
+  // Opcional desde 01/10/2026 (pedido explicito: "saca la parte de
+  // Tareas") -- el frontend ya no manda este campo. Si el workspace ya
+  // tenia tareas guardadas de antes, se conservan tal cual (ver
+  // gym.service.ts#saveWorkspace), no se borran.
+  @IsOptional()
   @IsArray()
-  tasks!: unknown[];
+  tasks?: unknown[];
 
   @IsArray()
   movements!: unknown[];

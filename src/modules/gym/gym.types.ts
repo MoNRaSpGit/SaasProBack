@@ -32,12 +32,18 @@ export type GymMovement = {
 
 export type GymStudentPlan = "mensual" | "trimestral" | "semestral" | "anual";
 
+// Categoria/deporte del alumno (01/10/2026). Ver espejo en el frontend
+// (gym.types.ts) -- aca no se valida campo por campo (students viaja
+// como unknown[] en el DTO), pero el tipo documenta la forma real.
+export type GymStudentCategory = "gimnasio" | "futbol" | "voley" | "basquet" | "otro";
+
 export type GymStudent = {
   id: string;
   name: string;
   phone: string;
   fee: number | null;
   plan: GymStudentPlan;
+  category: GymStudentCategory;
   dueDate: string;
   note: string;
   lastPaidAt: string | null;

@@ -58,7 +58,9 @@ export class GymService {
     const previousData = currentRows[0] ? this.mapWorkspaceRow(currentRows[0]).data : null;
     const nextData: GymWorkspaceData = {
       expenses: dto.expenses as GymWorkspaceData["expenses"],
-      tasks: dto.tasks as GymWorkspaceData["tasks"],
+      // Ya no se edita desde el frontend (pestana Tareas sacada
+      // 01/10/2026) -- si no viene, se conserva lo que ya hubiera.
+      tasks: (dto.tasks ?? previousData?.tasks ?? []) as GymWorkspaceData["tasks"],
       movements: dto.movements as GymWorkspaceData["movements"],
       // Si un cliente viejo no manda alumnos, se conservan los que ya habia.
       students: (dto.students ?? previousData?.students ?? []) as GymWorkspaceData["students"],
