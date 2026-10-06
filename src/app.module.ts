@@ -6,6 +6,7 @@ import { AgroModule } from "./modules/agro/agro.module";
 import { CamisetasModule } from "./modules/camisetas/camisetas.module";
 import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
+import { ConstruccionModule } from "./modules/construccion/construccion.module";
 import { DeliveryModule } from "./modules/delivery/delivery.module";
 import { DgiModule } from "./modules/dgi/dgi.module";
 import { EjemploModule } from "./modules/ejemplo/ejemplo.module";
@@ -46,7 +47,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     QqModule,
     JokerModule,
     OriolModule,
-    PeluqueriaModule
+    PeluqueriaModule,
+    ConstruccionModule
   ],
   controllers: [HealthController],
   providers: []
