@@ -4,9 +4,10 @@ import { CreateAnticipoDto } from "./dto/create-anticipo.dto";
 import { CreateObraDto } from "./dto/create-obra.dto";
 import { CreatePersonalDto } from "./dto/create-personal.dto";
 import { SaveAsistenciasDto } from "./dto/save-asistencias.dto";
+import { SaveSeguridadDto } from "./dto/save-seguridad.dto";
 import { UpdateObraDto } from "./dto/update-obra.dto";
 import { UpdatePersonalDto } from "./dto/update-personal.dto";
-import { CARGOS } from "./construccion.types";
+import { CARGOS, SEGURIDAD_ITEMS } from "./construccion.types";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const MONTH_PATTERN = /^\d{4}-\d{2}$/;
@@ -64,6 +65,24 @@ export class ConstruccionController {
   @Post("asistencias")
   saveAsistencias(@Body() dto: SaveAsistenciasDto) {
     return this.construccionService.saveAsistencias(dto);
+  }
+
+  @Get("seguridad-items")
+  listSeguridadItems() {
+    return SEGURIDAD_ITEMS;
+  }
+
+  @Get("seguridad")
+  getSeguridad(@Query("fecha") fecha?: string) {
+    if (!fecha || !DATE_PATTERN.test(fecha)) {
+      throw new BadRequestException("fecha es obligatoria, formato YYYY-MM-DD");
+    }
+    return this.construccionService.getSeguridadByFecha(fecha);
+  }
+
+  @Post("seguridad")
+  saveSeguridad(@Body() dto: SaveSeguridadDto) {
+    return this.construccionService.saveSeguridad(dto);
   }
 
   @Get("anticipos")

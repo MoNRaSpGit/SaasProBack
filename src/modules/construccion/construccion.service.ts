@@ -5,6 +5,7 @@ import { CreateAnticipoDto } from "./dto/create-anticipo.dto";
 import { CreateObraDto } from "./dto/create-obra.dto";
 import { CreatePersonalDto } from "./dto/create-personal.dto";
 import { SaveAsistenciasDto } from "./dto/save-asistencias.dto";
+import { SaveSeguridadDto } from "./dto/save-seguridad.dto";
 import { UpdateObraDto } from "./dto/update-obra.dto";
 import { UpdatePersonalDto } from "./dto/update-personal.dto";
 import {
@@ -12,7 +13,9 @@ import {
   ConstruccionAsistencia,
   ConstruccionLiquidacionItem,
   ConstruccionObra,
-  ConstruccionPersonal
+  ConstruccionPersonal,
+  ConstruccionSeguridad,
+  SeguridadItem
 } from "./construccion.types";
 
 type ObraRow = RowDataPacket & {
@@ -40,6 +43,14 @@ type AsistenciaRow = RowDataPacket & {
   personal_id: number;
   fecha: string | Date;
   estado: "presente" | "media" | "ausente";
+};
+
+type SeguridadRow = RowDataPacket & {
+  id: number;
+  personal_id: number;
+  fecha: string | Date;
+  cumple: number;
+  items_faltantes: string;
 };
 
 type AnticipoRow = RowDataPacket & {
@@ -77,6 +88,17 @@ function mapPersonal(row: PersonalRow): ConstruccionPersonal {
     fechaIngreso: toDateStr(row.fecha_ingreso),
     activo: Boolean(row.activo),
     createdAt: row.created_at
+  };
+}
+
+function mapSeguridad(row: SeguridadRow): ConstruccionSeguridad {
+  const itemsFaltantes = typeof row.items_faltantes === "string" ? JSON.parse(row.items_faltantes) : row.items_faltantes;
+  return {
+    id: row.id,
+    personalId: row.personal_id,
+    fecha: toDateStr(row.fecha),
+    cumple: Boolean(row.cumple),
+    itemsFaltantes: itemsFaltantes ?? []
   };
 }
 
@@ -214,6 +236,27 @@ export class ConstruccionService {
       );
     }
     return this.getAsistenciasByFecha(dto.fecha);
+  }
+
+  async getSeguridadByFecha(fecha: string): Promise<ConstruccionSeguridad[]> {
+    const rows = await this.databaseService.query<SeguridadRow[]>(
+      `SELECT * FROM saas_construccion_seguridad WHERE fecha = ?`,
+      [fecha]
+    );
+    return rows.map(mapSeguridad);
+  }
+
+  async saveSeguridad(dto: SaveSeguridadDto): Promise<ConstruccionSeguridad[]> {
+    for (const item of dto.items) {
+      const itemsFaltantes: SeguridadItem[] = item.cumple ? [] : (item.itemsFaltantes as SeguridadItem[]);
+      await this.databaseService.execute(
+        `INSERT INTO saas_construccion_seguridad (personal_id, fecha, cumple, items_faltantes)
+         VALUES (?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE cumple = VALUES(cumple), items_faltantes = VALUES(items_faltantes)`,
+        [item.personalId, dto.fecha, Number(item.cumple), JSON.stringify(itemsFaltantes)]
+      );
+    }
+    return this.getSeguridadByFecha(dto.fecha);
   }
 
   async listAnticipos(personalId?: number): Promise<ConstruccionAnticipo[]> {
