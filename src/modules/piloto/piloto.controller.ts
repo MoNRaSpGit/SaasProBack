@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { CreatePilotoAccountEntryDto } from "./dto/create-piloto-account-entry.dto";
+import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
@@ -7,6 +9,7 @@ import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
 import { diffFields, PilotoAuditService } from "./piloto-audit.service";
+import { PilotoClientsService } from "./piloto-clients.service";
 import { PilotoPriceEntriesService } from "./piloto-price-entries.service";
 import { PilotoPrintingService } from "./piloto-printing.service";
 import { PilotoService } from "./piloto.service";
@@ -19,7 +22,8 @@ export class PilotoController {
     private readonly pilotoService: PilotoService,
     private readonly auditService: PilotoAuditService,
     private readonly printingService: PilotoPrintingService,
-    private readonly priceEntriesService: PilotoPriceEntriesService
+    private readonly priceEntriesService: PilotoPriceEntriesService,
+    private readonly clientsService: PilotoClientsService
   ) {}
 
   @Get("products")
@@ -150,5 +154,39 @@ export class PilotoController {
   @Get("sales/summary")
   getSalesSummary(@Query("date") date?: string) {
     return this.pilotoService.getSalesSummary(date);
+  }
+
+  // Clientes / cuenta corriente (06/10/2026, pedido explicito): venta a
+  // credito ligada a un cliente. Version simple, sin pagos parciales.
+  @Get("clients")
+  listClients() {
+    return this.clientsService.listClients();
+  }
+
+  @Post("clients")
+  createClient(@Body() dto: CreatePilotoClientDto) {
+    return this.clientsService.createClient(dto);
+  }
+
+  @Delete("clients/:id")
+  async deleteClient(@Param("id", ParseIntPipe) id: number) {
+    await this.clientsService.deleteClient(id);
+    return { ok: true };
+  }
+
+  @Get("account-entries")
+  listAccountEntries(@Query("clientId") clientId?: string) {
+    return this.clientsService.listAccountEntries(clientId ? Number(clientId) : undefined);
+  }
+
+  @Post("account-entries")
+  createAccountEntry(@Body() dto: CreatePilotoAccountEntryDto) {
+    return this.clientsService.createAccountEntry(dto);
+  }
+
+  @Delete("account-entries/client/:clientId")
+  async settleAccount(@Param("clientId", ParseIntPipe) clientId: number) {
+    await this.clientsService.settleAccount(clientId);
+    return { ok: true };
   }
 }

@@ -1,0 +1,18 @@
+CREATE TABLE IF NOT EXISTS saas_piloto_clients (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(120) NOT NULL,
+  phone VARCHAR(40) NULL,
+  address VARCHAR(200) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS saas_piloto_account_entries (
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  client_id INT NOT NULL,
+  sale_id BIGINT UNSIGNED NULL,
+  total DECIMAL(10,2) NOT NULL,
+  items JSON NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_piloto_account_entry_client FOREIGN KEY (client_id) REFERENCES saas_piloto_clients (id) ON DELETE CASCADE,
+  CONSTRAINT fk_piloto_account_entry_sale FOREIGN KEY (sale_id) REFERENCES saas_piloto_sales (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

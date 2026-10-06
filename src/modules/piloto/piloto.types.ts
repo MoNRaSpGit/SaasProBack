@@ -70,3 +70,31 @@ export type PilotoSalesSummary = {
   profitMarginRatio: number;
   sales: PilotoSaleMovement[];
 };
+
+// Clientes / cuenta corriente (06/10/2026, pedido explicito: "venta a
+// credito... que le salgan esos 5 clientes... armar toda la parte del
+// cliente, similar a la de Joker, pero plan basico" -- version simple:
+// sin pagos parciales ni archivo historico, solo boletas + "saldar
+// cuenta" que las borra todas de una).
+export type PilotoClient = {
+  id: number;
+  name: string;
+  phone: string | null;
+  address: string | null;
+  createdAt: string;
+};
+
+export type PilotoAccountEntryItem = {
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+export type PilotoAccountEntry = {
+  id: number;
+  clientId: number;
+  saleId: number | null;
+  total: number;
+  items: PilotoAccountEntryItem[];
+  createdAt: string;
+};
