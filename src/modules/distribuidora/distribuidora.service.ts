@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import {
   DistribuidoraClient,
@@ -291,6 +292,75 @@ export class DistribuidoraService {
     );
 
     return this.getOrder(result.insertId);
+  }
+
+  // Editar un pedido PENDIENTE (uno ya facturado no se toca: la boleta
+  // ya salio con ese numero). Se manda la lista completa de renglones.
+  // Los productos que ya estaban conservan el nombre y el precio con que
+  // se tomo el pedido; los que se agregan entran al precio de hoy.
+  async updateOrder(orderId: number, dto: UpdateDistribuidoraOrderDto): Promise<DistribuidoraOrder> {
+    const current = await this.getOrder(orderId);
+    if (current.status !== "pendiente") {
+      throw new ConflictException("Ese pedido ya tiene boleta: no se puede editar.");
+    }
+
+    const quantities = new Map<number, number>();
+    for (const item of dto.items) {
+      quantities.set(item.productId, (quantities.get(item.productId) ?? 0) + item.quantity);
+    }
+
+    const currentById = new Map(current.items.map((item) => [item.productId, item]));
+    const newProductIds = [...quantities.keys()].filter((productId) => !currentById.has(productId));
+    const newProducts =
+      newProductIds.length > 0
+        ? await this.databaseService.query<ProductRow[]>(
+            `SELECT id, name, price FROM saas_distribuidora_products
+             WHERE status = 'active' AND id IN (${newProductIds.map(() => "?").join(", ")})`,
+            newProductIds
+          )
+        : [];
+    const newProductsById = new Map(newProducts.map((product) => [product.id, product]));
+
+    const items: DistribuidoraOrderItem[] = [...quantities.entries()].map(([productId, quantity]) => {
+      const existing = currentById.get(productId);
+      const product = newProductsById.get(productId);
+      if (!existing && !product) {
+        throw new BadRequestException(`El producto ${productId} no existe o esta dado de baja.`);
+      }
+      const name = existing ? existing.name : product!.name;
+      const price = existing ? existing.price : Number(product!.price);
+      return { productId, name, price, quantity, subtotal: roundMoney(price * quantity) };
+    });
+    const total = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
+
+    // El "AND status" evita pisar un pedido que se facturo justo mientras
+    // se lo estaba editando.
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_distribuidora_orders SET items = ?, total = ?, note = ? WHERE id = ? AND status = 'pendiente'`,
+      [JSON.stringify(items), total, cleanOptional(dto.note), orderId]
+    );
+    if (result.affectedRows === 0) {
+      throw new ConflictException("Ese pedido ya tiene boleta: no se puede editar.");
+    }
+
+    return this.getOrder(orderId);
+  }
+
+  // Solo se eliminan pedidos PENDIENTES: borrar uno facturado dejaria un
+  // hueco en la numeracion de boletas.
+  async deleteOrder(orderId: number): Promise<void> {
+    const current = await this.getOrder(orderId);
+    if (current.status !== "pendiente") {
+      throw new ConflictException("Ese pedido ya tiene boleta: no se puede eliminar.");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_distribuidora_orders WHERE id = ? AND status = 'pendiente'`,
+      [orderId]
+    );
+    if (result.affectedRows === 0) {
+      throw new ConflictException("Ese pedido ya tiene boleta: no se puede eliminar.");
+    }
   }
 
   // La oficina "toma" el pedido y lo pasa a boleta: se le asigna el

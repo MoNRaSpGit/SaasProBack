@@ -1,7 +1,8 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import { DistribuidoraService } from "./distribuidora.service";
 import { DistribuidoraOrderStatus, ORDER_STATUSES } from "./distribuidora.types";
@@ -56,6 +57,17 @@ export class DistribuidoraController {
   @Post("orders")
   createOrder(@Body() dto: CreateDistribuidoraOrderDto) {
     return this.distribuidoraService.createOrder(dto);
+  }
+
+  @Patch("orders/:id")
+  updateOrder(@Param("id", ParseIntPipe) orderId: number, @Body() dto: UpdateDistribuidoraOrderDto) {
+    return this.distribuidoraService.updateOrder(orderId, dto);
+  }
+
+  @Delete("orders/:id")
+  @HttpCode(204)
+  async deleteOrder(@Param("id", ParseIntPipe) orderId: number) {
+    await this.distribuidoraService.deleteOrder(orderId);
   }
 
   @Patch("orders/:id/invoice")
