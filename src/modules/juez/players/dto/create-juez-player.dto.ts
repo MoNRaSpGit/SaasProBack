@@ -46,4 +46,12 @@ export class CreateJuezPlayerDto {
   @IsString()
   @MaxLength(8_000_000)
   photoDataUrl?: string;
+
+  // Quien hizo el alta (10/10/2026, pedido explicito: auditoria). Opcional
+  // porque no hay auth real en el backend -- si no llega, se registra como
+  // "desconocido".
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  actor?: string;
 }

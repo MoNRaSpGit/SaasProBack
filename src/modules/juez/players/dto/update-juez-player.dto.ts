@@ -35,4 +35,10 @@ export class UpdateJuezPlayerDto {
   @IsString()
   @MaxLength(8_000_000)
   photoDataUrl?: string;
+
+  // Quien hizo la edicion (10/10/2026, pedido explicito: auditoria).
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  actor?: string;
 }

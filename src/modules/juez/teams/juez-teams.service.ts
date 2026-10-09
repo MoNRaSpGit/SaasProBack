@@ -1,6 +1,7 @@
 import { ConflictException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../../shared/database/database.service";
+import { JuezAuditService } from "../audit/juez-audit.service";
 import { CreateJuezTeamDto } from "./dto/create-juez-team.dto";
 import { JuezTeam } from "./juez-teams.types";
 
@@ -26,7 +27,10 @@ const TEAM_COLUMNS = `
 export class JuezTeamsService {
   private ensureTablesPromise: Promise<void> | null = null;
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly juezAuditService: JuezAuditService
+  ) {}
 
   async listTeams() {
     await this.ensureTables();
@@ -70,7 +74,14 @@ export class JuezTeamsService {
       [result.insertId]
     );
 
-    return { item: this.mapTeam(rows[0]) };
+    const created = this.mapTeam(rows[0]);
+    await this.juezAuditService.record(
+      "team_created",
+      dto.actor || "desconocido",
+      `Equipo creado: ${created.name} (${created.division}, ${created.sex})`
+    );
+
+    return { item: created };
   }
 
   private mapTeam(row: JuezTeamRow): JuezTeam {

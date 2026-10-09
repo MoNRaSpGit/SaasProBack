@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../../shared/database/database.service";
+import { JuezAuditService } from "../audit/juez-audit.service";
 import { CreateJuezPlayerDto } from "./dto/create-juez-player.dto";
 import { UpdateJuezPlayerDto } from "./dto/update-juez-player.dto";
 import { JuezPlayer } from "./juez-players.types";
@@ -45,7 +46,10 @@ const PLAYER_COLUMNS = `
 export class JuezPlayersService {
   private ensureTablesPromise: Promise<void> | null = null;
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly juezAuditService: JuezAuditService
+  ) {}
 
   async listPlayers() {
     await this.ensureTables();
@@ -97,7 +101,14 @@ export class JuezPlayersService {
       [result.insertId]
     );
 
-    return { item: this.mapPlayer(rows[0]) };
+    const created = this.mapPlayer(rows[0]);
+    await this.juezAuditService.record(
+      "player_created",
+      dto.actor || "desconocido",
+      `Jugador creado: ${created.name} ${created.lastName} (${created.team} ${created.division} ${created.sex})`
+    );
+
+    return { item: created };
   }
 
   async updatePlayer(id: number, dto: UpdateJuezPlayerDto) {
@@ -152,7 +163,37 @@ export class JuezPlayersService {
       [id]
     );
 
-    return { item: this.mapPlayer(rows[0]) };
+    const before = this.mapPlayer(existing[0]);
+    const after = this.mapPlayer(rows[0]);
+    const changes: string[] = [];
+    if (before.name !== after.name || before.lastName !== after.lastName) {
+      changes.push(`nombre "${before.name} ${before.lastName}" -> "${after.name} ${after.lastName}"`);
+    }
+    if (before.expiryDate !== after.expiryDate) {
+      changes.push(`vencimiento ${before.expiryDate} -> ${after.expiryDate}`);
+    }
+    if (before.cedula !== after.cedula) {
+      changes.push(`cedula ${before.cedula || "(vacia)"} -> ${after.cedula || "(vacia)"}`);
+    }
+    if (before.phone !== after.phone) {
+      changes.push(`telefono ${before.phone || "(vacio)"} -> ${after.phone || "(vacio)"}`);
+    }
+    if (before.birthDate !== after.birthDate) {
+      changes.push(`nacimiento ${before.birthDate || "(vacio)"} -> ${after.birthDate || "(vacio)"}`);
+    }
+    if (dto.photoDataUrl !== undefined) {
+      changes.push("foto actualizada");
+    }
+
+    if (changes.length) {
+      await this.juezAuditService.record(
+        "player_updated",
+        dto.actor || "desconocido",
+        `Jugador #${id} (${after.team} ${after.division} ${after.sex}) editado: ${changes.join("; ")}`
+      );
+    }
+
+    return { item: after };
   }
 
   async getPlayerPhoto(id: number) {
