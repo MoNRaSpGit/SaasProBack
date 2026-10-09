@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch,
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import { DistribuidoraService } from "./distribuidora.service";
 import { DistribuidoraOrderStatus, ORDER_STATUSES } from "./distribuidora.types";
 
@@ -25,13 +26,18 @@ export class DistribuidoraController {
   }
 
   @Get("products")
-  listProducts(@Query("q") search?: string) {
-    return this.distribuidoraService.listProducts(search);
+  listProducts(@Query("q") search?: string, @Query("all") all?: string) {
+    return this.distribuidoraService.listProducts(search, all === "1");
   }
 
   @Post("products")
   createProduct(@Body() dto: CreateDistribuidoraProductDto) {
     return this.distribuidoraService.createProduct(dto);
+  }
+
+  @Patch("products/:id")
+  updateProduct(@Param("id", ParseIntPipe) productId: number, @Body() dto: UpdateDistribuidoraProductDto) {
+    return this.distribuidoraService.updateProduct(productId, dto);
   }
 
   @Get("orders")

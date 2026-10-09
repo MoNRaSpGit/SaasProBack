@@ -10,6 +10,7 @@ export type DistribuidoraProduct = {
   id: number;
   name: string;
   price: number;
+  active: boolean;
 };
 
 export type DistribuidoraOrderItem = {

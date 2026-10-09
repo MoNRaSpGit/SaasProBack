@@ -4,6 +4,7 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import {
   DistribuidoraClient,
   DistribuidoraOrder,
@@ -24,6 +25,7 @@ type ProductRow = RowDataPacket & {
   id: number;
   name: string;
   price: string;
+  status: "active" | "inactive";
 };
 
 type OrderRow = RowDataPacket & {
@@ -50,7 +52,11 @@ const ORDER_COLUMNS = `id, client_id, client_name, client_rut, client_address, i
   DATE_FORMAT(invoiced_at, '%Y-%m-%dT%H:%i:%sZ') AS invoiced_at,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at`;
 
+const PRODUCT_COLUMNS = "id, name, price, status";
+
 const SEARCH_LIMIT = 50;
+// La pestana Productos de la oficina lista el catalogo entero.
+const CATALOG_LIMIT = 1000;
 const ORDERS_LIMIT = 200;
 
 function roundMoney(value: number) {
@@ -63,7 +69,7 @@ function cleanOptional(value?: string) {
 }
 
 function mapProduct(row: ProductRow): DistribuidoraProduct {
-  return { id: row.id, name: row.name, price: Number(row.price) };
+  return { id: row.id, name: row.name, price: Number(row.price), active: row.status === "active" };
 }
 
 function mapClient(row: ClientRow): DistribuidoraClient {
@@ -121,19 +127,24 @@ export class DistribuidoraService {
     return mapClient(rows[0]);
   }
 
-  async listProducts(search?: string): Promise<DistribuidoraProduct[]> {
+  // includeInactive = la vista de la oficina (catalogo entero, con los
+  // dados de baja). El vendedor solo ve los activos.
+  async listProducts(search?: string, includeInactive = false): Promise<DistribuidoraProduct[]> {
     const term = search?.trim();
-    const rows = term
-      ? await this.databaseService.query<ProductRow[]>(
-          `SELECT id, name, price FROM saas_distribuidora_products
-           WHERE status = 'active' AND name LIKE ?
-           ORDER BY name ASC LIMIT ${SEARCH_LIMIT}`,
-          [`%${term}%`]
-        )
-      : await this.databaseService.query<ProductRow[]>(
-          `SELECT id, name, price FROM saas_distribuidora_products
-           WHERE status = 'active' ORDER BY name ASC LIMIT ${SEARCH_LIMIT}`
-        );
+    const conditions: string[] = [];
+    const values: string[] = [];
+    if (!includeInactive) conditions.push("status = 'active'");
+    if (term) {
+      conditions.push("name LIKE ?");
+      values.push(`%${term}%`);
+    }
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const rows = await this.databaseService.query<ProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS} FROM saas_distribuidora_products ${where}
+       ORDER BY name ASC LIMIT ${includeInactive ? CATALOG_LIMIT : SEARCH_LIMIT}`,
+      values
+    );
 
     return rows.map(mapProduct);
   }
@@ -143,7 +154,42 @@ export class DistribuidoraService {
       `INSERT INTO saas_distribuidora_products (name, price) VALUES (?, ?)`,
       [dto.name.trim(), dto.price]
     );
-    return { id: result.insertId, name: dto.name.trim(), price: dto.price };
+    return { id: result.insertId, name: dto.name.trim(), price: dto.price, active: true };
+  }
+
+  // Editar un producto no toca los pedidos ya tomados: cada pedido guarda
+  // su propia foto de nombre y precio.
+  async updateProduct(productId: number, dto: UpdateDistribuidoraProductDto): Promise<DistribuidoraProduct> {
+    const sets: string[] = [];
+    const values: Array<string | number> = [];
+    if (dto.name !== undefined) {
+      sets.push("name = ?");
+      values.push(dto.name.trim());
+    }
+    if (dto.price !== undefined) {
+      sets.push("price = ?");
+      values.push(dto.price);
+    }
+    if (dto.active !== undefined) {
+      sets.push("status = ?");
+      values.push(dto.active ? "active" : "inactive");
+    }
+
+    if (sets.length > 0) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `UPDATE saas_distribuidora_products SET ${sets.join(", ")} WHERE id = ?`,
+        [...values, productId]
+      );
+    }
+
+    const rows = await this.databaseService.query<ProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS} FROM saas_distribuidora_products WHERE id = ?`,
+      [productId]
+    );
+    if (!rows[0]) {
+      throw new NotFoundException("No existe ese producto.");
+    }
+    return mapProduct(rows[0]);
   }
 
   async listOrders(status?: DistribuidoraOrderStatus): Promise<DistribuidoraOrder[]> {

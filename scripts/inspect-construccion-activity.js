@@ -78,7 +78,7 @@ async function main() {
       `SELECT visitor_id, event, detail, user_agent, DATE_FORMAT(occurred_at, '%Y-%m-%dT%H:%i:%sZ') AS occurred_at
        FROM saas_construccion_activity_log
        WHERE occurred_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
-       ORDER BY occurred_at ASC, id ASC`,
+       ORDER BY occurred_at ASC, (event = 'login') DESC, id ASC`,
       [days]
     );
   } finally {
