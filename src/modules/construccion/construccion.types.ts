@@ -67,3 +67,8 @@ export type ConstruccionLiquidacionItem = {
   totalAnticipos: number;
   totalAPagar: number;
 };
+
+// Registro interno de uso (09/10/2026): "entrada" = abrio la app,
+// "seccion" = entro a una pestana, "accion" = guardo algo.
+export const ACTIVITY_EVENTS = ["entrada", "seccion", "accion"] as const;
+export type ActivityEvent = (typeof ACTIVITY_EVENTS)[number];

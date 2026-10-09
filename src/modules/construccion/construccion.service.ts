@@ -6,6 +6,7 @@ import { CreateObraDto } from "./dto/create-obra.dto";
 import { CreatePersonalDto } from "./dto/create-personal.dto";
 import { SaveAsistenciasDto } from "./dto/save-asistencias.dto";
 import { SaveSeguridadDto } from "./dto/save-seguridad.dto";
+import { TrackActivityDto } from "./dto/track-activity.dto";
 import { UpdateObraDto } from "./dto/update-obra.dto";
 import { UpdatePersonalDto } from "./dto/update-personal.dto";
 import {
@@ -329,5 +330,16 @@ export class ConstruccionService {
         totalAPagar: totalJornales - totalAnticipos
       };
     });
+  }
+
+  // Registro interno de uso -- PARA NOSOTROS, no hay pantalla en la app
+  // que lo muestre (se consulta con scripts/inspect-construccion-activity.js).
+  // Sirve para saber si el cliente entro y que toco, ya que no hay login.
+  async trackActivity(dto: TrackActivityDto, userAgent?: string): Promise<void> {
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_construccion_activity_log (visitor_id, event, detail, user_agent, occurred_at)
+       VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
+      [dto.visitorId, dto.event, dto.detail?.trim() || null, userAgent?.slice(0, 255) || null]
+    );
   }
 }

@@ -1,10 +1,11 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { ConstruccionService } from "./construccion.service";
 import { CreateAnticipoDto } from "./dto/create-anticipo.dto";
 import { CreateObraDto } from "./dto/create-obra.dto";
 import { CreatePersonalDto } from "./dto/create-personal.dto";
 import { SaveAsistenciasDto } from "./dto/save-asistencias.dto";
 import { SaveSeguridadDto } from "./dto/save-seguridad.dto";
+import { TrackActivityDto } from "./dto/track-activity.dto";
 import { UpdateObraDto } from "./dto/update-obra.dto";
 import { UpdatePersonalDto } from "./dto/update-personal.dto";
 import { CARGOS, SEGURIDAD_ITEMS } from "./construccion.types";
@@ -102,5 +103,13 @@ export class ConstruccionController {
       throw new BadRequestException("mes es obligatorio, formato YYYY-MM");
     }
     return this.construccionService.getLiquidacion(mes);
+  }
+
+  // Registro interno de uso (09/10/2026): la app avisa sola cuando alguien
+  // entra, cambia de pestana o guarda algo. No devuelve nada.
+  @Post("activity")
+  @HttpCode(204)
+  async trackActivity(@Body() dto: TrackActivityDto, @Headers("user-agent") userAgent?: string) {
+    await this.construccionService.trackActivity(dto, userAgent);
   }
 }
