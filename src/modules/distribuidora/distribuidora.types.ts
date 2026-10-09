@@ -29,6 +29,25 @@ export type DistribuidoraOrderItem = {
   subtotal: number;
 };
 
+// Auditoria interna (09/10/2026): que se hizo, cuando y desde que
+// dispositivo. No hay login, asi que "quien" es el id que genera el
+// navegador (deviceId) mas el user agent.
+export const AUDIT_ACTIONS = [
+  "order_create",
+  "order_update",
+  "order_delete",
+  "order_invoice",
+  "product_create",
+  "product_update",
+  "client_create"
+] as const;
+export type DistribuidoraAuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export type DistribuidoraAuditContext = {
+  deviceId?: string;
+  userAgent?: string;
+};
+
 export const ORDER_STATUSES = ["pendiente", "facturado"] as const;
 export type DistribuidoraOrderStatus = (typeof ORDER_STATUSES)[number];
 

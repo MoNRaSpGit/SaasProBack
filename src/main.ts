@@ -43,7 +43,15 @@ async function bootstrap() {
       callback(new Error("Not allowed by CORS"), false);
     },
     methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Request-Id", "x-camisetas-admin-token", "x-carnet-admin-token"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Request-Id",
+      "x-camisetas-admin-token",
+      "x-carnet-admin-token",
+      // Auditoria de frontend-distribuidora: id del dispositivo en las escrituras.
+      "X-Device-Id"
+    ],
     exposedHeaders: ["X-Request-Id"],
     credentials: false,
     optionsSuccessStatus: 204,

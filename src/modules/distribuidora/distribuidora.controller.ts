@@ -1,11 +1,34 @@
-import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query
+} from "@nestjs/common";
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
 import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import { DistribuidoraService } from "./distribuidora.service";
-import { DistribuidoraOrderStatus, ORDER_STATUSES } from "./distribuidora.types";
+import { DistribuidoraAuditContext, DistribuidoraOrderStatus, ORDER_STATUSES } from "./distribuidora.types";
+
+// Para la auditoria interna: desde que dispositivo se hizo cada cambio.
+// El id lo genera el navegador (no hay login) y viaja en X-Device-Id solo
+// en las operaciones que modifican algo.
+function auditContext(deviceId?: string, userAgent?: string): DistribuidoraAuditContext {
+  return {
+    deviceId: deviceId && /^[A-Za-z0-9-]{8,40}$/.test(deviceId) ? deviceId : undefined,
+    userAgent
+  };
+}
 
 // Sin login por ahora (08/10/2026, pedido explicito: "capaz que hacemos
 // un usuario solo, despues vemos como dividirlo"). El vendedor de la
@@ -22,8 +45,12 @@ export class DistribuidoraController {
   }
 
   @Post("clients")
-  createClient(@Body() dto: CreateDistribuidoraClientDto) {
-    return this.distribuidoraService.createClient(dto);
+  createClient(
+    @Body() dto: CreateDistribuidoraClientDto,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.createClient(dto, auditContext(deviceId, userAgent));
   }
 
   @Get("products")
@@ -32,13 +59,22 @@ export class DistribuidoraController {
   }
 
   @Post("products")
-  createProduct(@Body() dto: CreateDistribuidoraProductDto) {
-    return this.distribuidoraService.createProduct(dto);
+  createProduct(
+    @Body() dto: CreateDistribuidoraProductDto,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.createProduct(dto, auditContext(deviceId, userAgent));
   }
 
   @Patch("products/:id")
-  updateProduct(@Param("id", ParseIntPipe) productId: number, @Body() dto: UpdateDistribuidoraProductDto) {
-    return this.distribuidoraService.updateProduct(productId, dto);
+  updateProduct(
+    @Param("id", ParseIntPipe) productId: number,
+    @Body() dto: UpdateDistribuidoraProductDto,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.updateProduct(productId, dto, auditContext(deviceId, userAgent));
   }
 
   @Get("orders")
@@ -55,24 +91,42 @@ export class DistribuidoraController {
   }
 
   @Post("orders")
-  createOrder(@Body() dto: CreateDistribuidoraOrderDto) {
-    return this.distribuidoraService.createOrder(dto);
+  createOrder(
+    @Body() dto: CreateDistribuidoraOrderDto,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.createOrder(dto, auditContext(deviceId, userAgent));
   }
 
   @Patch("orders/:id")
-  updateOrder(@Param("id", ParseIntPipe) orderId: number, @Body() dto: UpdateDistribuidoraOrderDto) {
-    return this.distribuidoraService.updateOrder(orderId, dto);
+  updateOrder(
+    @Param("id", ParseIntPipe) orderId: number,
+    @Body() dto: UpdateDistribuidoraOrderDto,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.updateOrder(orderId, dto, auditContext(deviceId, userAgent));
   }
 
   @Delete("orders/:id")
   @HttpCode(204)
-  async deleteOrder(@Param("id", ParseIntPipe) orderId: number, @Query("boleta") boleta?: string) {
+  async deleteOrder(
+    @Param("id", ParseIntPipe) orderId: number,
+    @Query("boleta") boleta?: string,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
     // ?boleta=1 = "se que tiene boleta, borrala igual".
-    await this.distribuidoraService.deleteOrder(orderId, boleta === "1");
+    await this.distribuidoraService.deleteOrder(orderId, boleta === "1", auditContext(deviceId, userAgent));
   }
 
   @Patch("orders/:id/invoice")
-  invoiceOrder(@Param("id", ParseIntPipe) orderId: number) {
-    return this.distribuidoraService.invoiceOrder(orderId);
+  invoiceOrder(
+    @Param("id", ParseIntPipe) orderId: number,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.invoiceOrder(orderId, auditContext(deviceId, userAgent));
   }
 }

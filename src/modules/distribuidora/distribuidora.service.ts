@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
@@ -7,6 +7,8 @@ import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-produc
 import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import {
+  DistribuidoraAuditAction,
+  DistribuidoraAuditContext,
   DistribuidoraClient,
   DistribuidoraOrder,
   DistribuidoraOrderItem,
@@ -73,6 +75,10 @@ function cleanOptional(value?: string) {
   return trimmed ? trimmed : null;
 }
 
+function formatInvoice(invoiceNumber: number) {
+  return `A ${String(invoiceNumber).padStart(6, "0")}`;
+}
+
 function mapProduct(row: ProductRow): DistribuidoraProduct {
   return {
     id: row.id,
@@ -116,7 +122,42 @@ function mapOrder(row: OrderRow): DistribuidoraOrder {
 
 @Injectable()
 export class DistribuidoraService {
+  private readonly logger = new Logger(DistribuidoraService.name);
+
   constructor(private readonly databaseService: DatabaseService) {}
+
+  // Auditoria interna -- PARA NOSOTROS, no hay pantalla en la app que la
+  // muestre (se consulta con scripts/inspect-distribuidora-audit.js).
+  // before/after guardan la foto completa: sirve para reconstruir un
+  // pedido o una boleta que se borro. Nunca tira error: si el registro
+  // falla, la operacion del usuario ya se hizo y no se le rompe.
+  private async audit(
+    action: DistribuidoraAuditAction,
+    entityId: number,
+    summary: string,
+    context: DistribuidoraAuditContext | undefined,
+    before: unknown = null,
+    after: unknown = null
+  ) {
+    try {
+      await this.databaseService.execute<ResultSetHeader>(
+        `INSERT INTO saas_distribuidora_audit_log
+           (occurred_at, action, entity_id, summary, before_json, after_json, device_id, user_agent)
+         VALUES (UTC_TIMESTAMP(), ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          action,
+          entityId,
+          summary.slice(0, 255),
+          before === null ? null : JSON.stringify(before),
+          after === null ? null : JSON.stringify(after),
+          context?.deviceId ?? null,
+          context?.userAgent?.slice(0, 255) ?? null
+        ]
+      );
+    } catch (error) {
+      this.logger.warn(`No se pudo registrar la auditoria de ${action} #${entityId}: ${(error as Error).message}`);
+    }
+  }
 
   async listClients(search?: string): Promise<DistribuidoraClient[]> {
     const term = search?.trim();
@@ -143,7 +184,7 @@ export class DistribuidoraService {
     return rows.map(mapClient);
   }
 
-  async createClient(dto: CreateDistribuidoraClientDto): Promise<DistribuidoraClient> {
+  async createClient(dto: CreateDistribuidoraClientDto, context?: DistribuidoraAuditContext): Promise<DistribuidoraClient> {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_distribuidora_clients (name, rut, address, phone) VALUES (?, ?, ?, ?)`,
       [dto.name.trim(), cleanOptional(dto.rut), cleanOptional(dto.address), cleanOptional(dto.phone)]
@@ -153,7 +194,9 @@ export class DistribuidoraService {
       `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients WHERE id = ?`,
       [result.insertId]
     );
-    return mapClient(rows[0]);
+    const client = mapClient(rows[0]);
+    await this.audit("client_create", client.id, `Alta de cliente "${client.name}"`, context, null, client);
+    return client;
   }
 
   // includeInactive = la vista de la oficina (catalogo entero, con los
@@ -182,17 +225,39 @@ export class DistribuidoraService {
     return rows.map(mapProduct);
   }
 
-  async createProduct(dto: CreateDistribuidoraProductDto): Promise<DistribuidoraProduct> {
+  async createProduct(dto: CreateDistribuidoraProductDto, context?: DistribuidoraAuditContext): Promise<DistribuidoraProduct> {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_distribuidora_products (name, price) VALUES (?, ?)`,
       [dto.name.trim(), dto.price]
     );
-    return { id: result.insertId, code: null, name: dto.name.trim(), category: null, price: dto.price, active: true };
+    const product: DistribuidoraProduct = {
+      id: result.insertId,
+      code: null,
+      name: dto.name.trim(),
+      category: null,
+      price: dto.price,
+      active: true
+    };
+    await this.audit("product_create", product.id, `Alta de producto "${product.name}" a ${product.price}`, context, null, product);
+    return product;
   }
 
   // Editar un producto no toca los pedidos ya tomados: cada pedido guarda
   // su propia foto de nombre y precio.
-  async updateProduct(productId: number, dto: UpdateDistribuidoraProductDto): Promise<DistribuidoraProduct> {
+  async updateProduct(
+    productId: number,
+    dto: UpdateDistribuidoraProductDto,
+    context?: DistribuidoraAuditContext
+  ): Promise<DistribuidoraProduct> {
+    const beforeRows = await this.databaseService.query<ProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS} FROM saas_distribuidora_products WHERE id = ?`,
+      [productId]
+    );
+    if (!beforeRows[0]) {
+      throw new NotFoundException("No existe ese producto.");
+    }
+    const before = mapProduct(beforeRows[0]);
+
     const sets: string[] = [];
     const values: Array<string | number> = [];
     if (dto.name !== undefined) {
@@ -222,7 +287,17 @@ export class DistribuidoraService {
     if (!rows[0]) {
       throw new NotFoundException("No existe ese producto.");
     }
-    return mapProduct(rows[0]);
+    const after = mapProduct(rows[0]);
+
+    const changes: string[] = [];
+    if (before.name !== after.name) changes.push(`nombre: "${before.name}" -> "${after.name}"`);
+    if (before.price !== after.price) changes.push(`precio: ${before.price} -> ${after.price}`);
+    if (before.active !== after.active) changes.push(after.active ? "reactivado" : "dado de baja");
+    // Guardar sin cambiar nada no es un movimiento: no se registra.
+    if (changes.length > 0) {
+      await this.audit("product_update", after.id, `Producto "${after.name}": ${changes.join("; ")}`, context, before, after);
+    }
+    return after;
   }
 
   async listOrders(status?: DistribuidoraOrderStatus): Promise<DistribuidoraOrder[]> {
@@ -250,7 +325,7 @@ export class DistribuidoraService {
     return mapOrder(rows[0]);
   }
 
-  async createOrder(dto: CreateDistribuidoraOrderDto): Promise<DistribuidoraOrder> {
+  async createOrder(dto: CreateDistribuidoraOrderDto, context?: DistribuidoraAuditContext): Promise<DistribuidoraOrder> {
     const clients = await this.databaseService.query<ClientRow[]>(
       `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients WHERE id = ?`,
       [dto.clientId]
@@ -291,14 +366,27 @@ export class DistribuidoraService {
       [client.id, client.name, client.rut, client.address, JSON.stringify(items), total, cleanOptional(dto.note)]
     );
 
-    return this.getOrder(result.insertId);
+    const order = await this.getOrder(result.insertId);
+    await this.audit(
+      "order_create",
+      order.id,
+      `Pedido N.º ${order.id} de "${order.clientName}" por ${order.total} (${order.items.length} producto(s))`,
+      context,
+      null,
+      order
+    );
+    return order;
   }
 
   // Editar un pedido PENDIENTE (uno ya facturado no se toca: la boleta
   // ya salio con ese numero). Se manda la lista completa de renglones.
   // Los productos que ya estaban conservan el nombre y el precio con que
   // se tomo el pedido; los que se agregan entran al precio de hoy.
-  async updateOrder(orderId: number, dto: UpdateDistribuidoraOrderDto): Promise<DistribuidoraOrder> {
+  async updateOrder(
+    orderId: number,
+    dto: UpdateDistribuidoraOrderDto,
+    context?: DistribuidoraAuditContext
+  ): Promise<DistribuidoraOrder> {
     const current = await this.getOrder(orderId);
     if (current.status !== "pendiente") {
       throw new ConflictException("Ese pedido ya tiene boleta: no se puede editar.");
@@ -343,7 +431,16 @@ export class DistribuidoraService {
       throw new ConflictException("Ese pedido ya tiene boleta: no se puede editar.");
     }
 
-    return this.getOrder(orderId);
+    const updated = await this.getOrder(orderId);
+    await this.audit(
+      "order_update",
+      updated.id,
+      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": ${current.total} -> ${updated.total}`,
+      context,
+      current,
+      updated
+    );
+    return updated;
   }
 
   // Un pedido pendiente se elimina sin mas. Uno ya facturado tambien se
@@ -354,7 +451,7 @@ export class DistribuidoraService {
   // OJO numeracion: el proximo numero de boleta es el maximo + 1, asi que
   // borrar la ULTIMA boleta hace que su numero se vuelva a usar, y borrar
   // una del medio deja un hueco.
-  async deleteOrder(orderId: number, allowInvoiced = false): Promise<void> {
+  async deleteOrder(orderId: number, allowInvoiced = false, context?: DistribuidoraAuditContext): Promise<void> {
     const current = await this.getOrder(orderId);
     if (current.status !== "pendiente" && !allowInvoiced) {
       throw new ConflictException("Ese pedido ya tiene boleta. Para eliminarlo, dejalo apretado en Facturados.");
@@ -367,12 +464,20 @@ export class DistribuidoraService {
     if (result.affectedRows === 0) {
       throw new ConflictException("Ese pedido ya tiene boleta. Para eliminarlo, dejalo apretado en Facturados.");
     }
+
+    // Queda la foto completa del pedido borrado: es la unica copia.
+    const label =
+      current.invoiceNumber !== null
+        ? `BOLETA ${formatInvoice(current.invoiceNumber)} (pedido N.º ${current.id})`
+        : `pedido N.º ${current.id}`;
+    await this.audit("order_delete", current.id, `Se elimino ${label} de "${current.clientName}" por ${current.total}`, context, current, null);
   }
 
   // La oficina "toma" el pedido y lo pasa a boleta: se le asigna el
   // numero siguiente. Volver a facturar un pedido ya facturado no cambia
   // nada (devuelve la misma boleta), asi un doble click no gasta numeros.
-  async invoiceOrder(orderId: number): Promise<DistribuidoraOrder> {
+  async invoiceOrder(orderId: number, context?: DistribuidoraAuditContext): Promise<DistribuidoraOrder> {
+    let invoicedNow = false;
     await this.databaseService.withTransaction(async (connection) => {
       const [rows] = await connection.query<OrderRow[]>(
         `SELECT id, status FROM saas_distribuidora_orders WHERE id = ? FOR UPDATE`,
@@ -398,8 +503,20 @@ export class DistribuidoraService {
          WHERE id = ?`,
         [nextNumber, orderId]
       );
+      invoicedNow = true;
     });
 
-    return this.getOrder(orderId);
+    const order = await this.getOrder(orderId);
+    if (invoicedNow && order.invoiceNumber !== null) {
+      await this.audit(
+        "order_invoice",
+        order.id,
+        `Boleta ${formatInvoice(order.invoiceNumber)} generada para el pedido N.º ${order.id} de "${order.clientName}" por ${order.total}`,
+        context,
+        null,
+        order
+      );
+    }
+    return order;
   }
 }
