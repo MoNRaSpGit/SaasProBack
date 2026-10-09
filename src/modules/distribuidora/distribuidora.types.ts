@@ -8,7 +8,11 @@ export type DistribuidoraClient = {
 
 export type DistribuidoraProduct = {
   id: number;
+  // Codigo de la planilla original del cliente; null en los productos
+  // dados de alta a mano desde la app.
+  code: string | null;
   name: string;
+  category: string | null;
   price: number;
   active: boolean;
 };

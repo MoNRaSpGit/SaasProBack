@@ -23,7 +23,9 @@ type ClientRow = RowDataPacket & {
 
 type ProductRow = RowDataPacket & {
   id: number;
+  code: string | null;
   name: string;
+  category: string | null;
   price: string;
   status: "active" | "inactive";
 };
@@ -52,7 +54,7 @@ const ORDER_COLUMNS = `id, client_id, client_name, client_rut, client_address, i
   DATE_FORMAT(invoiced_at, '%Y-%m-%dT%H:%i:%sZ') AS invoiced_at,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at`;
 
-const PRODUCT_COLUMNS = "id, name, price, status";
+const PRODUCT_COLUMNS = "id, code, name, category, price, status";
 
 const SEARCH_LIMIT = 50;
 // La pestana Productos de la oficina lista el catalogo entero.
@@ -69,7 +71,14 @@ function cleanOptional(value?: string) {
 }
 
 function mapProduct(row: ProductRow): DistribuidoraProduct {
-  return { id: row.id, name: row.name, price: Number(row.price), active: row.status === "active" };
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    category: row.category,
+    price: Number(row.price),
+    active: row.status === "active"
+  };
 }
 
 function mapClient(row: ClientRow): DistribuidoraClient {
@@ -135,8 +144,12 @@ export class DistribuidoraService {
     const values: string[] = [];
     if (!includeInactive) conditions.push("status = 'active'");
     if (term) {
-      conditions.push("name LIKE ?");
-      values.push(`%${term}%`);
+      // Cada palabra tiene que estar en el nombre, en cualquier orden
+      // ("detergente manzana" encuentra "Detergente Aromas 750cc manzana").
+      // Tambien se puede buscar por el codigo de la planilla.
+      const words = term.split(/\s+/).slice(0, 6);
+      conditions.push(`((${words.map(() => "name LIKE ?").join(" AND ")}) OR code LIKE ?)`);
+      values.push(...words.map((word) => `%${word}%`), `${term}%`);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -154,7 +167,7 @@ export class DistribuidoraService {
       `INSERT INTO saas_distribuidora_products (name, price) VALUES (?, ?)`,
       [dto.name.trim(), dto.price]
     );
-    return { id: result.insertId, name: dto.name.trim(), price: dto.price, active: true };
+    return { id: result.insertId, code: null, name: dto.name.trim(), category: null, price: dto.price, active: true };
   }
 
   // Editar un producto no toca los pedidos ya tomados: cada pedido guarda
