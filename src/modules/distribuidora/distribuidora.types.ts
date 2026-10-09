@@ -1,6 +1,10 @@
 export type DistribuidoraClient = {
   id: number;
+  // Codigo de la planilla original; null en los dados de alta desde la app.
+  code: string | null;
   name: string;
+  // La persona, cuando el negocio tiene otro nombre ("Almacen" / "Ana Silva").
+  contactName: string | null;
   rut: string | null;
   address: string | null;
   phone: string | null;

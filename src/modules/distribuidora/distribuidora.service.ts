@@ -15,7 +15,9 @@ import {
 
 type ClientRow = RowDataPacket & {
   id: number;
+  code: string | null;
   name: string;
+  contact_name: string | null;
   rut: string | null;
   address: string | null;
   phone: string | null;
@@ -45,7 +47,7 @@ type OrderRow = RowDataPacket & {
   created_at: string;
 };
 
-const CLIENT_COLUMNS = "id, name, rut, address, phone";
+const CLIENT_COLUMNS = "id, code, name, contact_name, rut, address, phone";
 
 // Las fechas se guardan en UTC (UTC_TIMESTAMP) y se traen con DATE_FORMAT
 // ya terminadas en "Z" -- mysql2 NO debe construir el Date (bug de +3hs
@@ -82,7 +84,15 @@ function mapProduct(row: ProductRow): DistribuidoraProduct {
 }
 
 function mapClient(row: ClientRow): DistribuidoraClient {
-  return { id: row.id, name: row.name, rut: row.rut, address: row.address, phone: row.phone };
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    contactName: row.contact_name,
+    rut: row.rut,
+    address: row.address,
+    phone: row.phone
+  };
 }
 
 function mapOrder(row: OrderRow): DistribuidoraOrder {
@@ -109,16 +119,25 @@ export class DistribuidoraService {
 
   async listClients(search?: string): Promise<DistribuidoraClient[]> {
     const term = search?.trim();
-    const rows = term
-      ? await this.databaseService.query<ClientRow[]>(
-          `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients
-           WHERE name LIKE ? OR rut LIKE ?
-           ORDER BY name ASC LIMIT ${SEARCH_LIMIT}`,
-          [`%${term}%`, `%${term}%`]
-        )
-      : await this.databaseService.query<ClientRow[]>(
-          `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients ORDER BY name ASC LIMIT ${SEARCH_LIMIT}`
-        );
+    if (!term) {
+      const rows = await this.databaseService.query<ClientRow[]>(
+        `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients ORDER BY name ASC LIMIT ${SEARCH_LIMIT}`
+      );
+      return rows.map(mapClient);
+    }
+
+    // Cada palabra tiene que estar en el nombre del negocio, en la persona
+    // o en la direccion, en cualquier orden: hay cientos de "Almacen" y el
+    // vendedor los distingue por la duena o la calle ("almacen ana",
+    // "kiosco san martin"). Tambien se encuentra por RUT o por codigo.
+    const words = term.split(/\s+/).slice(0, 6);
+    const wordCondition = words.map(() => "CONCAT_WS(' ', name, contact_name, address) LIKE ?").join(" AND ");
+    const rows = await this.databaseService.query<ClientRow[]>(
+      `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients
+       WHERE (${wordCondition}) OR rut LIKE ? OR code LIKE ?
+       ORDER BY name ASC LIMIT ${SEARCH_LIMIT}`,
+      [...words.map((word) => `%${word}%`), `${term}%`, `${term}%`]
+    );
 
     return rows.map(mapClient);
   }

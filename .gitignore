@@ -6,3 +6,6 @@ dist/
 .env.*
 !.env.example
 docs/
+
+# Datos personales de clientes reales: se cargan a la base, no van al repo.
+scripts/data/distribuidora-clients.json
