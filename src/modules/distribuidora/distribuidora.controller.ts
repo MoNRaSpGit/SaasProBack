@@ -66,8 +66,9 @@ export class DistribuidoraController {
 
   @Delete("orders/:id")
   @HttpCode(204)
-  async deleteOrder(@Param("id", ParseIntPipe) orderId: number) {
-    await this.distribuidoraService.deleteOrder(orderId);
+  async deleteOrder(@Param("id", ParseIntPipe) orderId: number, @Query("boleta") boleta?: string) {
+    // ?boleta=1 = "se que tiene boleta, borrala igual".
+    await this.distribuidoraService.deleteOrder(orderId, boleta === "1");
   }
 
   @Patch("orders/:id/invoice")

@@ -346,20 +346,26 @@ export class DistribuidoraService {
     return this.getOrder(orderId);
   }
 
-  // Solo se eliminan pedidos PENDIENTES: borrar uno facturado dejaria un
-  // hueco en la numeracion de boletas.
-  async deleteOrder(orderId: number): Promise<void> {
+  // Un pedido pendiente se elimina sin mas. Uno ya facturado tambien se
+  // puede (09/10/2026, pedido explicito: "de todas maneras se pueda
+  // borrar"), pero solo si se pide a proposito con allowInvoiced: asi un
+  // "eliminar" confirmado sobre un pedido que se facturo justo en el
+  // medio no se lleva puesta una boleta sin querer.
+  // OJO numeracion: el proximo numero de boleta es el maximo + 1, asi que
+  // borrar la ULTIMA boleta hace que su numero se vuelva a usar, y borrar
+  // una del medio deja un hueco.
+  async deleteOrder(orderId: number, allowInvoiced = false): Promise<void> {
     const current = await this.getOrder(orderId);
-    if (current.status !== "pendiente") {
-      throw new ConflictException("Ese pedido ya tiene boleta: no se puede eliminar.");
+    if (current.status !== "pendiente" && !allowInvoiced) {
+      throw new ConflictException("Ese pedido ya tiene boleta. Para eliminarlo, dejalo apretado en Facturados.");
     }
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `DELETE FROM saas_distribuidora_orders WHERE id = ? AND status = 'pendiente'`,
-      [orderId]
+      `DELETE FROM saas_distribuidora_orders WHERE id = ? AND (status = 'pendiente' OR ? = 1)`,
+      [orderId, allowInvoiced ? 1 : 0]
     );
     if (result.affectedRows === 0) {
-      throw new ConflictException("Ese pedido ya tiene boleta: no se puede eliminar.");
+      throw new ConflictException("Ese pedido ya tiene boleta. Para eliminarlo, dejalo apretado en Facturados.");
     }
   }
 
