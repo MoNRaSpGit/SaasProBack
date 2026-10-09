@@ -238,7 +238,7 @@ export class DistribuidoraService {
       price: dto.price,
       active: true
     };
-    await this.audit("product_create", product.id, `Alta de producto "${product.name}" a ${product.price}`, context, null, product);
+    await this.audit("product_create", product.id, `Alta de producto "${product.name}" a $${product.price}`, context, null, product);
     return product;
   }
 
@@ -291,7 +291,7 @@ export class DistribuidoraService {
 
     const changes: string[] = [];
     if (before.name !== after.name) changes.push(`nombre: "${before.name}" -> "${after.name}"`);
-    if (before.price !== after.price) changes.push(`precio: ${before.price} -> ${after.price}`);
+    if (before.price !== after.price) changes.push(`precio: $${before.price} -> $${after.price}`);
     if (before.active !== after.active) changes.push(after.active ? "reactivado" : "dado de baja");
     // Guardar sin cambiar nada no es un movimiento: no se registra.
     if (changes.length > 0) {
@@ -370,7 +370,7 @@ export class DistribuidoraService {
     await this.audit(
       "order_create",
       order.id,
-      `Pedido N.º ${order.id} de "${order.clientName}" por ${order.total} (${order.items.length} producto(s))`,
+      `Pedido N.º ${order.id} de "${order.clientName}" por $${order.total} (${order.items.length} producto(s))`,
       context,
       null,
       order
@@ -435,7 +435,7 @@ export class DistribuidoraService {
     await this.audit(
       "order_update",
       updated.id,
-      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": ${current.total} -> ${updated.total}`,
+      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": $${current.total} -> $${updated.total}`,
       context,
       current,
       updated
@@ -470,7 +470,7 @@ export class DistribuidoraService {
       current.invoiceNumber !== null
         ? `BOLETA ${formatInvoice(current.invoiceNumber)} (pedido N.º ${current.id})`
         : `pedido N.º ${current.id}`;
-    await this.audit("order_delete", current.id, `Se elimino ${label} de "${current.clientName}" por ${current.total}`, context, current, null);
+    await this.audit("order_delete", current.id, `Se elimino ${label} de "${current.clientName}" por $${current.total}`, context, current, null);
   }
 
   // La oficina "toma" el pedido y lo pasa a boleta: se le asigna el
@@ -511,7 +511,7 @@ export class DistribuidoraService {
       await this.audit(
         "order_invoice",
         order.id,
-        `Boleta ${formatInvoice(order.invoiceNumber)} generada para el pedido N.º ${order.id} de "${order.clientName}" por ${order.total}`,
+        `Boleta ${formatInvoice(order.invoiceNumber)} generada para el pedido N.º ${order.id} de "${order.clientName}" por $${order.total}`,
         context,
         null,
         order
