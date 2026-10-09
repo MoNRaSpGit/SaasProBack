@@ -34,7 +34,13 @@ const TZ = "America/Montevideo";
 const dayKey = (iso) => new Date(iso).toLocaleDateString("es-UY", { timeZone: TZ });
 const timeKey = (iso) => new Date(iso).toLocaleTimeString("es-UY", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 
-const EVENT_LABELS = { entrada: "ENTRO A LA APP", seccion: "ABRIO", accion: "HIZO" };
+const EVENT_LABELS = {
+  login: "INICIO SESION",
+  logout: "CERRO SESION",
+  entrada: "ENTRO A LA APP",
+  seccion: "ABRIO",
+  accion: "HIZO"
+};
 
 function describeDevice(userAgent) {
   if (!userAgent) return "dispositivo desconocido";
@@ -98,13 +104,13 @@ async function main() {
 
   for (const [visitorId, events] of ordered) {
     const own = visitorId.startsWith("yo-");
-    const entradas = events.filter((e) => e.event === "entrada").length;
+    const entradas = events.filter((e) => e.event === "login" || e.event === "entrada").length;
     const acciones = events.filter((e) => e.event === "accion").length;
     const activeDays = new Set(events.map((e) => dayKey(e.occurred_at)));
 
     console.log("");
     console.log(`${own ? "NOSOTROS" : "VISITANTE"} ${visitorId.slice(0, 11)} (${describeDevice(events[events.length - 1].user_agent)})`);
-    console.log(`  ${entradas} entrada(s), ${acciones} cosa(s) guardada(s), ${activeDays.size} dia(s) distinto(s)`);
+    console.log(`  ${entradas} inicio(s) de sesion, ${acciones} cosa(s) guardada(s), ${activeDays.size} dia(s) distinto(s)`);
 
     let currentDay = "";
     for (const event of events) {

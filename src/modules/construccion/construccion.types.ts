@@ -68,7 +68,11 @@ export type ConstruccionLiquidacionItem = {
   totalAPagar: number;
 };
 
-// Registro interno de uso (09/10/2026): "entrada" = abrio la app,
-// "seccion" = entro a una pestana, "accion" = guardo algo.
-export const ACTIVITY_EVENTS = ["entrada", "seccion", "accion"] as const;
+// Registro interno de uso (09/10/2026): "login" = toco Ingresar en la
+// pantalla de ingreso (sin contraseña), "logout" = salio, "seccion" =
+// entro a una pestana, "accion" = guardo algo. "entrada" es de la
+// primera version (abrir la app, antes de que hubiera pantalla de
+// ingreso): se sigue aceptando por si queda algun celular con la app
+// vieja cacheada.
+export const ACTIVITY_EVENTS = ["login", "logout", "entrada", "seccion", "accion"] as const;
 export type ActivityEvent = (typeof ACTIVITY_EVENTS)[number];
