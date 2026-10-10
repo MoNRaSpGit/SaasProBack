@@ -58,6 +58,25 @@ export type GymCheckIn = {
   wasOverdue: boolean;
 };
 
+// Medicion de un alumno (pestana "Mi Progreso", 10/10/2026). Todas las
+// medidas son opcionales (null = ese dia no se midio). Ver espejo en el
+// frontend (gym.types.ts) -- aca no se valida campo por campo
+// (progressRecords viaja como unknown[] en el DTO).
+export type GymProgressRecord = {
+  id: string;
+  studentId: string;
+  date: string;
+  weightKg: number | null;
+  waistCm: number | null;
+  bicepsCm: number | null;
+  chestCm: number | null;
+  hipsCm: number | null;
+  thighCm: number | null;
+  bodyFatPct: number | null;
+  note: string;
+  createdAt: string;
+};
+
 export type GymAuditAction =
   | "login"
   | "login_failed"
@@ -73,7 +92,9 @@ export type GymAuditAction =
   | "student_renewed"
   | "student_updated"
   | "student_deleted"
-  | "student_checkin";
+  | "student_checkin"
+  | "progress_created"
+  | "progress_deleted";
 
 export type GymAuditEntry = {
   id: string;
@@ -88,6 +109,7 @@ export type GymWorkspaceData = {
   movements: GymMovement[];
   students: GymStudent[];
   checkIns: GymCheckIn[];
+  progressRecords: GymProgressRecord[];
   auditLog: GymAuditEntry[];
 };
 
@@ -98,5 +120,5 @@ export type GymWorkspaceRecord = {
 };
 
 export function emptyGymWorkspaceData(): GymWorkspaceData {
-  return { expenses: [], tasks: [], movements: [], students: [], checkIns: [], auditLog: [] };
+  return { expenses: [], tasks: [], movements: [], students: [], checkIns: [], progressRecords: [], auditLog: [] };
 }

@@ -65,6 +65,7 @@ export class GymService {
       // Si un cliente viejo no manda alumnos, se conservan los que ya habia.
       students: (dto.students ?? previousData?.students ?? []) as GymWorkspaceData["students"],
       checkIns: (dto.checkIns ?? previousData?.checkIns ?? []) as GymWorkspaceData["checkIns"],
+      progressRecords: (dto.progressRecords ?? previousData?.progressRecords ?? []) as GymWorkspaceData["progressRecords"],
       auditLog: dto.auditLog as GymWorkspaceData["auditLog"]
     };
 
@@ -91,6 +92,7 @@ export class GymService {
       movements: current.data.movements,
       students: current.data.students,
       checkIns: current.data.checkIns,
+      progressRecords: current.data.progressRecords,
       auditLog: [this.buildAuditEntry(action, details), ...current.data.auditLog]
     });
   }
@@ -111,7 +113,8 @@ export class GymService {
       data: {
         ...(data as GymWorkspaceData),
         students: (data as GymWorkspaceData).students ?? [],
-        checkIns: (data as GymWorkspaceData).checkIns ?? []
+        checkIns: (data as GymWorkspaceData).checkIns ?? [],
+        progressRecords: (data as GymWorkspaceData).progressRecords ?? []
       },
       rowVersion: row.row_version,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at

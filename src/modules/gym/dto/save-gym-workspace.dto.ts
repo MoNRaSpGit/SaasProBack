@@ -32,6 +32,13 @@ export class SaveGymWorkspaceDto {
   @IsArray()
   checkIns?: unknown[];
 
+  // Mediciones de "Mi Progreso" (10/10/2026). Opcional: un celular con
+  // la app sin actualizar no las manda, y en ese caso se conservan las
+  // que ya habia (ver gym.service.ts#saveWorkspace) en vez de borrarlas.
+  @IsOptional()
+  @IsArray()
+  progressRecords?: unknown[];
+
   @IsArray()
   auditLog!: unknown[];
 }
