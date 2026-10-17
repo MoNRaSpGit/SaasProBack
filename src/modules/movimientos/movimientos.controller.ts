@@ -1,4 +1,5 @@
-import { Controller, Get, Param } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Param, Query } from "@nestjs/common";
+import { isValidDayLabel } from "./movimientos.dateUtils";
 import { MovimientosService } from "./movimientos.service";
 
 @Controller("movimientos")
@@ -11,7 +12,10 @@ export class MovimientosController {
   }
 
   @Get(":appKey/detail")
-  getDetail(@Param("appKey") appKey: string) {
-    return this.movimientosService.getDetail(appKey);
+  getDetail(@Param("appKey") appKey: string, @Query("date") date?: string) {
+    if (date && !isValidDayLabel(date)) {
+      throw new BadRequestException("Fecha invalida, se espera YYYY-MM-DD.");
+    }
+    return this.movimientosService.getDetail(appKey, date);
   }
 }

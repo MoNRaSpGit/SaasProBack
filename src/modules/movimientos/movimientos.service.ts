@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
-import { extractEpoch, formatMontevideoTime, todayEpochRangeMs, todayRangeUtc } from "./movimientos.dateUtils";
+import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from "./movimientos.dateUtils";
 
 export type MovimientosAppSummary = { key: string; label: string; count: number };
 export type MovimientosDetailItem = { time: string; label: string; detail: string };
@@ -80,17 +80,17 @@ export class MovimientosService {
     ];
   }
 
-  async getDetail(appKey: string): Promise<MovimientosDetailItem[]> {
+  async getDetail(appKey: string, dayLabel?: string): Promise<MovimientosDetailItem[]> {
     switch (appKey) {
       case "gym":
-        return this.detailGym();
+        return this.detailGym(dayLabel);
       case "agro":
-        return this.detailAgro();
+        return this.detailAgro(dayLabel);
       case "piloto":
       case "distribuidora":
       case "qq":
       case "juez":
-        return this.detailSqlAudit(appKey);
+        return this.detailSqlAudit(appKey, dayLabel);
       default:
         return [];
     }
@@ -101,7 +101,7 @@ export class MovimientosService {
 
   private async countSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES) {
     const { table, timeCol } = SQL_AUDIT_TABLES[appKey];
-    const { start, end } = todayRangeUtc();
+    const { start, end } = dayRangeUtc();
     const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
       `SELECT COUNT(*) AS total FROM ${table} WHERE ${timeCol} >= ? AND ${timeCol} < ?`,
       [start, end]
@@ -109,9 +109,9 @@ export class MovimientosService {
     return Number(rows[0]?.total ?? 0);
   }
 
-  private async detailSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES): Promise<MovimientosDetailItem[]> {
+  private async detailSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES, dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const { table, timeCol, actionLabels } = SQL_AUDIT_TABLES[appKey];
-    const { start, end } = todayRangeUtc();
+    const { start, end } = dayRangeUtc(dayLabel);
     const rows = await this.databaseService.query<RowDataPacket[]>(
       `SELECT DATE_FORMAT(${timeCol}, '%Y-%m-%dT%H:%i:%s') AS when_raw, action,
               entity_type, entity_id, entity_label, summary, details, actor
@@ -161,9 +161,7 @@ export class MovimientosService {
 
   private async countGym() {
     const rows = await this.loadGymWorkspaces();
-    const { start, end } = todayRangeUtc();
-    const startMs = new Date(`${start}Z`).getTime();
-    const endMs = new Date(`${end}Z`).getTime();
+    const { startMs, endMs } = epochRangeMs();
     let count = 0;
     for (const row of rows) {
       const data = this.parseJson(row.workspace_json);
@@ -177,11 +175,9 @@ export class MovimientosService {
     return count;
   }
 
-  private async detailGym(): Promise<MovimientosDetailItem[]> {
+  private async detailGym(dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const rows = await this.loadGymWorkspaces();
-    const { start, end } = todayRangeUtc();
-    const startMs = new Date(`${start}Z`).getTime();
-    const endMs = new Date(`${end}Z`).getTime();
+    const { startMs, endMs } = epochRangeMs(dayLabel);
     const items: MovimientosDetailItem[] = [];
 
     for (const row of rows) {
@@ -215,7 +211,7 @@ export class MovimientosService {
   private async countAgro() {
     const data = await this.loadAgroWorkspace();
     if (!data) return 0;
-    const { startMs, endMs } = todayEpochRangeMs();
+    const { startMs, endMs } = epochRangeMs();
     const movements = Array.isArray(data.animalMovements) ? data.animalMovements : [];
     const altas = movements.filter((m: { id: string }) => {
       const epoch = extractEpoch(m.id);
@@ -231,10 +227,10 @@ export class MovimientosService {
     return altas + edits;
   }
 
-  private async detailAgro(): Promise<MovimientosDetailItem[]> {
+  private async detailAgro(dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const data = await this.loadAgroWorkspace();
     if (!data) return [];
-    const { startMs, endMs } = todayEpochRangeMs();
+    const { startMs, endMs } = epochRangeMs(dayLabel);
 
     const fieldsById: Record<string, string> = {};
     (data.fields || []).forEach((f: { id: string; name: string }) => (fieldsById[f.id] = f.name));
