@@ -14,6 +14,7 @@ import { EjemploModule } from "./modules/ejemplo/ejemplo.module";
 import { GymModule } from "./modules/gym/gym.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
+import { MovimientosModule } from "./modules/movimientos/movimientos.module";
 import { OriolModule } from "./modules/oriol/oriol.module";
 import { PeluqueriaModule } from "./modules/peluqueria/peluqueria.module";
 import { PilotoModule } from "./modules/piloto/piloto.module";
@@ -50,7 +51,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     OriolModule,
     PeluqueriaModule,
     ConstruccionModule,
-    DistribuidoraModule
+    DistribuidoraModule,
+    MovimientosModule
   ],
   controllers: [HealthController],
   providers: []

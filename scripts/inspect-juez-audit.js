@@ -11,7 +11,12 @@
 //   node scripts/inspect-juez-audit.js --action=login
 //   node scripts/inspect-juez-audit.js --actor=admin
 //
-// Solo lee.
+// Solo lee. Zona horaria: created_at se guarda en UTC; se trae con
+// DATE_FORMAT (string crudo) y se le agrega "Z" a mano -- mysql2 NO debe
+// construir el Date (bug de +3hs encontrado el 18/09/2026, mismo criterio
+// que inspect-piloto-audit.js/inspect-audit-log.js). Se cometio este
+// mismo bug aca al armar el script (10/10/2026), encontrado el 16/10/2026
+// cuando el usuario noto que los horarios no coincidian con la hora real.
 const fs = require("fs");
 const path = require("path");
 const mysql = require("mysql2/promise");
@@ -52,7 +57,7 @@ async function main() {
   });
 
   const [rows] = await conn.execute(
-    `SELECT id, action, actor, details, created_at
+    `SELECT id, action, actor, details, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
      FROM saas_juez_audit_log
      ORDER BY created_at DESC, id DESC
      LIMIT ${Number.isFinite(limit) ? limit : 50}`
@@ -73,7 +78,7 @@ async function main() {
   }
 
   for (const row of filtered) {
-    const when = new Date(row.created_at).toLocaleString("es-UY", { timeZone: "America/Montevideo" });
+    const when = new Date(`${row.created_at}Z`).toLocaleString("es-UY", { timeZone: "America/Montevideo" });
     const label = ACTION_LABELS[row.action] || row.action.toUpperCase();
     console.log(`[${when}] ${label} -- ${row.actor}`);
     console.log(`  ${row.details}`);
