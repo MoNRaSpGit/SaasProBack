@@ -1,9 +1,7 @@
-import { Controller, Get, Param, UseGuards } from "@nestjs/common";
-import { MovimientosAuthGuard } from "./movimientos-auth.guard";
+import { Controller, Get, Param } from "@nestjs/common";
 import { MovimientosService } from "./movimientos.service";
 
 @Controller("movimientos")
-@UseGuards(MovimientosAuthGuard)
 export class MovimientosController {
   constructor(private readonly movimientosService: MovimientosService) {}
 
