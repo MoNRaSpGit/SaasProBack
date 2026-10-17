@@ -42,17 +42,54 @@ const AGRO_KIND_LABELS: Record<string, string> = {
   correction_out: "Corrección -"
 };
 
+type AuditRow = RowDataPacket & {
+  when_raw: string;
+  action: string;
+  entity_type?: string;
+  entity_id?: string | number;
+  entity_label?: string;
+  summary?: string;
+  details?: string;
+  actor?: string;
+  actor_email?: string;
+};
+
+// Cada tabla de auditoria de este monorepo tiene sus propias columnas (no
+// todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
+// scripts/inspect-*-audit.js, que son la fuente de verdad de cada esquema.
 const SQL_AUDIT_TABLES: Record<
   "piloto" | "distribuidora" | "qq" | "juez",
-  { table: string; timeCol: string; actionLabels?: Record<string, string> }
+  { table: string; timeCol: string; columns: string; actionLabels?: Record<string, string>; buildDetail: (row: AuditRow, service: MovimientosService) => string }
 > = {
-  piloto: { table: "saas_piloto_audit_log", timeCol: "occurred_at" },
-  distribuidora: { table: "saas_distribuidora_audit_log", timeCol: "occurred_at" },
-  qq: { table: "saas_qq_audit_log", timeCol: "occurred_at" },
+  piloto: {
+    table: "saas_piloto_audit_log",
+    timeCol: "occurred_at",
+    columns: "action, entity_type, entity_id, entity_label, details",
+    buildDetail: (row, service) =>
+      row.entity_label || service.summarizeJsonDetails(row.details) || `${row.entity_type || ""} #${row.entity_id ?? ""}`
+  },
+  distribuidora: {
+    table: "saas_distribuidora_audit_log",
+    timeCol: "occurred_at",
+    columns: "action, entity_id, summary",
+    buildDetail: (row) => row.summary || `#${row.entity_id ?? ""}`
+  },
+  qq: {
+    table: "saas_qq_audit_log",
+    timeCol: "occurred_at",
+    columns: "action, entity_type, entity_id, entity_label, actor_email, actor_role, details",
+    buildDetail: (row, service) =>
+      row.entity_label ||
+      service.summarizeJsonDetails(row.details) ||
+      row.actor_email ||
+      `${row.entity_type || ""} #${row.entity_id ?? ""}`
+  },
   juez: {
     table: "saas_juez_audit_log",
     timeCol: "created_at",
-    actionLabels: { login: "LOGIN", player_created: "Alta jugador", player_updated: "Edición jugador", team_created: "Alta equipo" }
+    columns: "action, actor, details",
+    actionLabels: { login: "LOGIN", player_created: "Alta jugador", player_updated: "Edición jugador", team_created: "Alta equipo" },
+    buildDetail: (row, service) => service.summarizeJsonDetails(row.details) || row.actor || ""
   }
 };
 
@@ -110,11 +147,10 @@ export class MovimientosService {
   }
 
   private async detailSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES, dayLabel?: string): Promise<MovimientosDetailItem[]> {
-    const { table, timeCol, actionLabels } = SQL_AUDIT_TABLES[appKey];
+    const { table, timeCol, columns, actionLabels, buildDetail } = SQL_AUDIT_TABLES[appKey];
     const { start, end } = dayRangeUtc(dayLabel);
-    const rows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT DATE_FORMAT(${timeCol}, '%Y-%m-%dT%H:%i:%s') AS when_raw, action,
-              entity_type, entity_id, entity_label, summary, details, actor
+    const rows = await this.databaseService.query<AuditRow[]>(
+      `SELECT DATE_FORMAT(${timeCol}, '%Y-%m-%dT%H:%i:%s') AS when_raw, ${columns}
        FROM ${table}
        WHERE ${timeCol} >= ? AND ${timeCol} < ?
        ORDER BY ${timeCol} DESC`,
@@ -122,18 +158,12 @@ export class MovimientosService {
     );
 
     return rows.map((row) => {
-      const label = (actionLabels && actionLabels[row.action as string]) || String(row.action || "").toUpperCase();
-      const detail =
-        row.summary ||
-        row.entity_label ||
-        this.summarizeJsonDetails(row.details) ||
-        row.actor ||
-        (row.entity_type ? `${row.entity_type}${row.entity_id ? ` #${row.entity_id}` : ""}` : "");
-      return { time: formatMontevideoTime(row.when_raw as string), label, detail: String(detail || "") };
+      const label = (actionLabels && actionLabels[row.action]) || String(row.action || "").toUpperCase();
+      return { time: formatMontevideoTime(row.when_raw), label, detail: String(buildDetail(row, this) || "") };
     });
   }
 
-  private summarizeJsonDetails(raw: unknown): string {
+  summarizeJsonDetails(raw: unknown): string {
     if (!raw || typeof raw !== "string") return "";
     try {
       const parsed = JSON.parse(raw);
