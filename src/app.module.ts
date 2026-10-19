@@ -11,6 +11,7 @@ import { DeliveryModule } from "./modules/delivery/delivery.module";
 import { DgiModule } from "./modules/dgi/dgi.module";
 import { DistribuidoraModule } from "./modules/distribuidora/distribuidora.module";
 import { EjemploModule } from "./modules/ejemplo/ejemplo.module";
+import { GpsModule } from "./modules/gps/gps.module";
 import { GymModule } from "./modules/gym/gym.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
@@ -52,7 +53,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     PeluqueriaModule,
     ConstruccionModule,
     DistribuidoraModule,
-    MovimientosModule
+    MovimientosModule,
+    GpsModule
   ],
   controllers: [HealthController],
   providers: []
