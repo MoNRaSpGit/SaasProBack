@@ -1,79 +1,71 @@
-import { Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
-import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { Injectable, OnModuleInit } from "@nestjs/common";
+import { RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
-import { CreateGpsSaleDto } from "./dto/create-gps-sale.dto";
+import { GpsAuthService } from "./gps-auth.service";
 
 export type GpsClient = { id: number; name: string; address: string; lat: number; lng: number };
-export type GpsProduct = { id: number; name: string; price: number };
-export type GpsSaleItem = { productId: number; productName: string; quantity: number; unitPrice: number };
-export type GpsSale = {
-  id: number;
-  clientId: number;
-  clientName: string;
-  clientAddress: string;
-  clientLat: number;
-  clientLng: number;
-  sellerUsername: string;
-  courierName: string | null;
-  items: GpsSaleItem[];
-  total: number;
-  status: "pendiente" | "entregado";
-  createdAt: string;
-};
+
+export type GpsRepartidorStatus = { username: string; fullName: string | null; confirmed: boolean; pickCount: number };
+
+export type GpsFinalRouteItem = { client: GpsClient; repartidorUsername: string; repartidorName: string | null };
+
+export type GpsFinalRoute = { ready: boolean; status: GpsRepartidorStatus[]; items: GpsFinalRouteItem[] };
 
 type ClientRow = RowDataPacket & { id: number; name: string; address: string; lat: number; lng: number };
-type ProductRow = RowDataPacket & { id: number; name: string; price: string };
-type SaleRow = RowDataPacket & {
-  id: number;
-  client_id: number;
-  client_name: string;
-  client_address: string;
-  client_lat: number;
-  client_lng: number;
-  seller_username: string;
-  courier_name: string | null;
-  items_json: string;
-  total: string;
-  status: "pendiente" | "entregado";
-  created_at: string;
-};
+type SelectionRow = RowDataPacket & { repartidor_username: string; client_ids_json: string };
 
-// Clientes y productos ficticios para la demo del proyecto -- no son datos
-// reales de ningun cliente. Direcciones de Montevideo con coordenadas
-// aproximadas, para que el mapa de "generar ruta" tenga puntos reales donde
-// dibujar.
+// 20 clientes ficticios para la demo del proyecto -- no son datos reales de
+// ningun cliente. Direcciones de Montevideo con coordenadas aproximadas,
+// para que el mapa de rutas tenga puntos reales donde dibujar.
 const DEMO_CLIENTS: Array<Omit<GpsClient, "id">> = [
   { name: "Panadería La Espiga", address: "Av. 18 de Julio 1234, Centro, Montevideo", lat: -34.9058, lng: -56.1913 },
   { name: "Almacén Don Pepe", address: "Bulevar Artigas 2500, Pocitos, Montevideo", lat: -34.9115, lng: -56.157 },
   { name: "Kiosco Rayitos", address: "Av. Italia 3400, Malvín, Montevideo", lat: -34.889, lng: -56.128 },
   { name: "Farmacia Sur", address: "Camino Maldonado 5600, Carrasco, Montevideo", lat: -34.88, lng: -56.062 },
-  { name: "Mini Mercado Centro", address: "Av. 8 de Octubre 2800, Tres Cruces, Montevideo", lat: -34.895, lng: -56.165 }
+  { name: "Mini Mercado Centro", address: "Av. 8 de Octubre 2800, Tres Cruces, Montevideo", lat: -34.895, lng: -56.165 },
+  { name: "Verdulería Los Pinos", address: "Av. Rivera 4200, Buceo, Montevideo", lat: -34.907, lng: -56.139 },
+  { name: "Carnicería El Novillo", address: "Av. Gral. Flores 3100, Aguada, Montevideo", lat: -34.899, lng: -56.185 },
+  { name: "Panificadora Santa Fe", address: "Av. Agraciada 2600, La Comercial, Montevideo", lat: -34.893, lng: -56.192 },
+  { name: "Autoservicio Belvedere", address: "Av. San Martín 2200, Belvedere, Montevideo", lat: -34.868, lng: -56.192 },
+  { name: "Despensa La Esquina", address: "Camino Carrasco 1500, Punta Gorda, Montevideo", lat: -34.91, lng: -56.105 },
+  { name: "Almacén El Progreso", address: "Av. Millán 3700, Peñarol, Montevideo", lat: -34.845, lng: -56.215 },
+  { name: "Kiosco Central", address: "Bvar. España 2100, Parque Rodó, Montevideo", lat: -34.915, lng: -56.167 },
+  { name: "Fiambrería Montevideo", address: "Av. Sarmiento 2050, Parque Batlle, Montevideo", lat: -34.898, lng: -56.155 },
+  { name: "Panadería El Trigal", address: "Av. 8 de Octubre 4500, Cerrito, Montevideo", lat: -34.865, lng: -56.16 },
+  { name: "Supermercado Familiar", address: "Av. Garzón 1800, Lezica, Montevideo", lat: -34.845, lng: -56.18 },
+  { name: "Almacén Don Carlos", address: "Camino Castro 800, Colón, Montevideo", lat: -34.833, lng: -56.235 },
+  { name: "Kiosco La Rambla", address: "Rambla Armenia 5500, Malvín Norte, Montevideo", lat: -34.88, lng: -56.122 },
+  { name: "Verdulería Don Juan", address: "Av. Giannattasio Km 20, Ciudad de la Costa", lat: -34.795, lng: -55.975 },
+  { name: "Despensa Rural", address: "Camino Melilla 4200, Melilla, Montevideo", lat: -34.79, lng: -56.3 },
+  { name: "Mini Market 24hs", address: "Av. Bolivia 1400, Carrasco Norte, Montevideo", lat: -34.86, lng: -56.055 }
 ];
 
-const DEMO_PRODUCTS: Array<Omit<GpsProduct, "id">> = [
-  { name: "Agua mineral 500ml", price: 45 },
-  { name: "Gaseosa cola 1.5L", price: 95 },
-  { name: "Galletitas surtidas", price: 120 },
-  { name: "Pan lactal", price: 80 },
-  { name: "Aceite de girasol 900ml", price: 150 },
-  { name: "Fideos 500g", price: 65 }
-];
+// mysql2 ya deserializa las columnas JSON a objetos/arrays cuando puede --
+// JSON.parse directo revienta en ese caso (mismo bug visto en el modulo
+// movimientos con items_json).
+function parseClientIds(raw: unknown): number[] {
+  return typeof raw === "string" ? JSON.parse(raw) : (raw as number[]);
+}
 
-// Nombres de repartidores de demo (no son personas reales) -- el proyecto
-// esta en modo demo para mostrarle al cliente, asi que el panel de admin
-// necesita historial con variedad para no verse vacio.
-export const DEMO_COURIERS = ["Juan", "Pedro", "Lucía"];
+function todayDayLabel() {
+  const montevideoNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Montevideo" }));
+  return `${montevideoNow.getFullYear()}-${String(montevideoNow.getMonth() + 1).padStart(2, "0")}-${String(
+    montevideoNow.getDate()
+  ).padStart(2, "0")}`;
+}
 
 @Injectable()
 export class GpsDataService implements OnModuleInit {
   private ensureTablesPromise: Promise<void> | null = null;
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly gpsAuthService: GpsAuthService
+  ) {}
 
   async onModuleInit() {
     await this.ensureTables();
-    await this.ensureDemoData();
-    await this.ensureDemoSalesHistory();
+    await this.ensureDemoClients();
   }
 
   async listClients(): Promise<GpsClient[]> {
@@ -82,101 +74,79 @@ export class GpsDataService implements OnModuleInit {
     return rows.map((row) => ({ id: row.id, name: row.name, address: row.address, lat: Number(row.lat), lng: Number(row.lng) }));
   }
 
-  async listProducts(): Promise<GpsProduct[]> {
+  async getMyPicks(username: string, dayLabel = todayDayLabel()): Promise<number[]> {
     await this.ensureTables();
-    const rows = await this.databaseService.query<ProductRow[]>(`SELECT id, name, price FROM saas_gps_products ORDER BY name ASC`);
-    return rows.map((row) => ({ id: row.id, name: row.name, price: Number(row.price) }));
+    const rows = await this.databaseService.query<SelectionRow[]>(
+      `SELECT client_ids_json FROM saas_gps_daily_selections WHERE day_label = ? AND repartidor_username = ? LIMIT 1`,
+      [dayLabel, username]
+    );
+    return rows[0] ? parseClientIds(rows[0].client_ids_json) : [];
   }
 
-  async createSale(dto: CreateGpsSaleDto, sellerUsername: string): Promise<GpsSale> {
+  // Un repartidor solo puede confirmar una vez por dia -- si ya tiene fila
+  // para ese dia, no la pisa (pedido explicito: "queda fija al confirmar").
+  async submitPicks(username: string, clientIds: number[], dayLabel = todayDayLabel()): Promise<{ alreadyConfirmed: boolean }> {
     await this.ensureTables();
-
-    const clientRows = await this.databaseService.query<ClientRow[]>(
-      `SELECT id, name, address, lat, lng FROM saas_gps_clients WHERE id = ? LIMIT 1`,
-      [dto.clientId]
+    const existing = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT 1 FROM saas_gps_daily_selections WHERE day_label = ? AND repartidor_username = ? LIMIT 1`,
+      [dayLabel, username]
     );
-    const client = clientRows[0];
-    if (!client) throw new NotFoundException("Cliente no encontrado.");
+    if (existing.length > 0) {
+      return { alreadyConfirmed: true };
+    }
 
-    const productIds = dto.items.map((item) => item.productId);
-    const productRows = await this.databaseService.query<ProductRow[]>(
-      `SELECT id, name, price FROM saas_gps_products WHERE id IN (${productIds.map(() => "?").join(",")})`,
-      productIds
+    await this.databaseService.execute(
+      `INSERT INTO saas_gps_daily_selections (day_label, repartidor_username, client_ids_json) VALUES (?, ?, ?)`,
+      [dayLabel, username, JSON.stringify(clientIds)]
     );
-    const productsById = new Map(productRows.map((row) => [row.id, row]));
+    return { alreadyConfirmed: false };
+  }
 
-    const items: GpsSaleItem[] = dto.items.map((item) => {
-      const product = productsById.get(item.productId);
-      if (!product) throw new NotFoundException(`Producto ${item.productId} no encontrado.`);
-      return { productId: product.id, productName: product.name, quantity: item.quantity, unitPrice: Number(product.price) };
+  async getStatus(dayLabel = todayDayLabel()): Promise<GpsRepartidorStatus[]> {
+    await this.ensureTables();
+    const repartidores = await this.gpsAuthService.listRepartidores();
+    const rows = await this.databaseService.query<SelectionRow[]>(
+      `SELECT repartidor_username, client_ids_json FROM saas_gps_daily_selections WHERE day_label = ?`,
+      [dayLabel]
+    );
+    const byUsername = new Map(rows.map((row) => [row.repartidor_username, parseClientIds(row.client_ids_json)]));
+
+    return repartidores.map((repartidor) => {
+      const picks = byUsername.get(repartidor.username);
+      return { username: repartidor.username, fullName: repartidor.fullName, confirmed: Boolean(picks), pickCount: picks?.length ?? 0 };
     });
-    const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-
-    const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_gps_sales (client_id, client_name, client_address, client_lat, client_lng, seller_username, items_json, total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente')`,
-      [client.id, client.name, client.address, client.lat, client.lng, sellerUsername, JSON.stringify(items), total]
-    );
-    const insertId = result.insertId;
-
-    return {
-      id: insertId,
-      clientId: client.id,
-      clientName: client.name,
-      clientAddress: client.address,
-      clientLat: Number(client.lat),
-      clientLng: Number(client.lng),
-      sellerUsername,
-      courierName: null,
-      items,
-      total,
-      status: "pendiente",
-      createdAt: new Date().toISOString()
-    };
   }
 
-  async listPendingSales(): Promise<GpsSale[]> {
+  async getFinalRoute(dayLabel = todayDayLabel()): Promise<GpsFinalRoute> {
     await this.ensureTables();
-    const rows = await this.databaseService.query<SaleRow[]>(
-      `${this.saleSelectColumns()} FROM saas_gps_sales WHERE status = 'pendiente' ORDER BY created_at ASC`
-    );
-    return rows.map((row) => this.mapSale(row));
-  }
-
-  async listAllSales(): Promise<GpsSale[]> {
-    await this.ensureTables();
-    const rows = await this.databaseService.query<SaleRow[]>(`${this.saleSelectColumns()} FROM saas_gps_sales ORDER BY created_at DESC`);
-    return rows.map((row) => this.mapSale(row));
-  }
-
-  async markDelivered(saleId: number, courierName: string): Promise<void> {
-    await this.ensureTables();
-    await this.databaseService.execute(`UPDATE saas_gps_sales SET status = 'entregado', courier_name = ? WHERE id = ?`, [
-      courierName,
-      saleId
+    const [status, clients, rows] = await Promise.all([
+      this.getStatus(dayLabel),
+      this.listClients(),
+      this.databaseService.query<SelectionRow[]>(
+        `SELECT repartidor_username, client_ids_json FROM saas_gps_daily_selections WHERE day_label = ?`,
+        [dayLabel]
+      )
     ]);
-  }
 
-  private saleSelectColumns() {
-    return `SELECT id, client_id, client_name, client_address, client_lat, client_lng, seller_username, courier_name, items_json, total, status,
-              DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at`;
-  }
+    const ready = status.length > 0 && status.every((entry) => entry.confirmed);
+    if (!ready) {
+      return { ready: false, status, items: [] };
+    }
 
-  private mapSale(row: SaleRow): GpsSale {
-    return {
-      id: row.id,
-      clientId: row.client_id,
-      clientName: row.client_name,
-      clientAddress: row.client_address,
-      clientLat: Number(row.client_lat),
-      clientLng: Number(row.client_lng),
-      sellerUsername: row.seller_username,
-      courierName: row.courier_name,
-      items: typeof row.items_json === "string" ? JSON.parse(row.items_json) : row.items_json,
-      total: Number(row.total),
-      status: row.status,
-      createdAt: `${row.created_at}Z`
-    };
+    const clientsById = new Map(clients.map((client) => [client.id, client]));
+    const nameByUsername = new Map(status.map((entry) => [entry.username, entry.fullName]));
+
+    const items: GpsFinalRouteItem[] = [];
+    for (const row of rows) {
+      const clientIds = parseClientIds(row.client_ids_json);
+      for (const clientId of clientIds) {
+        const client = clientsById.get(clientId);
+        if (!client) continue;
+        items.push({ client, repartidorUsername: row.repartidor_username, repartidorName: nameByUsername.get(row.repartidor_username) ?? null });
+      }
+    }
+
+    return { ready: true, status, items };
   }
 
   private async ensureTables() {
@@ -200,108 +170,31 @@ export class GpsDataService implements OnModuleInit {
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
     await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_gps_products (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         name VARCHAR(120) NOT NULL,
-         price DECIMAL(10, 2) NOT NULL
+      `CREATE TABLE IF NOT EXISTS saas_gps_daily_selections (
+         day_label VARCHAR(10) NOT NULL,
+         repartidor_username VARCHAR(60) NOT NULL,
+         client_ids_json JSON NOT NULL,
+         confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+         PRIMARY KEY (day_label, repartidor_username)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_gps_sales (
-         id INT AUTO_INCREMENT PRIMARY KEY,
-         client_id INT NOT NULL,
-         client_name VARCHAR(120) NOT NULL,
-         client_address VARCHAR(200) NOT NULL,
-         client_lat DECIMAL(10, 6) NOT NULL,
-         client_lng DECIMAL(10, 6) NOT NULL,
-         seller_username VARCHAR(60) NOT NULL,
-         courier_name VARCHAR(80) NULL,
-         items_json JSON NOT NULL,
-         total DECIMAL(10, 2) NOT NULL,
-         status ENUM('pendiente', 'entregado') NOT NULL DEFAULT 'pendiente',
-         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    // Migracion: la tabla saas_gps_sales ya existia sin courier_name antes
-    // de agregar el seguimiento de "con que repartidor fue" en el panel
-    // de admin -- mismo patron de chequeo que scrum.service.ts.
-    const courierColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total FROM information_schema.columns
-       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_sales' AND column_name = 'courier_name'`
-    );
-    if (Number(courierColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(`ALTER TABLE saas_gps_sales ADD COLUMN courier_name VARCHAR(80) NULL AFTER seller_username`);
-    }
   }
 
-  // Solo siembra clientes/productos demo la primera vez (tablas recien
-  // creadas, sin filas).
-  private async ensureDemoData() {
-    const clientCountRows = await this.databaseService.query<RowDataPacket[]>(`SELECT COUNT(*) as count FROM saas_gps_clients`);
-    if (Number(clientCountRows[0]?.count ?? 0) === 0) {
-      for (const client of DEMO_CLIENTS) {
-        await this.databaseService.execute(`INSERT INTO saas_gps_clients (name, address, lat, lng) VALUES (?, ?, ?, ?)`, [
-          client.name,
-          client.address,
-          client.lat,
-          client.lng
-        ]);
-      }
-    }
+  // Siembra los clientes demo que falten -- idempotente por nombre, asi
+  // cubre tanto la primera corrida (tabla vacia) como la migracion de 5 a
+  // 20 clientes (14/11/2026) sin duplicar los que ya estaban.
+  private async ensureDemoClients() {
+    const existingRows = await this.databaseService.query<RowDataPacket[]>(`SELECT name FROM saas_gps_clients`);
+    const existingNames = new Set(existingRows.map((row) => row.name));
 
-    const productCountRows = await this.databaseService.query<RowDataPacket[]>(`SELECT COUNT(*) as count FROM saas_gps_products`);
-    if (Number(productCountRows[0]?.count ?? 0) === 0) {
-      for (const product of DEMO_PRODUCTS) {
-        await this.databaseService.execute(`INSERT INTO saas_gps_products (name, price) VALUES (?, ?)`, [product.name, product.price]);
-      }
-    }
-  }
-
-  // Historial ficticio para que el panel de admin no se vea vacio en la
-  // demo: un puñado de ventas de los ultimos dias, repartidas entre los
-  // repartidores de demo, la mayoria ya entregadas y un par pendientes.
-  // Solo se siembra una vez (si ya hay varias ventas, no vuelve a correr).
-  private async ensureDemoSalesHistory() {
-    const saleCountRows = await this.databaseService.query<RowDataPacket[]>(`SELECT COUNT(*) as count FROM saas_gps_sales`);
-    if (Number(saleCountRows[0]?.count ?? 0) >= 5) return;
-
-    const clients = await this.listClients();
-    const products = await this.listProducts();
-    if (clients.length === 0 || products.length === 0) return;
-
-    const now = Date.now();
-    const DAY_MS = 24 * 60 * 60 * 1000;
-    const seeds = [
-      { daysAgo: 6, hour: 9, clientIdx: 0, productIdxs: [0, 1], courier: "Juan", status: "entregado" as const },
-      { daysAgo: 6, hour: 11, clientIdx: 2, productIdxs: [3], courier: "Pedro", status: "entregado" as const },
-      { daysAgo: 5, hour: 10, clientIdx: 1, productIdxs: [4, 5], courier: "Juan", status: "entregado" as const },
-      { daysAgo: 4, hour: 14, clientIdx: 3, productIdxs: [2], courier: "Lucía", status: "entregado" as const },
-      { daysAgo: 3, hour: 9, clientIdx: 4, productIdxs: [0, 2, 5], courier: "Pedro", status: "entregado" as const },
-      { daysAgo: 2, hour: 16, clientIdx: 0, productIdxs: [1, 4], courier: "Lucía", status: "entregado" as const },
-      { daysAgo: 1, hour: 10, clientIdx: 2, productIdxs: [3, 5], courier: "Juan", status: "entregado" as const },
-      { daysAgo: 0, hour: 9, clientIdx: 1, productIdxs: [0], courier: null, status: "pendiente" as const },
-      { daysAgo: 0, hour: 11, clientIdx: 3, productIdxs: [2, 4], courier: null, status: "pendiente" as const }
-    ];
-
-    for (const seed of seeds) {
-      const client = clients[seed.clientIdx];
-      if (!client) continue;
-      const items: GpsSaleItem[] = seed.productIdxs
-        .map((idx) => products[idx])
-        .filter((product): product is GpsProduct => Boolean(product))
-        .map((product) => ({ productId: product.id, productName: product.name, quantity: 1 + (product.id % 3), unitPrice: product.price }));
-      if (items.length === 0) continue;
-      const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-      const createdAt = new Date(now - seed.daysAgo * DAY_MS);
-      createdAt.setHours(seed.hour, 0, 0, 0);
-
-      await this.databaseService.execute(
-        `INSERT INTO saas_gps_sales
-           (client_id, client_name, client_address, client_lat, client_lng, seller_username, courier_name, items_json, total, status, created_at)
-         VALUES (?, ?, ?, ?, ?, 'vendedor', ?, ?, ?, ?, ?)`,
-        [client.id, client.name, client.address, client.lat, client.lng, seed.courier, JSON.stringify(items), total, seed.status, createdAt]
-      );
+    for (const client of DEMO_CLIENTS) {
+      if (existingNames.has(client.name)) continue;
+      await this.databaseService.execute(`INSERT INTO saas_gps_clients (name, address, lat, lng) VALUES (?, ?, ?, ?)`, [
+        client.name,
+        client.address,
+        client.lat,
+        client.lng
+      ]);
     }
   }
 }

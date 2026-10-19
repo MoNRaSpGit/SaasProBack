@@ -1,7 +1,6 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post } from "@nestjs/common";
-import { CreateGpsSaleDto } from "./dto/create-gps-sale.dto";
-import { DeliverGpsSaleDto } from "./dto/deliver-gps-sale.dto";
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
+import { SubmitGpsPicksDto } from "./dto/submit-gps-picks.dto";
 import { GpsAuthService } from "./gps-auth.service";
 import { GpsDataService } from "./gps-data.service";
 
@@ -34,44 +33,32 @@ export class GpsController {
 
   @Get("clients")
   async listClients(@Headers("authorization") authorization: string | undefined) {
-    await this.gpsAuthService.requireRole(authorization, "admin", "vendedor", "repartidor");
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
     return this.gpsDataService.listClients();
   }
 
-  @Get("products")
-  async listProducts(@Headers("authorization") authorization: string | undefined) {
-    await this.gpsAuthService.requireRole(authorization, "admin", "vendedor", "repartidor");
-    return this.gpsDataService.listProducts();
-  }
-
-  @HttpCode(HttpStatus.CREATED)
-  @Post("sales")
-  async createSale(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateGpsSaleDto) {
-    const user = await this.gpsAuthService.requireRole(authorization, "vendedor");
-    return this.gpsDataService.createSale(dto, user.username);
-  }
-
-  @Get("sales/pending")
-  async listPendingSales(@Headers("authorization") authorization: string | undefined) {
-    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
-    return this.gpsDataService.listPendingSales();
-  }
-
-  @Get("sales")
-  async listAllSales(@Headers("authorization") authorization: string | undefined) {
-    await this.gpsAuthService.requireRole(authorization, "admin");
-    return this.gpsDataService.listAllSales();
+  @Get("picks/me")
+  async getMyPicks(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
+    const user = await this.gpsAuthService.requireRole(authorization, "repartidor");
+    return { clientIds: await this.gpsDataService.getMyPicks(user.username, day) };
   }
 
   @HttpCode(HttpStatus.OK)
-  @Post("sales/:id/deliver")
-  async markDelivered(
-    @Headers("authorization") authorization: string | undefined,
-    @Param("id") id: string,
-    @Body() dto: DeliverGpsSaleDto
-  ) {
-    await this.gpsAuthService.requireRole(authorization, "repartidor");
-    await this.gpsDataService.markDelivered(Number(id), dto.courierName);
-    return { ok: true };
+  @Post("picks")
+  async submitPicks(@Headers("authorization") authorization: string | undefined, @Body() dto: SubmitGpsPicksDto) {
+    const user = await this.gpsAuthService.requireRole(authorization, "repartidor");
+    return this.gpsDataService.submitPicks(user.username, dto.clientIds, dto.day);
+  }
+
+  @Get("picks/status")
+  async getStatus(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.getStatus(day);
+  }
+
+  @Get("picks/final")
+  async getFinalRoute(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.getFinalRoute(day);
   }
 }

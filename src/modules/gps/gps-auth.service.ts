@@ -5,7 +5,7 @@ import { RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 
-export type GpsRole = "admin" | "vendedor" | "repartidor";
+export type GpsRole = "admin" | "repartidor";
 
 export type GpsUser = {
   id: number;
@@ -41,6 +41,7 @@ export class GpsAuthService implements OnModuleInit {
   async onModuleInit() {
     await this.ensureTables();
     await this.ensureDefaultUsers();
+    await this.ensureRepartidorRoster();
   }
 
   async login(dto: LoginGpsUserDto): Promise<{ user: GpsUser; token: string }> {
@@ -84,6 +85,15 @@ export class GpsAuthService implements OnModuleInit {
       throw new UnauthorizedException("No tenés permiso para esta acción.");
     }
     return user;
+  }
+
+  // Lista de repartidores reales (no el admin) -- usada para saber contra
+  // quienes se mide "¿ya confirmaron los 3?" en gps-data.service.ts.
+  async listRepartidores(): Promise<GpsUser[]> {
+    const rows = await this.databaseService.query<GpsUserRow[]>(
+      `SELECT id, username, password_hash, full_name, role FROM saas_gps_users WHERE role = 'repartidor' ORDER BY full_name ASC`
+    );
+    return rows.map((row) => this.mapUser(row));
   }
 
   private async getUserForToken(token: string): Promise<GpsUser | null> {
@@ -141,26 +151,46 @@ export class GpsAuthService implements OnModuleInit {
     );
   }
 
-  // Solo siembra los 3 usuarios demo la primera vez (tabla recien creada,
-  // sin filas) -- si ya hay usuarios (se crearon/cambiaron a mano) nunca
-  // los pisa.
+  // Solo siembra admin/vendedor/repartidor-generico la primera vez (tabla
+  // recien creada, sin filas). El roster real de repartidores (Martin/
+  // Ana/Pedro) lo arma ensureRepartidorRoster, que corre siempre y
+  // reemplaza esos demo genericos por las 3 personas -- ver abajo.
   private async ensureDefaultUsers() {
     const rows = await this.databaseService.query<RowDataPacket[]>(`SELECT COUNT(*) as count FROM saas_gps_users`);
     if (Number(rows[0]?.count ?? 0) > 0) {
       return;
     }
 
-    const seeds: Array<{ username: string; password: string; fullName: string; role: GpsRole }> = [
-      { username: "admin", password: "admin", fullName: "Administrador", role: "admin" },
-      { username: "vendedor", password: "vendedor12345", fullName: "Vendedor demo", role: "vendedor" },
-      { username: "repartidor", password: "repartidor12345", fullName: "Repartidor demo", role: "repartidor" }
-    ];
+    const adminHash = await hash("admin", 10);
+    await this.databaseService.execute(`INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'admin')`, [
+      "admin",
+      adminHash,
+      "Administrador"
+    ]);
+  }
 
+  // Migracion (14/11/2026): se sacó el rol "vendedor" -- ahora hay 3
+  // repartidores con cuenta propia (Martín/Ana/Pedro, contraseña 12345
+  // los 3), cada uno selecciona a que clientes le vendió. Corre una sola
+  // vez: si "martin" ya existe, no vuelve a tocar nada.
+  private async ensureRepartidorRoster() {
+    const existing = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT id FROM saas_gps_users WHERE username = 'martin' LIMIT 1`
+    );
+    if (existing.length > 0) return;
+
+    await this.databaseService.execute(`DELETE FROM saas_gps_users WHERE username IN ('vendedor', 'repartidor')`);
+
+    const seeds = [
+      { username: "martin", fullName: "Martín" },
+      { username: "ana", fullName: "Ana" },
+      { username: "pedro", fullName: "Pedro" }
+    ];
+    const passwordHash = await hash("12345", 10);
     for (const seed of seeds) {
-      const passwordHash = await hash(seed.password, 10);
       await this.databaseService.execute(
-        `INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, ?, ?)`,
-        [seed.username, passwordHash, seed.fullName, seed.role]
+        `INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'repartidor')`,
+        [seed.username, passwordHash, seed.fullName]
       );
     }
   }
