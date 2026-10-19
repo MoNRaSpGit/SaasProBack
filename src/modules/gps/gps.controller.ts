@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, Post } from "@nestjs/common";
 import { CreateGpsSaleDto } from "./dto/create-gps-sale.dto";
+import { DeliverGpsSaleDto } from "./dto/deliver-gps-sale.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 import { GpsAuthService } from "./gps-auth.service";
 import { GpsDataService } from "./gps-data.service";
@@ -56,11 +57,21 @@ export class GpsController {
     return this.gpsDataService.listPendingSales();
   }
 
+  @Get("sales")
+  async listAllSales(@Headers("authorization") authorization: string | undefined) {
+    await this.gpsAuthService.requireRole(authorization, "admin");
+    return this.gpsDataService.listAllSales();
+  }
+
   @HttpCode(HttpStatus.OK)
   @Post("sales/:id/deliver")
-  async markDelivered(@Headers("authorization") authorization: string | undefined, @Param("id") id: string) {
+  async markDelivered(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id") id: string,
+    @Body() dto: DeliverGpsSaleDto
+  ) {
     await this.gpsAuthService.requireRole(authorization, "repartidor");
-    await this.gpsDataService.markDelivered(Number(id));
+    await this.gpsDataService.markDelivered(Number(id), dto.courierName);
     return { ok: true };
   }
 }

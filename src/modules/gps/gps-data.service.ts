@@ -14,6 +14,7 @@ export type GpsSale = {
   clientLat: number;
   clientLng: number;
   sellerUsername: string;
+  courierName: string | null;
   items: GpsSaleItem[];
   total: number;
   status: "pendiente" | "entregado";
@@ -30,6 +31,7 @@ type SaleRow = RowDataPacket & {
   client_lat: number;
   client_lng: number;
   seller_username: string;
+  courier_name: string | null;
   items_json: string;
   total: string;
   status: "pendiente" | "entregado";
@@ -57,6 +59,11 @@ const DEMO_PRODUCTS: Array<Omit<GpsProduct, "id">> = [
   { name: "Fideos 500g", price: 65 }
 ];
 
+// Nombres de repartidores de demo (no son personas reales) -- el proyecto
+// esta en modo demo para mostrarle al cliente, asi que el panel de admin
+// necesita historial con variedad para no verse vacio.
+export const DEMO_COURIERS = ["Juan", "Pedro", "Lucía"];
+
 @Injectable()
 export class GpsDataService implements OnModuleInit {
   private ensureTablesPromise: Promise<void> | null = null;
@@ -66,6 +73,7 @@ export class GpsDataService implements OnModuleInit {
   async onModuleInit() {
     await this.ensureTables();
     await this.ensureDemoData();
+    await this.ensureDemoSalesHistory();
   }
 
   async listClients(): Promise<GpsClient[]> {
@@ -119,6 +127,7 @@ export class GpsDataService implements OnModuleInit {
       clientLat: Number(client.lat),
       clientLng: Number(client.lng),
       sellerUsername,
+      courierName: null,
       items,
       total,
       status: "pendiente",
@@ -129,16 +138,28 @@ export class GpsDataService implements OnModuleInit {
   async listPendingSales(): Promise<GpsSale[]> {
     await this.ensureTables();
     const rows = await this.databaseService.query<SaleRow[]>(
-      `SELECT id, client_id, client_name, client_address, client_lat, client_lng, seller_username, items_json, total, status,
-              DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
-       FROM saas_gps_sales WHERE status = 'pendiente' ORDER BY created_at ASC`
+      `${this.saleSelectColumns()} FROM saas_gps_sales WHERE status = 'pendiente' ORDER BY created_at ASC`
     );
     return rows.map((row) => this.mapSale(row));
   }
 
-  async markDelivered(saleId: number): Promise<void> {
+  async listAllSales(): Promise<GpsSale[]> {
     await this.ensureTables();
-    await this.databaseService.execute(`UPDATE saas_gps_sales SET status = 'entregado' WHERE id = ?`, [saleId]);
+    const rows = await this.databaseService.query<SaleRow[]>(`${this.saleSelectColumns()} FROM saas_gps_sales ORDER BY created_at DESC`);
+    return rows.map((row) => this.mapSale(row));
+  }
+
+  async markDelivered(saleId: number, courierName: string): Promise<void> {
+    await this.ensureTables();
+    await this.databaseService.execute(`UPDATE saas_gps_sales SET status = 'entregado', courier_name = ? WHERE id = ?`, [
+      courierName,
+      saleId
+    ]);
+  }
+
+  private saleSelectColumns() {
+    return `SELECT id, client_id, client_name, client_address, client_lat, client_lng, seller_username, courier_name, items_json, total, status,
+              DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at`;
   }
 
   private mapSale(row: SaleRow): GpsSale {
@@ -150,6 +171,7 @@ export class GpsDataService implements OnModuleInit {
       clientLat: Number(row.client_lat),
       clientLng: Number(row.client_lng),
       sellerUsername: row.seller_username,
+      courierName: row.courier_name,
       items: typeof row.items_json === "string" ? JSON.parse(row.items_json) : row.items_json,
       total: Number(row.total),
       status: row.status,
@@ -193,12 +215,24 @@ export class GpsDataService implements OnModuleInit {
          client_lat DECIMAL(10, 6) NOT NULL,
          client_lng DECIMAL(10, 6) NOT NULL,
          seller_username VARCHAR(60) NOT NULL,
+         courier_name VARCHAR(80) NULL,
          items_json JSON NOT NULL,
          total DECIMAL(10, 2) NOT NULL,
          status ENUM('pendiente', 'entregado') NOT NULL DEFAULT 'pendiente',
          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    // Migracion: la tabla saas_gps_sales ya existia sin courier_name antes
+    // de agregar el seguimiento de "con que repartidor fue" en el panel
+    // de admin -- mismo patron de chequeo que scrum.service.ts.
+    const courierColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_sales' AND column_name = 'courier_name'`
+    );
+    if (Number(courierColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_gps_sales ADD COLUMN courier_name VARCHAR(80) NULL AFTER seller_username`);
+    }
   }
 
   // Solo siembra clientes/productos demo la primera vez (tablas recien
@@ -221,6 +255,53 @@ export class GpsDataService implements OnModuleInit {
       for (const product of DEMO_PRODUCTS) {
         await this.databaseService.execute(`INSERT INTO saas_gps_products (name, price) VALUES (?, ?)`, [product.name, product.price]);
       }
+    }
+  }
+
+  // Historial ficticio para que el panel de admin no se vea vacio en la
+  // demo: un puñado de ventas de los ultimos dias, repartidas entre los
+  // repartidores de demo, la mayoria ya entregadas y un par pendientes.
+  // Solo se siembra una vez (si ya hay varias ventas, no vuelve a correr).
+  private async ensureDemoSalesHistory() {
+    const saleCountRows = await this.databaseService.query<RowDataPacket[]>(`SELECT COUNT(*) as count FROM saas_gps_sales`);
+    if (Number(saleCountRows[0]?.count ?? 0) >= 5) return;
+
+    const clients = await this.listClients();
+    const products = await this.listProducts();
+    if (clients.length === 0 || products.length === 0) return;
+
+    const now = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const seeds = [
+      { daysAgo: 6, hour: 9, clientIdx: 0, productIdxs: [0, 1], courier: "Juan", status: "entregado" as const },
+      { daysAgo: 6, hour: 11, clientIdx: 2, productIdxs: [3], courier: "Pedro", status: "entregado" as const },
+      { daysAgo: 5, hour: 10, clientIdx: 1, productIdxs: [4, 5], courier: "Juan", status: "entregado" as const },
+      { daysAgo: 4, hour: 14, clientIdx: 3, productIdxs: [2], courier: "Lucía", status: "entregado" as const },
+      { daysAgo: 3, hour: 9, clientIdx: 4, productIdxs: [0, 2, 5], courier: "Pedro", status: "entregado" as const },
+      { daysAgo: 2, hour: 16, clientIdx: 0, productIdxs: [1, 4], courier: "Lucía", status: "entregado" as const },
+      { daysAgo: 1, hour: 10, clientIdx: 2, productIdxs: [3, 5], courier: "Juan", status: "entregado" as const },
+      { daysAgo: 0, hour: 9, clientIdx: 1, productIdxs: [0], courier: null, status: "pendiente" as const },
+      { daysAgo: 0, hour: 11, clientIdx: 3, productIdxs: [2, 4], courier: null, status: "pendiente" as const }
+    ];
+
+    for (const seed of seeds) {
+      const client = clients[seed.clientIdx];
+      if (!client) continue;
+      const items: GpsSaleItem[] = seed.productIdxs
+        .map((idx) => products[idx])
+        .filter((product): product is GpsProduct => Boolean(product))
+        .map((product) => ({ productId: product.id, productName: product.name, quantity: 1 + (product.id % 3), unitPrice: product.price }));
+      if (items.length === 0) continue;
+      const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const createdAt = new Date(now - seed.daysAgo * DAY_MS);
+      createdAt.setHours(seed.hour, 0, 0, 0);
+
+      await this.databaseService.execute(
+        `INSERT INTO saas_gps_sales
+           (client_id, client_name, client_address, client_lat, client_lng, seller_username, courier_name, items_json, total, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'vendedor', ?, ?, ?, ?, ?)`,
+        [client.id, client.name, client.address, client.lat, client.lng, seed.courier, JSON.stringify(items), total, seed.status, createdAt]
+      );
     }
   }
 }
