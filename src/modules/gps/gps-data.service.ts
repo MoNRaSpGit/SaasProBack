@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from "@nestjs/common";
+import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
 import { RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { GpsAuthService } from "./gps-auth.service";
@@ -11,33 +11,35 @@ export type GpsFinalRouteItem = { client: GpsClient; repartidorUsername: string;
 
 export type GpsFinalRoute = { ready: boolean; status: GpsRepartidorStatus[]; items: GpsFinalRouteItem[] };
 
-type ClientRow = RowDataPacket & { id: number; name: string; address: string; lat: number; lng: number };
+type ClientRow = RowDataPacket & { id: number; name: string; address: string; lat: number; lng: number; assigned_username: string | null };
 type SelectionRow = RowDataPacket & { repartidor_username: string; client_ids_json: string };
 
 // 20 clientes ficticios para la demo del proyecto -- no son datos reales de
 // ningun cliente. Direcciones de Montevideo con coordenadas aproximadas,
-// para que el mapa de rutas tenga puntos reales donde dibujar.
-const DEMO_CLIENTS: Array<Omit<GpsClient, "id">> = [
-  { name: "Panadería La Espiga", address: "Av. 18 de Julio 1234, Centro, Montevideo", lat: -34.9058, lng: -56.1913 },
-  { name: "Almacén Don Pepe", address: "Bulevar Artigas 2500, Pocitos, Montevideo", lat: -34.9115, lng: -56.157 },
-  { name: "Kiosco Rayitos", address: "Av. Italia 3400, Malvín, Montevideo", lat: -34.889, lng: -56.128 },
-  { name: "Farmacia Sur", address: "Camino Maldonado 5600, Carrasco, Montevideo", lat: -34.88, lng: -56.062 },
-  { name: "Mini Mercado Centro", address: "Av. 8 de Octubre 2800, Tres Cruces, Montevideo", lat: -34.895, lng: -56.165 },
-  { name: "Verdulería Los Pinos", address: "Av. Rivera 4200, Buceo, Montevideo", lat: -34.907, lng: -56.139 },
-  { name: "Carnicería El Novillo", address: "Av. Gral. Flores 3100, Aguada, Montevideo", lat: -34.899, lng: -56.185 },
-  { name: "Panificadora Santa Fe", address: "Av. Agraciada 2600, La Comercial, Montevideo", lat: -34.893, lng: -56.192 },
-  { name: "Autoservicio Belvedere", address: "Av. San Martín 2200, Belvedere, Montevideo", lat: -34.868, lng: -56.192 },
-  { name: "Despensa La Esquina", address: "Camino Carrasco 1500, Punta Gorda, Montevideo", lat: -34.91, lng: -56.105 },
-  { name: "Almacén El Progreso", address: "Av. Millán 3700, Peñarol, Montevideo", lat: -34.845, lng: -56.215 },
-  { name: "Kiosco Central", address: "Bvar. España 2100, Parque Rodó, Montevideo", lat: -34.915, lng: -56.167 },
-  { name: "Fiambrería Montevideo", address: "Av. Sarmiento 2050, Parque Batlle, Montevideo", lat: -34.898, lng: -56.155 },
-  { name: "Panadería El Trigal", address: "Av. 8 de Octubre 4500, Cerrito, Montevideo", lat: -34.865, lng: -56.16 },
-  { name: "Supermercado Familiar", address: "Av. Garzón 1800, Lezica, Montevideo", lat: -34.845, lng: -56.18 },
-  { name: "Almacén Don Carlos", address: "Camino Castro 800, Colón, Montevideo", lat: -34.833, lng: -56.235 },
-  { name: "Kiosco La Rambla", address: "Rambla Armenia 5500, Malvín Norte, Montevideo", lat: -34.88, lng: -56.122 },
-  { name: "Verdulería Don Juan", address: "Av. Giannattasio Km 20, Ciudad de la Costa", lat: -34.795, lng: -55.975 },
-  { name: "Despensa Rural", address: "Camino Melilla 4200, Melilla, Montevideo", lat: -34.79, lng: -56.3 },
-  { name: "Mini Market 24hs", address: "Av. Bolivia 1400, Carrasco Norte, Montevideo", lat: -34.86, lng: -56.055 }
+// para que el mapa de rutas tenga puntos reales donde dibujar. Cada
+// cliente es fijo de UN repartidor (pedido explicito 14/11/2026: "cada
+// repartidor tiene clientes diferentes", nunca se superponen).
+const DEMO_CLIENTS: Array<Omit<GpsClient, "id"> & { assignedUsername: string }> = [
+  { name: "Panadería La Espiga", address: "Av. 18 de Julio 1234, Centro, Montevideo", lat: -34.9058, lng: -56.1913, assignedUsername: "martin" },
+  { name: "Almacén Don Pepe", address: "Bulevar Artigas 2500, Pocitos, Montevideo", lat: -34.9115, lng: -56.157, assignedUsername: "martin" },
+  { name: "Kiosco Rayitos", address: "Av. Italia 3400, Malvín, Montevideo", lat: -34.889, lng: -56.128, assignedUsername: "martin" },
+  { name: "Farmacia Sur", address: "Camino Maldonado 5600, Carrasco, Montevideo", lat: -34.88, lng: -56.062, assignedUsername: "martin" },
+  { name: "Mini Mercado Centro", address: "Av. 8 de Octubre 2800, Tres Cruces, Montevideo", lat: -34.895, lng: -56.165, assignedUsername: "martin" },
+  { name: "Verdulería Los Pinos", address: "Av. Rivera 4200, Buceo, Montevideo", lat: -34.907, lng: -56.139, assignedUsername: "martin" },
+  { name: "Carnicería El Novillo", address: "Av. Gral. Flores 3100, Aguada, Montevideo", lat: -34.899, lng: -56.185, assignedUsername: "martin" },
+  { name: "Panificadora Santa Fe", address: "Av. Agraciada 2600, La Comercial, Montevideo", lat: -34.893, lng: -56.192, assignedUsername: "ana" },
+  { name: "Autoservicio Belvedere", address: "Av. San Martín 2200, Belvedere, Montevideo", lat: -34.868, lng: -56.192, assignedUsername: "ana" },
+  { name: "Despensa La Esquina", address: "Camino Carrasco 1500, Punta Gorda, Montevideo", lat: -34.91, lng: -56.105, assignedUsername: "ana" },
+  { name: "Almacén El Progreso", address: "Av. Millán 3700, Peñarol, Montevideo", lat: -34.845, lng: -56.215, assignedUsername: "ana" },
+  { name: "Kiosco Central", address: "Bvar. España 2100, Parque Rodó, Montevideo", lat: -34.915, lng: -56.167, assignedUsername: "ana" },
+  { name: "Fiambrería Montevideo", address: "Av. Sarmiento 2050, Parque Batlle, Montevideo", lat: -34.898, lng: -56.155, assignedUsername: "ana" },
+  { name: "Panadería El Trigal", address: "Av. 8 de Octubre 4500, Cerrito, Montevideo", lat: -34.865, lng: -56.16, assignedUsername: "ana" },
+  { name: "Supermercado Familiar", address: "Av. Garzón 1800, Lezica, Montevideo", lat: -34.845, lng: -56.18, assignedUsername: "pedro" },
+  { name: "Almacén Don Carlos", address: "Camino Castro 800, Colón, Montevideo", lat: -34.833, lng: -56.235, assignedUsername: "pedro" },
+  { name: "Kiosco La Rambla", address: "Rambla Armenia 5500, Malvín Norte, Montevideo", lat: -34.88, lng: -56.122, assignedUsername: "pedro" },
+  { name: "Verdulería Don Juan", address: "Av. Giannattasio Km 20, Ciudad de la Costa", lat: -34.795, lng: -55.975, assignedUsername: "pedro" },
+  { name: "Despensa Rural", address: "Camino Melilla 4200, Melilla, Montevideo", lat: -34.79, lng: -56.3, assignedUsername: "pedro" },
+  { name: "Mini Market 24hs", address: "Av. Bolivia 1400, Carrasco Norte, Montevideo", lat: -34.86, lng: -56.055, assignedUsername: "pedro" }
 ];
 
 // mysql2 ya deserializa las columnas JSON a objetos/arrays cuando puede --
@@ -68,9 +70,19 @@ export class GpsDataService implements OnModuleInit {
     await this.ensureDemoClients();
   }
 
-  async listClients(): Promise<GpsClient[]> {
+  // Sin username: todos los clientes (uso del admin). Con username: solo
+  // los clientes fijos de ese repartidor (pedido explicito: nunca se
+  // superponen entre repartidores).
+  async listClients(forUsername?: string): Promise<GpsClient[]> {
     await this.ensureTables();
-    const rows = await this.databaseService.query<ClientRow[]>(`SELECT id, name, address, lat, lng FROM saas_gps_clients ORDER BY name ASC`);
+    const rows = forUsername
+      ? await this.databaseService.query<ClientRow[]>(
+          `SELECT id, name, address, lat, lng, assigned_username FROM saas_gps_clients WHERE assigned_username = ? ORDER BY name ASC`,
+          [forUsername]
+        )
+      : await this.databaseService.query<ClientRow[]>(
+          `SELECT id, name, address, lat, lng, assigned_username FROM saas_gps_clients ORDER BY name ASC`
+        );
     return rows.map((row) => ({ id: row.id, name: row.name, address: row.address, lat: Number(row.lat), lng: Number(row.lng) }));
   }
 
@@ -83,10 +95,18 @@ export class GpsDataService implements OnModuleInit {
     return rows[0] ? parseClientIds(rows[0].client_ids_json) : [];
   }
 
-  // Un repartidor solo puede confirmar una vez por dia -- si ya tiene fila
-  // para ese dia, no la pisa (pedido explicito: "queda fija al confirmar").
+  // Un repartidor solo puede confirmar una vez por dia -- si se equivocó,
+  // tiene que llamar a resetPicks primero (pedido explicito 14/11/2026:
+  // "poné algo para poder editar la ruta").
   async submitPicks(username: string, clientIds: number[], dayLabel = todayDayLabel()): Promise<{ alreadyConfirmed: boolean }> {
     await this.ensureTables();
+
+    const ownClients = await this.listClients(username);
+    const ownClientIds = new Set(ownClients.map((client) => client.id));
+    if (clientIds.some((id) => !ownClientIds.has(id))) {
+      throw new BadRequestException("Hay clientes que no te pertenecen.");
+    }
+
     const existing = await this.databaseService.query<RowDataPacket[]>(
       `SELECT 1 FROM saas_gps_daily_selections WHERE day_label = ? AND repartidor_username = ? LIMIT 1`,
       [dayLabel, username]
@@ -100,6 +120,17 @@ export class GpsDataService implements OnModuleInit {
       [dayLabel, username, JSON.stringify(clientIds)]
     );
     return { alreadyConfirmed: false };
+  }
+
+  // Deshace la confirmación del día para poder volver a tildar y generar
+  // de nuevo -- no borra los clientes elegidos de la pantalla, solo
+  // destraba la edición en el backend.
+  async resetPicks(username: string, dayLabel = todayDayLabel()): Promise<void> {
+    await this.ensureTables();
+    await this.databaseService.execute(`DELETE FROM saas_gps_daily_selections WHERE day_label = ? AND repartidor_username = ?`, [
+      dayLabel,
+      username
+    ]);
   }
 
   async getStatus(dayLabel = todayDayLabel()): Promise<GpsRepartidorStatus[]> {
@@ -166,7 +197,8 @@ export class GpsDataService implements OnModuleInit {
          name VARCHAR(120) NOT NULL,
          address VARCHAR(200) NOT NULL,
          lat DECIMAL(10, 6) NOT NULL,
-         lng DECIMAL(10, 6) NOT NULL
+         lng DECIMAL(10, 6) NOT NULL,
+         assigned_username VARCHAR(60) NULL
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
     await this.databaseService.execute(
@@ -178,23 +210,42 @@ export class GpsDataService implements OnModuleInit {
          PRIMARY KEY (day_label, repartidor_username)
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    // Migracion (14/11/2026): la tabla ya existia sin assigned_username --
+    // mismo patron de chequeo que scrum.service.ts.
+    const assignedColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_clients' AND column_name = 'assigned_username'`
+    );
+    if (Number(assignedColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN assigned_username VARCHAR(60) NULL`);
+    }
   }
 
-  // Siembra los clientes demo que falten -- idempotente por nombre, asi
-  // cubre tanto la primera corrida (tabla vacia) como la migracion de 5 a
-  // 20 clientes (14/11/2026) sin duplicar los que ya estaban.
+  // Siembra los clientes demo que falten y corrige el dueño (assigned_username)
+  // de los que ya existian -- idempotente por nombre, asi cubre la primera
+  // corrida, la migracion de 5 a 20 clientes, y ahora la asignacion fija por
+  // repartidor (antes los 20 eran compartidos por los 3).
   private async ensureDemoClients() {
-    const existingRows = await this.databaseService.query<RowDataPacket[]>(`SELECT name FROM saas_gps_clients`);
-    const existingNames = new Set(existingRows.map((row) => row.name));
+    const existingRows = await this.databaseService.query<RowDataPacket[]>(`SELECT id, name, assigned_username FROM saas_gps_clients`);
+    const existingByName = new Map(existingRows.map((row) => [row.name, row]));
 
     for (const client of DEMO_CLIENTS) {
-      if (existingNames.has(client.name)) continue;
-      await this.databaseService.execute(`INSERT INTO saas_gps_clients (name, address, lat, lng) VALUES (?, ?, ?, ?)`, [
-        client.name,
-        client.address,
-        client.lat,
-        client.lng
-      ]);
+      const existing = existingByName.get(client.name);
+      if (!existing) {
+        await this.databaseService.execute(`INSERT INTO saas_gps_clients (name, address, lat, lng, assigned_username) VALUES (?, ?, ?, ?, ?)`, [
+          client.name,
+          client.address,
+          client.lat,
+          client.lng,
+          client.assignedUsername
+        ]);
+      } else if (existing.assigned_username !== client.assignedUsername) {
+        await this.databaseService.execute(`UPDATE saas_gps_clients SET assigned_username = ? WHERE id = ?`, [
+          client.assignedUsername,
+          existing.id
+        ]);
+      }
     }
   }
 }

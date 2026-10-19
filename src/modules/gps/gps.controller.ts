@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 import { SubmitGpsPicksDto } from "./dto/submit-gps-picks.dto";
 import { GpsAuthService } from "./gps-auth.service";
@@ -33,8 +33,8 @@ export class GpsController {
 
   @Get("clients")
   async listClients(@Headers("authorization") authorization: string | undefined) {
-    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
-    return this.gpsDataService.listClients();
+    const user = await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.listClients(user.role === "repartidor" ? user.username : undefined);
   }
 
   @Get("picks/me")
@@ -48,6 +48,14 @@ export class GpsController {
   async submitPicks(@Headers("authorization") authorization: string | undefined, @Body() dto: SubmitGpsPicksDto) {
     const user = await this.gpsAuthService.requireRole(authorization, "repartidor");
     return this.gpsDataService.submitPicks(user.username, dto.clientIds, dto.day);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Delete("picks")
+  async resetPicks(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
+    const user = await this.gpsAuthService.requireRole(authorization, "repartidor");
+    await this.gpsDataService.resetPicks(user.username, day);
+    return { ok: true };
   }
 
   @Get("picks/status")
