@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
+import { LoginGpsPasswordDto } from "./dto/login-gps-password.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 import { SubmitGpsPicksDto } from "./dto/submit-gps-picks.dto";
 import { GpsAuthService } from "./gps-auth.service";
@@ -15,6 +16,12 @@ export class GpsController {
   @Post("auth/login")
   login(@Body() dto: LoginGpsUserDto) {
     return this.gpsAuthService.login(dto);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("auth/login-password")
+  loginByPassword(@Body() dto: LoginGpsPasswordDto) {
+    return this.gpsAuthService.loginByPassword(dto.password);
   }
 
   @HttpCode(HttpStatus.OK)

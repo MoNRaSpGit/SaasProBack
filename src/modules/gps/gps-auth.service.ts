@@ -32,6 +32,15 @@ type GpsSessionRow = RowDataPacket & {
 // ensureDefaultUsers), no hay registro publico.
 const SESSION_TTL_DAYS = 30;
 
+// Roster fijo de repartidores demo -- cada uno con su propia contraseña
+// (no hay seleccion de usuario en el login: la contraseña sola identifica
+// a la persona, ver loginByPassword).
+const REPARTIDOR_SEEDS = [
+  { username: "martin", fullName: "Martín", password: "martin12345" },
+  { username: "ana", fullName: "Ana", password: "ana12345" },
+  { username: "pedro", fullName: "Pedro", password: "pedro12345" }
+];
+
 @Injectable()
 export class GpsAuthService implements OnModuleInit {
   private ensureTablesPromise: Promise<void> | null = null;
@@ -64,6 +73,33 @@ export class GpsAuthService implements OnModuleInit {
       expiresAt
     ]);
     return { user: this.mapUser(row), token };
+  }
+
+  // Login de los repartidores: no eligen usuario, solo tipean su
+  // contraseña -- cada uno tiene una distinta (ver ensureRepartidorRoster)
+  // y se identifica probando esa contraseña contra los 3 hashes. El admin
+  // sigue entrando por login() con usuario + contraseña.
+  async loginByPassword(password: string): Promise<{ user: GpsUser; token: string }> {
+    await this.ensureTables();
+
+    const rows = await this.databaseService.query<GpsUserRow[]>(
+      `SELECT id, username, password_hash, full_name, role FROM saas_gps_users WHERE role = 'repartidor'`
+    );
+
+    for (const row of rows) {
+      if (await compare(password, row.password_hash)) {
+        const token = randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+        await this.databaseService.execute(`INSERT INTO saas_gps_sessions (user_id, token, expires_at) VALUES (?, ?, ?)`, [
+          row.id,
+          token,
+          expiresAt
+        ]);
+        return { user: this.mapUser(row), token };
+      }
+    }
+
+    throw new UnauthorizedException("Contraseña incorrecta.");
   }
 
   async logout(token: string): Promise<void> {
@@ -170,28 +206,33 @@ export class GpsAuthService implements OnModuleInit {
   }
 
   // Migracion (14/11/2026): se sacó el rol "vendedor" -- ahora hay 3
-  // repartidores con cuenta propia (Martín/Ana/Pedro, contraseña 12345
-  // los 3), cada uno selecciona a que clientes le vendió. Corre una sola
-  // vez: si "martin" ya existe, no vuelve a tocar nada.
+  // repartidores con cuenta propia (Martín/Ana/Pedro). Corre siempre (no
+  // solo la primera vez): crea el que falte y mantiene sincronizada la
+  // contraseña de cada uno con REPARTIDOR_SEEDS, por si se cambió el
+  // esquema de login (como paso el 14/11 al pasar de una password
+  // compartida a una distinta por persona).
   private async ensureRepartidorRoster() {
-    const existing = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT id FROM saas_gps_users WHERE username = 'martin' LIMIT 1`
-    );
-    if (existing.length > 0) return;
-
     await this.databaseService.execute(`DELETE FROM saas_gps_users WHERE username IN ('vendedor', 'repartidor')`);
 
-    const seeds = [
-      { username: "martin", fullName: "Martín" },
-      { username: "ana", fullName: "Ana" },
-      { username: "pedro", fullName: "Pedro" }
-    ];
-    const passwordHash = await hash("12345", 10);
-    for (const seed of seeds) {
-      await this.databaseService.execute(
-        `INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'repartidor')`,
-        [seed.username, passwordHash, seed.fullName]
-      );
+    const existingRows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT username FROM saas_gps_users WHERE role = 'repartidor'`
+    );
+    const existingUsernames = new Set(existingRows.map((row) => row.username));
+
+    for (const seed of REPARTIDOR_SEEDS) {
+      const passwordHash = await hash(seed.password, 10);
+      if (existingUsernames.has(seed.username)) {
+        await this.databaseService.execute(`UPDATE saas_gps_users SET password_hash = ?, full_name = ? WHERE username = ?`, [
+          passwordHash,
+          seed.fullName,
+          seed.username
+        ]);
+      } else {
+        await this.databaseService.execute(
+          `INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'repartidor')`,
+          [seed.username, passwordHash, seed.fullName]
+        );
+      }
     }
   }
 }
