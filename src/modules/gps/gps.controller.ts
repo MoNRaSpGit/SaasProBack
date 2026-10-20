@@ -68,7 +68,9 @@ export class GpsController {
   @HttpCode(HttpStatus.OK)
   @Delete("picks/all")
   async resetAllPicks(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
-    await this.gpsAuthService.requireRole(authorization, "admin");
+    // Pedido explicito (demo): cualquier rol logueado puede reiniciar las
+    // rutas de los 3, no solo el admin.
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
     await this.gpsDataService.resetAllPicks(day);
     return { ok: true };
   }
