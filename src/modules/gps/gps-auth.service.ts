@@ -32,14 +32,13 @@ type GpsSessionRow = RowDataPacket & {
 // ensureDefaultUsers), no hay registro publico.
 const SESSION_TTL_DAYS = 30;
 
-// Roster fijo de repartidores demo -- cada uno con su propia contraseña
-// (no hay seleccion de usuario en el login: la contraseña sola identifica
-// a la persona, ver loginByPassword).
-const REPARTIDOR_SEEDS = [
-  { username: "martin", fullName: "Martín", password: "martin12345" },
-  { username: "ana", fullName: "Ana", password: "ana12345" },
-  { username: "pedro", fullName: "Pedro", password: "pedro12345" }
-];
+// Migracion (20/10/2026, pedido explicito): ya no hay una cuenta por
+// persona (Martín/Ana/Pedro) -- ahora es un solo rol "repartidor" generico,
+// con 5 contraseñas validas (para que varios celulares puedan entrar sin
+// compartir el mismo string). Quien sea Martín/Ana/Juan/Pedro ahora es
+// solo una pestaña dentro de la app, ver PERSONAS en gps-data.service.ts
+// -- no tiene nada que ver con el login.
+const REPARTIDOR_PASSWORD_SEEDS = ["repartidor1", "repartidor2", "repartidor3", "repartidor4", "repartidor5"];
 
 @Injectable()
 export class GpsAuthService implements OnModuleInit {
@@ -75,10 +74,10 @@ export class GpsAuthService implements OnModuleInit {
     return { user: this.mapUser(row), token };
   }
 
-  // Login de los repartidores: no eligen usuario, solo tipean su
-  // contraseña -- cada uno tiene una distinta (ver ensureRepartidorRoster)
-  // y se identifica probando esa contraseña contra los 3 hashes. El admin
-  // sigue entrando por login() con usuario + contraseña.
+  // Login generico de repartidor: no hay identidad personal, cualquiera
+  // de las 5 contraseñas (un celular distinto cada una) entra al mismo
+  // rol "repartidor" -- adentro elige la pestaña (Martín/Ana/Juan/Pedro).
+  // El admin sigue entrando por login() con usuario + contraseña.
   async loginByPassword(password: string): Promise<{ user: GpsUser; token: string }> {
     await this.ensureTables();
 
@@ -121,15 +120,6 @@ export class GpsAuthService implements OnModuleInit {
       throw new UnauthorizedException("No tenés permiso para esta acción.");
     }
     return user;
-  }
-
-  // Lista de repartidores reales (no el admin) -- usada para saber contra
-  // quienes se mide "¿ya confirmaron los 3?" en gps-data.service.ts.
-  async listRepartidores(): Promise<GpsUser[]> {
-    const rows = await this.databaseService.query<GpsUserRow[]>(
-      `SELECT id, username, password_hash, full_name, role FROM saas_gps_users WHERE role = 'repartidor' ORDER BY full_name ASC`
-    );
-    return rows.map((row) => this.mapUser(row));
   }
 
   private async getUserForToken(token: string): Promise<GpsUser | null> {
@@ -187,10 +177,6 @@ export class GpsAuthService implements OnModuleInit {
     );
   }
 
-  // Solo siembra admin/vendedor/repartidor-generico la primera vez (tabla
-  // recien creada, sin filas). El roster real de repartidores (Martin/
-  // Ana/Pedro) lo arma ensureRepartidorRoster, que corre siempre y
-  // reemplaza esos demo genericos por las 3 personas -- ver abajo.
   private async ensureDefaultUsers() {
     const rows = await this.databaseService.query<RowDataPacket[]>(`SELECT COUNT(*) as count FROM saas_gps_users`);
     if (Number(rows[0]?.count ?? 0) > 0) {
@@ -205,32 +191,26 @@ export class GpsAuthService implements OnModuleInit {
     ]);
   }
 
-  // Migracion (14/11/2026): se sacó el rol "vendedor" -- ahora hay 3
-  // repartidores con cuenta propia (Martín/Ana/Pedro). Corre siempre (no
-  // solo la primera vez): crea el que falte y mantiene sincronizada la
-  // contraseña de cada uno con REPARTIDOR_SEEDS, por si se cambió el
-  // esquema de login (como paso el 14/11 al pasar de una password
-  // compartida a una distinta por persona).
+  // Migracion (20/10/2026): se saca el roster de cuentas personales
+  // (martin/ana/pedro) y se reemplaza por 5 cuentas genericas
+  // "repartidor1".."repartidor5", todas rol repartidor. Corre siempre:
+  // borra las cuentas viejas por nombre y sincroniza las 5 nuevas (para
+  // que si se corre de nuevo no truene si ya existian).
   private async ensureRepartidorRoster() {
-    await this.databaseService.execute(`DELETE FROM saas_gps_users WHERE username IN ('vendedor', 'repartidor')`);
+    await this.databaseService.execute(`DELETE FROM saas_gps_users WHERE username IN ('vendedor', 'repartidor', 'martin', 'ana', 'pedro')`);
 
-    const existingRows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT username FROM saas_gps_users WHERE role = 'repartidor'`
-    );
+    const existingRows = await this.databaseService.query<RowDataPacket[]>(`SELECT username FROM saas_gps_users WHERE role = 'repartidor'`);
     const existingUsernames = new Set(existingRows.map((row) => row.username));
 
-    for (const seed of REPARTIDOR_SEEDS) {
-      const passwordHash = await hash(seed.password, 10);
-      if (existingUsernames.has(seed.username)) {
-        await this.databaseService.execute(`UPDATE saas_gps_users SET password_hash = ?, full_name = ? WHERE username = ?`, [
-          passwordHash,
-          seed.fullName,
-          seed.username
-        ]);
+    for (const password of REPARTIDOR_PASSWORD_SEEDS) {
+      const username = password; // "repartidor1".."repartidor5": solo identifica el dispositivo, no una persona.
+      const passwordHash = await hash(password, 10);
+      if (existingUsernames.has(username)) {
+        await this.databaseService.execute(`UPDATE saas_gps_users SET password_hash = ? WHERE username = ?`, [passwordHash, username]);
       } else {
         await this.databaseService.execute(
-          `INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, ?, 'repartidor')`,
-          [seed.username, passwordHash, seed.fullName]
+          `INSERT INTO saas_gps_users (username, password_hash, full_name, role) VALUES (?, ?, NULL, 'repartidor')`,
+          [username, passwordHash]
         );
       }
     }

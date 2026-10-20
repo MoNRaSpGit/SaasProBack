@@ -1,6 +1,11 @@
-import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsPositive, Matches } from "class-validator";
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsPositive, IsString, Matches, MaxLength, MinLength } from "class-validator";
 
 export class SubmitGpsPicksDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  persona!: string;
+
   @IsArray()
   @ArrayMaxSize(50)
   @IsInt({ each: true })
