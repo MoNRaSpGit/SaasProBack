@@ -23,6 +23,7 @@ import { PilotoModule } from "./modules/piloto/piloto.module";
 import { QqModule } from "./modules/qq/qq.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
+import { TallerModule } from "./modules/taller/taller.module";
 import { AuthzModule } from "./shared/authz/authz.module";
 import { DatabaseModule } from "./shared/database/database.module";
 import { HealthController } from "./shared/health/health.controller";
@@ -56,7 +57,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     DistribuidoraModule,
     MovimientosModule,
     GpsModule,
-    AlquilerModule
+    AlquilerModule,
+    TallerModule
   ],
   controllers: [HealthController],
   providers: []
