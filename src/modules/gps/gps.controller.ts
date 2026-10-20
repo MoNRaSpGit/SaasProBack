@@ -65,6 +65,14 @@ export class GpsController {
     return { ok: true };
   }
 
+  @HttpCode(HttpStatus.OK)
+  @Delete("picks/all")
+  async resetAllPicks(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
+    await this.gpsAuthService.requireRole(authorization, "admin");
+    await this.gpsDataService.resetAllPicks(day);
+    return { ok: true };
+  }
+
   @Get("picks/status")
   async getStatus(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");

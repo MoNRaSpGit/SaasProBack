@@ -133,6 +133,14 @@ export class GpsDataService implements OnModuleInit {
     ]);
   }
 
+  // Reinicia la seleccion de los 3 repartidores de una (pedido explicito:
+  // boton "Reiniciar rutas" en el panel de admin), por si hay que volver
+  // a arrancar el dia sin tener que destrabar a cada uno por separado.
+  async resetAllPicks(dayLabel = todayDayLabel()): Promise<void> {
+    await this.ensureTables();
+    await this.databaseService.execute(`DELETE FROM saas_gps_daily_selections WHERE day_label = ?`, [dayLabel]);
+  }
+
   async getStatus(dayLabel = todayDayLabel()): Promise<GpsRepartidorStatus[]> {
     await this.ensureTables();
     const repartidores = await this.gpsAuthService.listRepartidores();
