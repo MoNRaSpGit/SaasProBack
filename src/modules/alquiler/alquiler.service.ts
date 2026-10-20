@@ -18,6 +18,7 @@ type LocalRow = RowDataPacket & {
   rent_amount: string | null;
   note: string | null;
   paid_through: string | null;
+  contract_end_date: string | null;
 };
 
 type PaymentRow = RowDataPacket & {
@@ -32,7 +33,8 @@ type PaymentRow = RowDataPacket & {
 };
 
 const LOCAL_COLUMNS = `id, number, occupied, business_type, tenant_name, phone, payment_day, rent_amount, note,
-  DATE_FORMAT(paid_through, '%Y-%m-%d') AS paid_through`;
+  DATE_FORMAT(paid_through, '%Y-%m-%d') AS paid_through,
+  DATE_FORMAT(contract_end_date, '%Y-%m-%d') AS contract_end_date`;
 
 type DateParts = { year: number; month: number; day: number };
 
@@ -138,6 +140,10 @@ export class AlquilerService implements OnModuleInit {
       sets.push("note = ?");
       values.push(dto.note.trim() || null);
     }
+    if (dto.contractEndDate !== undefined) {
+      sets.push("contract_end_date = ?");
+      values.push(dto.contractEndDate.trim() || null);
+    }
 
     if (sets.length > 0) {
       await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_alquiler_locales SET ${sets.join(", ")} WHERE id = ?`, [
@@ -238,16 +244,24 @@ export class AlquilerService implements OnModuleInit {
       lastPaidThrough: row.paid_through
     };
 
+    const today = todayParts();
+    let daysUntilContractEnd: number | null = null;
+    if (row.contract_end_date) {
+      const contractEndParts = parseDateString(row.contract_end_date);
+      const diffMs = toComparableDate(contractEndParts).getTime() - toComparableDate(today).getTime();
+      daysUntilContractEnd = Math.round(diffMs / (24 * 60 * 60 * 1000));
+    }
+    const contractFields = { contractEndDate: row.contract_end_date, daysUntilContractEnd };
+
     if (!occupied) {
-      return { ...base, dueDate: null, daysUntilDue: null, status: "vacio" };
+      return { ...base, ...contractFields, dueDate: null, daysUntilDue: null, status: "vacio" };
     }
 
     const dueParts = this.computeDueDate(row);
     if (!dueParts) {
-      return { ...base, dueDate: null, daysUntilDue: null, status: "blanco" };
+      return { ...base, ...contractFields, dueDate: null, daysUntilDue: null, status: "blanco" };
     }
 
-    const today = todayParts();
     const diffMs = toComparableDate(dueParts).getTime() - toComparableDate(today).getTime();
     const daysUntilDue = Math.round(diffMs / (24 * 60 * 60 * 1000));
 
@@ -256,7 +270,7 @@ export class AlquilerService implements OnModuleInit {
     else if (daysUntilDue <= 7) status = "amarillo";
     else status = "blanco";
 
-    return { ...base, dueDate: formatDateParts(dueParts), daysUntilDue, status };
+    return { ...base, ...contractFields, dueDate: formatDateParts(dueParts), daysUntilDue, status };
   }
 
   private async ensureTables() {
@@ -282,10 +296,22 @@ export class AlquilerService implements OnModuleInit {
          rent_amount DECIMAL(10, 2) NULL,
          note VARCHAR(500) NULL,
          paid_through DATE NULL,
+         contract_end_date DATE NULL,
          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
+
+    // Migracion (20/10/2026): la tabla ya existia sin contract_end_date --
+    // mismo chequeo que scrum.service.ts.
+    const contractEndColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_alquiler_locales' AND column_name = 'contract_end_date'`
+    );
+    if (Number(contractEndColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_alquiler_locales ADD COLUMN contract_end_date DATE NULL AFTER paid_through`);
+    }
+
     await this.databaseService.execute(
       `CREATE TABLE IF NOT EXISTS saas_alquiler_payments (
          id INT AUTO_INCREMENT PRIMARY KEY,

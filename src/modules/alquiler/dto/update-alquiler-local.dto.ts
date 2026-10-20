@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Matches, Max, MaxLength, Min } from "class-validator";
 
 export class UpdateAlquilerLocalDto {
   @IsOptional()
@@ -35,4 +35,9 @@ export class UpdateAlquilerLocalDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+
+  // String vacio = borrar la fecha (sin contrato con vencimiento cargado).
+  @IsOptional()
+  @Matches(/^(\d{4}-\d{2}-\d{2})?$/)
+  contractEndDate?: string;
 }
