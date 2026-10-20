@@ -4,6 +4,7 @@ import { DatabaseService } from "../../shared/database/database.service";
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { UpdateDistribuidoraClientDto } from "./dto/update-distribuidora-client.dto";
 import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import {
@@ -197,6 +198,67 @@ export class DistribuidoraService {
     const client = mapClient(rows[0]);
     await this.audit("client_create", client.id, `Alta de cliente "${client.name}"`, context, null, client);
     return client;
+  }
+
+  // Editar un cliente no toca los pedidos ya tomados: cada pedido guarda
+  // su propia foto de nombre/rut/direccion (client_name, client_rut,
+  // client_address en saas_distribuidora_orders).
+  async updateClient(
+    clientId: number,
+    dto: UpdateDistribuidoraClientDto,
+    context?: DistribuidoraAuditContext
+  ): Promise<DistribuidoraClient> {
+    const beforeRows = await this.databaseService.query<ClientRow[]>(
+      `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients WHERE id = ?`,
+      [clientId]
+    );
+    if (!beforeRows[0]) {
+      throw new NotFoundException("No existe ese cliente.");
+    }
+    const before = mapClient(beforeRows[0]);
+
+    const sets: string[] = [];
+    const values: Array<string | null> = [];
+    if (dto.name !== undefined) {
+      sets.push("name = ?");
+      values.push(dto.name.trim());
+    }
+    if (dto.rut !== undefined) {
+      sets.push("rut = ?");
+      values.push(cleanOptional(dto.rut));
+    }
+    if (dto.address !== undefined) {
+      sets.push("address = ?");
+      values.push(cleanOptional(dto.address));
+    }
+    if (dto.phone !== undefined) {
+      sets.push("phone = ?");
+      values.push(cleanOptional(dto.phone));
+    }
+
+    if (sets.length > 0) {
+      await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_distribuidora_clients SET ${sets.join(", ")} WHERE id = ?`, [
+        ...values,
+        clientId
+      ]);
+    }
+
+    const rows = await this.databaseService.query<ClientRow[]>(
+      `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients WHERE id = ?`,
+      [clientId]
+    );
+    const after = mapClient(rows[0]);
+
+    const changes: string[] = [];
+    if (before.name !== after.name) changes.push(`nombre: "${before.name}" -> "${after.name}"`);
+    if (before.rut !== after.rut) changes.push(`RUT: ${before.rut ?? "(vacío)"} -> ${after.rut ?? "(vacío)"}`);
+    if (before.address !== after.address) changes.push(`dirección: ${before.address ?? "(vacío)"} -> ${after.address ?? "(vacío)"}`);
+    if (before.phone !== after.phone) changes.push(`teléfono: ${before.phone ?? "(vacío)"} -> ${after.phone ?? "(vacío)"}`);
+    // Guardar sin cambiar nada no es un movimiento: no se registra.
+    if (changes.length > 0) {
+      await this.audit("client_update", after.id, `Cliente "${before.name}": ${changes.join("; ")}`, context, before, after);
+    }
+    return after;
   }
 
   // includeInactive = la vista de la oficina (catalogo entero, con los

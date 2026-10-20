@@ -15,6 +15,7 @@ import {
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { UpdateDistribuidoraClientDto } from "./dto/update-distribuidora-client.dto";
 import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import { DistribuidoraService } from "./distribuidora.service";
@@ -51,6 +52,16 @@ export class DistribuidoraController {
     @Headers("user-agent") userAgent?: string
   ) {
     return this.distribuidoraService.createClient(dto, auditContext(deviceId, userAgent));
+  }
+
+  @Patch("clients/:id")
+  updateClient(
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateDistribuidoraClientDto,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    return this.distribuidoraService.updateClient(id, dto, auditContext(deviceId, userAgent));
   }
 
   @Get("products")

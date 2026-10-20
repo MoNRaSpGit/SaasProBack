@@ -39,7 +39,8 @@ export const AUDIT_ACTIONS = [
   "order_invoice",
   "product_create",
   "product_update",
-  "client_create"
+  "client_create",
+  "client_update"
 ] as const;
 export type DistribuidoraAuditAction = (typeof AUDIT_ACTIONS)[number];
 
