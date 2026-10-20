@@ -12,7 +12,11 @@ export class JuezAuditController {
   // avise con este endpoint, disparado y sin bloquear el login si falla.
   @Post("login")
   async recordLogin(@Body() dto: RecordJuezLoginDto) {
-    await this.juezAuditService.record("login", dto.actor, `${dto.actor} inicio sesion`);
+    if (dto.blocked) {
+      await this.juezAuditService.record("login_blocked", dto.actor, `Intento de login con ${dto.actor}/${dto.actor} (bloqueado, señuelo)`);
+    } else {
+      await this.juezAuditService.record("login", dto.actor, `${dto.actor} inicio sesion`);
+    }
     return { ok: true };
   }
 }
