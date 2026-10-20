@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { ScheduleModule } from "@nestjs/schedule";
 import { AuthModule } from "./modules/auth/auth.module";
 import { AgroModule } from "./modules/agro/agro.module";
+import { AlquilerModule } from "./modules/alquiler/alquiler.module";
 import { CamisetasModule } from "./modules/camisetas/camisetas.module";
 import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
@@ -54,7 +55,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     ConstruccionModule,
     DistribuidoraModule,
     MovimientosModule,
-    GpsModule
+    GpsModule,
+    AlquilerModule
   ],
   controllers: [HealthController],
   providers: []
