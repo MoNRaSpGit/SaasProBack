@@ -88,8 +88,19 @@ const SQL_AUDIT_TABLES: Record<
     table: "saas_juez_audit_log",
     timeCol: "created_at",
     columns: "action, actor, details",
-    actionLabels: { login: "LOGIN", player_created: "Alta jugador", player_updated: "Edición jugador", team_created: "Alta equipo" },
-    buildDetail: (row, service) => service.summarizeJsonDetails(row.details) || row.actor || ""
+    actionLabels: {
+      login: "LOGIN",
+      login_blocked: "Intento de login admin",
+      player_created: "Alta jugador",
+      player_updated: "Edición jugador",
+      team_created: "Alta equipo"
+    },
+    // login/login_blocked guardan texto plano en "details" (no JSON) --
+    // summarizeJsonDetails no puede parsearlo y devuelve "", asi que se
+    // usa ese texto tal cual antes de caer al actor.
+    buildDetail: (row, service) =>
+      service.summarizeJsonDetails(row.details) ||
+      (typeof row.details === "string" && row.details.trim() ? row.details : row.actor || "")
   }
 };
 
