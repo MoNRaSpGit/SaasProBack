@@ -33,7 +33,10 @@ async function main() {
   }
 
   const conn = await mysql.createConnection({ uri: process.env.DATABASE_URL });
-  const passwordHash = await bcrypt.hash(password, 12);
+  // Contrasena en minuscula (21/10/2026, pedido explicito): asi entra sin
+  // importar como la tipeen -- el login tambien prueba en minuscula (ver
+  // gym-auth.service.ts).
+  const passwordHash = await bcrypt.hash(password.trim().toLowerCase(), 12);
   const normalizedUsername = username.trim().toLowerCase();
 
   const [existing] = await conn.query(`SELECT id FROM saas_gym_users WHERE username = ? LIMIT 1`, [normalizedUsername]);

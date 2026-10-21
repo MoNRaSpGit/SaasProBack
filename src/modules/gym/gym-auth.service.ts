@@ -40,7 +40,15 @@ export class GymAuthService {
       [dto.username.trim().toLowerCase()]
     );
     const row = rows[0];
-    if (!row || !(await compare(dto.password, row.password_hash))) {
+    // La contraseña no distingue mayusculas/minusculas (21/10/2026, pedido
+    // explicito: "que el usuario ponga como sea pero que pase a minuscula").
+    // Se prueba tal cual se escribio primero (compatibilidad con cuentas
+    // viejas cuyo hash se creo con la contraseña original, sin tocar) y
+    // despues en minuscula (asi entran las cuentas nuevas -- ver
+    // scripts/create-gym-user.js, que ya guarda el hash en minuscula).
+    const passwordMatches =
+      !!row && ((await compare(dto.password, row.password_hash)) || (await compare(dto.password.toLowerCase(), row.password_hash)));
+    if (!row || !passwordMatches) {
       throw new UnauthorizedException("Usuario o contraseña incorrectos");
     }
 
