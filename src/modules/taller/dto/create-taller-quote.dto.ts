@@ -15,8 +15,8 @@ import {
 } from "class-validator";
 
 export class TallerLaborItemDto {
-  @IsIn(["chapa", "pintura", "otro"])
-  category!: "chapa" | "pintura" | "otro";
+  @IsIn(["chapa", "pintura", "mecanica", "electricidad", "tapiceria", "otro"])
+  category!: "chapa" | "pintura" | "mecanica" | "electricidad" | "tapiceria" | "otro";
 
   @IsString()
   @MinLength(1)

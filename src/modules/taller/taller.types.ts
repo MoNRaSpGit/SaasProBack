@@ -1,4 +1,4 @@
-export type TallerLaborCategory = "chapa" | "pintura" | "otro";
+export type TallerLaborCategory = "chapa" | "pintura" | "mecanica" | "electricidad" | "tapiceria" | "otro";
 
 export type TallerLaborItem = {
   category: TallerLaborCategory;
