@@ -21,6 +21,7 @@ import { OriolModule } from "./modules/oriol/oriol.module";
 import { PeluqueriaModule } from "./modules/peluqueria/peluqueria.module";
 import { PilotoModule } from "./modules/piloto/piloto.module";
 import { QqModule } from "./modules/qq/qq.module";
+import { RetosModule } from "./modules/retos/retos.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
 import { TallerModule } from "./modules/taller/taller.module";
@@ -58,7 +59,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     MovimientosModule,
     GpsModule,
     AlquilerModule,
-    TallerModule
+    TallerModule,
+    RetosModule
   ],
   controllers: [HealthController],
   providers: []
