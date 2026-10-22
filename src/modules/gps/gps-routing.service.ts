@@ -19,9 +19,11 @@ const ORS_URLS = {
   directions: "https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson"
 } as const;
 
-// Punto de partida de todas las rutas. Mismo deposito ficticio que dibuja
-// el frontend (RouteMapModal.tsx).
-const DEPOT = { lat: -34.9011, lng: -56.1645 };
+// Punto de partida de todas las rutas: la distribuidora, en Maestra María
+// Olimpia Pintos 86, Tacuarembo (pedido explicito 22/10/2026, "por ahora,
+// despues puede cambiar"; ubicacion buscada en OpenStreetMap). Mismo punto
+// que dibuja el frontend (RouteMapModal.tsx).
+const DEPOT = { lat: -31.714127, lng: -55.989548 };
 
 export type GpsOrsService = "optimization" | "directions";
 

@@ -29,30 +29,32 @@ export const PERSONAS: GpsPersona[] = [
 const PERSONA_KEYS = new Set(PERSONAS.map((persona) => persona.key));
 
 // 20 clientes ficticios para la demo del proyecto -- no son datos reales de
-// ningun cliente. Direcciones de Montevideo con coordenadas aproximadas,
-// para que el mapa de rutas tenga puntos reales donde dibujar. Cada
+// ningun cliente. Desde el 22/10/2026 (pedido explicito) son de
+// TACUAREMBO: el proyecto es para alli. Las calles existen y la ubicacion
+// de cada una se busco en OpenStreetMap (los numeros de puerta son
+// inventados). Cuando lleguen los datos reales se reemplazan. Cada
 // cliente es fijo de UNA pestaña (persona), nunca se superponen.
 const DEMO_CLIENTS: Array<Omit<GpsClient, "id"> & { assignedUsername: string }> = [
-  { name: "Panadería La Espiga", address: "Av. 18 de Julio 1234, Centro, Montevideo", lat: -34.9058, lng: -56.1913, assignedUsername: "martin" },
-  { name: "Almacén Don Pepe", address: "Bulevar Artigas 2500, Pocitos, Montevideo", lat: -34.9115, lng: -56.157, assignedUsername: "martin" },
-  { name: "Kiosco Rayitos", address: "Av. Italia 3400, Malvín, Montevideo", lat: -34.889, lng: -56.128, assignedUsername: "martin" },
-  { name: "Farmacia Sur", address: "Camino Maldonado 5600, Carrasco, Montevideo", lat: -34.88, lng: -56.062, assignedUsername: "martin" },
-  { name: "Mini Mercado Centro", address: "Av. 8 de Octubre 2800, Tres Cruces, Montevideo", lat: -34.895, lng: -56.165, assignedUsername: "martin" },
-  { name: "Verdulería Los Pinos", address: "Av. Rivera 4200, Buceo, Montevideo", lat: -34.907, lng: -56.139, assignedUsername: "ana" },
-  { name: "Carnicería El Novillo", address: "Av. Gral. Flores 3100, Aguada, Montevideo", lat: -34.899, lng: -56.185, assignedUsername: "ana" },
-  { name: "Panificadora Santa Fe", address: "Av. Agraciada 2600, La Comercial, Montevideo", lat: -34.893, lng: -56.192, assignedUsername: "ana" },
-  { name: "Autoservicio Belvedere", address: "Av. San Martín 2200, Belvedere, Montevideo", lat: -34.868, lng: -56.192, assignedUsername: "ana" },
-  { name: "Despensa La Esquina", address: "Camino Carrasco 1500, Punta Gorda, Montevideo", lat: -34.91, lng: -56.105, assignedUsername: "ana" },
-  { name: "Almacén El Progreso", address: "Av. Millán 3700, Peñarol, Montevideo", lat: -34.845, lng: -56.215, assignedUsername: "juan" },
-  { name: "Kiosco Central", address: "Bvar. España 2100, Parque Rodó, Montevideo", lat: -34.915, lng: -56.167, assignedUsername: "juan" },
-  { name: "Fiambrería Montevideo", address: "Av. Sarmiento 2050, Parque Batlle, Montevideo", lat: -34.898, lng: -56.155, assignedUsername: "juan" },
-  { name: "Panadería El Trigal", address: "Av. 8 de Octubre 4500, Cerrito, Montevideo", lat: -34.865, lng: -56.16, assignedUsername: "juan" },
-  { name: "Supermercado Familiar", address: "Av. Garzón 1800, Lezica, Montevideo", lat: -34.845, lng: -56.18, assignedUsername: "juan" },
-  { name: "Almacén Don Carlos", address: "Camino Castro 800, Colón, Montevideo", lat: -34.833, lng: -56.235, assignedUsername: "pedro" },
-  { name: "Kiosco La Rambla", address: "Rambla Armenia 5500, Malvín Norte, Montevideo", lat: -34.88, lng: -56.122, assignedUsername: "pedro" },
-  { name: "Verdulería Don Juan", address: "Av. Giannattasio Km 20, Ciudad de la Costa", lat: -34.795, lng: -55.975, assignedUsername: "pedro" },
-  { name: "Despensa Rural", address: "Camino Melilla 4200, Melilla, Montevideo", lat: -34.79, lng: -56.3, assignedUsername: "pedro" },
-  { name: "Mini Market 24hs", address: "Av. Bolivia 1400, Carrasco Norte, Montevideo", lat: -34.86, lng: -56.055, assignedUsername: "pedro" }
+  { name: "Panadería La Espiga", address: "18 de Julio 412, Tacuarembó", lat: -31.729204, lng: -55.997809, assignedUsername: "martin" },
+  { name: "Almacén Don Pepe", address: "25 de Mayo 287, Tacuarembó", lat: -31.724104, lng: -55.993633, assignedUsername: "martin" },
+  { name: "Kiosco Rayitos", address: "Sarandí 530, Tacuarembó", lat: -31.7181, lng: -55.975534, assignedUsername: "martin" },
+  { name: "Farmacia Sur", address: "Treinta y Tres 198, Tacuarembó", lat: -31.717933, lng: -55.982632, assignedUsername: "martin" },
+  { name: "Mini Mercado Centro", address: "Ituzaingó 344, Tacuarembó", lat: -31.712492, lng: -55.981062, assignedUsername: "martin" },
+  { name: "Verdulería Los Pinos", address: "Washington Beltrán 121, Tacuarembó", lat: -31.714415, lng: -55.983251, assignedUsername: "ana" },
+  { name: "Carnicería El Novillo", address: "Ruta 26 Brig. Gral. Leandro Gómez 1450, Tacuarembó", lat: -31.73382, lng: -56.002198, assignedUsername: "ana" },
+  { name: "Panificadora Santa Fe", address: "Av. Dr. Juan Domingo Arena 905, Tacuarembó", lat: -31.72686, lng: -55.953905, assignedUsername: "ana" },
+  { name: "Autoservicio Belvedere", address: "Av. Pablo G. Ríos 610, Tacuarembó", lat: -31.720228, lng: -55.977972, assignedUsername: "ana" },
+  { name: "Despensa La Esquina", address: "Concejal José Catalogne 233, Tacuarembó", lat: -31.717365, lng: -55.987214, assignedUsername: "ana" },
+  { name: "Almacén El Progreso", address: "Dr. Luis Alberto de Herrera 377, Tacuarembó", lat: -31.710233, lng: -55.979291, assignedUsername: "juan" },
+  { name: "Kiosco Central", address: "Dr. Ivo Ferreira 158, Tacuarembó", lat: -31.714269, lng: -55.985806, assignedUsername: "juan" },
+  { name: "Fiambrería Montevideo", address: "Av. José Batlle y Ordóñez 1120, Tacuarembó", lat: -31.729894, lng: -55.96772, assignedUsername: "juan" },
+  { name: "Panadería El Trigal", address: "Wilson Ferreira Aldunate 265, Tacuarembó", lat: -31.712847, lng: -55.987205, assignedUsername: "juan" },
+  { name: "Supermercado Familiar", address: "Gral. Líber Seregni 480, Tacuarembó", lat: -31.706829, lng: -55.9792, assignedUsername: "juan" },
+  { name: "Almacén Don Carlos", address: "Carlos Gardel 702, Tacuarembó", lat: -31.721194, lng: -55.973162, assignedUsername: "pedro" },
+  { name: "Kiosco La Rambla", address: "Bernardo Gadola 2608, Tacuarembó", lat: -31.732571, lng: -56.025965, assignedUsername: "pedro" },
+  { name: "Verdulería Don Juan", address: "Florencio Sánchez 319, Tacuarembó", lat: -31.706982, lng: -55.97722, assignedUsername: "pedro" },
+  { name: "Despensa Rural", address: "General Flores 245, Tacuarembó", lat: -31.716055, lng: -55.982006, assignedUsername: "pedro" },
+  { name: "Mini Market 24hs", address: "Juan Antonio Lavalleja 450, Tacuarembó", lat: -31.706652, lng: -55.980701, assignedUsername: "pedro" }
 ];
 
 // mysql2 ya deserializa las columnas JSON a objetos/arrays cuando puede --
@@ -259,7 +261,9 @@ export class GpsDataService implements OnModuleInit {
   // corrida, la migracion de 5 a 20 clientes, y ahora el paso de 3 a 4
   // pestañas (20/10/2026, se reparten 5/5/5/5 en vez de 7/7/6).
   private async ensureDemoClients() {
-    const existingRows = await this.databaseService.query<RowDataPacket[]>(`SELECT id, name, assigned_username FROM saas_gps_clients`);
+    const existingRows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT id, name, address, lat, lng, assigned_username FROM saas_gps_clients`
+    );
     const existingByName = new Map(existingRows.map((row) => [row.name, row]));
 
     for (const client of DEMO_CLIENTS) {
@@ -272,11 +276,18 @@ export class GpsDataService implements OnModuleInit {
           client.lng,
           client.assignedUsername
         ]);
-      } else if (existing.assigned_username !== client.assignedUsername) {
-        await this.databaseService.execute(`UPDATE saas_gps_clients SET assigned_username = ? WHERE id = ?`, [
-          client.assignedUsername,
-          existing.id
-        ]);
+      } else if (
+        existing.assigned_username !== client.assignedUsername ||
+        existing.address !== client.address ||
+        Number(existing.lat) !== client.lat ||
+        Number(existing.lng) !== client.lng
+      ) {
+        // Mismo id: se conserva lo que cada repartidor ya habia tildado
+        // (asi paso el cambio de Montevideo a Tacuarembo, 22/10/2026).
+        await this.databaseService.execute(
+          `UPDATE saas_gps_clients SET assigned_username = ?, address = ?, lat = ?, lng = ? WHERE id = ?`,
+          [client.assignedUsername, client.address, client.lat, client.lng, existing.id]
+        );
       }
     }
   }
