@@ -9,7 +9,15 @@ import { GpsDataService } from "./gps-data.service";
 // tarjeta) en vez de Google: el usuario no podia cubrir la retencion de
 // USD 50 que pide Google Cloud para verificar la tarjeta. Si mas adelante
 // se pasa a Google, solo cambia este archivo.
-const ORS_BASE_URL = "https://api.openrouteservice.org";
+// Direcciones NUEVAS (22/10/2026): api.openrouteservice.org quedo en desuso
+// -- desde el 27/08/2026 da solo el 10% del cupo (50 optimizaciones / 200
+// rutas por dia) y se apaga entre el 02 y el 06/11/2026. En api.heigit.org
+// rige el cupo completo del plan (500 / 2000). Tabla oficial de migracion:
+// ask.openrouteservice.org/t/7912.
+const ORS_URLS = {
+  optimization: "https://api.heigit.org/vroom/v0",
+  directions: "https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson"
+} as const;
 
 // Punto de partida de todas las rutas. Mismo deposito ficticio que dibuja
 // el frontend (RouteMapModal.tsx).
@@ -117,7 +125,7 @@ export class GpsRoutingService {
 
     let orderedClientIds = clients.map((client) => client.id);
     if (clients.length > 1) {
-      const optimization = await this.callOrs<{ routes?: Array<{ steps: Array<{ type: string; job?: number }> }> }>("optimization", "/optimization", {
+      const optimization = await this.callOrs<{ routes?: Array<{ steps: Array<{ type: string; job?: number }> }> }>("optimization", {
         jobs: clients.map((client) => ({ id: client.id, location: [client.lng, client.lat] })),
         vehicles: [{ id: 1, profile: "driving-car", start: [DEPOT.lng, DEPOT.lat] }]
       });
@@ -131,7 +139,7 @@ export class GpsRoutingService {
     const coordinates = [[DEPOT.lng, DEPOT.lat], ...orderedClientIds.map((id) => [byId.get(id)!.lng, byId.get(id)!.lat])];
     const directions = await this.callOrs<{
       features?: Array<{ geometry: { coordinates: Array<[number, number]> }; properties: { summary: { distance?: number; duration?: number } } }>;
-    }>("directions", "/v2/directions/driving-car/geojson", {
+    }>("directions", {
       coordinates,
       // -1 = sin radio maximo: cada punto se engancha a la calle mas cercana
       // aunque este lejos (por defecto son 350 m y un cliente con la
@@ -199,7 +207,7 @@ export class GpsRoutingService {
 
   // Cada llamada pasa por aca: chequea el corte ANTES de llamar, cuenta la
   // llamada y guarda lo que OpenRouteService dice que queda.
-  private async callOrs<T>(service: GpsOrsService, path: string, body: unknown): Promise<T> {
+  private async callOrs<T>(service: GpsOrsService, body: unknown): Promise<T> {
     const apiKey = this.configService.get<string>("ORS_API_KEY");
     if (!apiKey) throw new ServiceUnavailableException("El servicio de rutas no está configurado (falta ORS_API_KEY).");
 
@@ -226,7 +234,7 @@ export class GpsRoutingService {
 
     let response: Response;
     try {
-      response = await fetch(`${ORS_BASE_URL}${path}`, {
+      response = await fetch(ORS_URLS[service], {
         method: "POST",
         // La ruta por calles responde en GeoJSON: con "Accept: application/json" a
         // secas devuelve 406.
@@ -248,10 +256,13 @@ export class GpsRoutingService {
       );
     }
 
-    // 429 = el proveedor ya no deja mas (limite por dia o por minuto).
+    // 429 = demasiadas por minuto; 403 con "quota" = se acabo el cupo del
+    // dia (FAQ de openrouteservice). En los dos casos: cartel de limite. Un
+    // 403 sin "quota" es otra cosa (ej. clave invalida) y va como error comun.
     if (response.status === 429) throw new GpsQuotaExceededException();
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      if (response.status === 403 && /quota/i.test(text)) throw new GpsQuotaExceededException();
       this.logger.warn(`OpenRouteService ${service} respondio ${response.status}: ${text.slice(0, 300)}`);
       throw new ServiceUnavailableException("El servicio de rutas no pudo calcular el recorrido.");
     }
