@@ -1,15 +1,18 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
+import { ComputeGpsRouteDto } from "./dto/compute-gps-route.dto";
 import { LoginGpsPasswordDto } from "./dto/login-gps-password.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 import { SubmitGpsPicksDto } from "./dto/submit-gps-picks.dto";
 import { GpsAuthService } from "./gps-auth.service";
 import { GpsDataService } from "./gps-data.service";
+import { GpsRoutingService } from "./gps-routing.service";
 
 @Controller("gps")
 export class GpsController {
   constructor(
     private readonly gpsAuthService: GpsAuthService,
-    private readonly gpsDataService: GpsDataService
+    private readonly gpsDataService: GpsDataService,
+    private readonly gpsRoutingService: GpsRoutingService
   ) {}
 
   @HttpCode(HttpStatus.OK)
@@ -100,6 +103,22 @@ export class GpsController {
   async getStatus(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
     return this.gpsDataService.getStatus(day);
+  }
+
+  // Ruta optima real (22/10/2026): orden de visita + recorrido por calles
+  // para esos clientes. Cuenta llamadas y corta al 90% del limite diario.
+  @HttpCode(HttpStatus.OK)
+  @Post("route")
+  async computeRoute(@Headers("authorization") authorization: string | undefined, @Body() dto: ComputeGpsRouteDto) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsRoutingService.computeRoute(dto.clientIds);
+  }
+
+  // Consumo del servicio de rutas, para el panel del admin.
+  @Get("usage")
+  async getUsage(@Headers("authorization") authorization: string | undefined) {
+    await this.gpsAuthService.requireRole(authorization, "admin");
+    return this.gpsRoutingService.getUsage();
   }
 
   @Get("picks/final")
