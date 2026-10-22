@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
-import { RowDataPacket } from "mysql2";
+import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 
 export type GpsClient = { id: number; name: string; address: string; lat: number; lng: number };
@@ -11,6 +11,19 @@ export type GpsRepartidorStatus = { username: string; fullName: string | null; c
 export type GpsFinalRouteItem = { client: GpsClient; repartidorUsername: string; repartidorName: string | null };
 
 export type GpsFinalRoute = { ready: boolean; status: GpsRepartidorStatus[]; items: GpsFinalRouteItem[] };
+
+// Ruta final ya generada (foto): queda guardada aunque se reinicien las
+// rutas, para poder volver a verla.
+export type GpsGeneratedFinalRoute = {
+  id: number;
+  dayLabel: string;
+  createdAt: string;
+  items: GpsFinalRouteItem[];
+  // Quienes no habian guardado su ruta cuando se genero.
+  missing: string[];
+};
+
+type GeneratedRow = RowDataPacket & { id: number; day_label: string; items_json: unknown; missing_json: unknown; created_at: string };
 
 type ClientRow = RowDataPacket & { id: number; name: string; address: string; lat: number; lng: number; assigned_username: string | null };
 type SelectionRow = RowDataPacket & { repartidor_username: string; client_ids_json: string };
@@ -208,6 +221,57 @@ export class GpsDataService implements OnModuleInit {
     return { ready, status, items };
   }
 
+  // Genera la ruta final (22/10/2026, pedido explicito): guarda la foto de
+  // lo que habia guardado cada repartidor y despues reinicia las rutas de
+  // todos, para que el siguiente reparto arranque de cero. La ruta
+  // generada se puede seguir viendo con getLastGeneratedFinalRoute.
+  async generateFinalRoute(dayLabel = todayDayLabel()): Promise<GpsGeneratedFinalRoute> {
+    await this.ensureTables();
+    const current = await this.getFinalRoute(dayLabel);
+    if (current.items.length === 0) {
+      throw new BadRequestException("Todavía nadie guardó su ruta.");
+    }
+    const missing = current.status.filter((entry) => !entry.confirmed).map((entry) => entry.fullName ?? entry.username);
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_gps_final_routes (day_label, items_json, missing_json) VALUES (?, ?, ?)`,
+      [dayLabel, JSON.stringify(current.items), JSON.stringify(missing)]
+    );
+    await this.resetAllPicks(dayLabel);
+
+    const generated = await this.getGeneratedFinalRoute(result.insertId);
+    return generated!;
+  }
+
+  async getLastGeneratedFinalRoute(): Promise<GpsGeneratedFinalRoute | null> {
+    await this.ensureTables();
+    const rows = await this.databaseService.query<GeneratedRow[]>(
+      `SELECT id, day_label, items_json, missing_json, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at
+       FROM saas_gps_final_routes ORDER BY id DESC LIMIT 1`
+    );
+    return rows[0] ? this.mapGenerated(rows[0]) : null;
+  }
+
+  private async getGeneratedFinalRoute(id: number): Promise<GpsGeneratedFinalRoute | null> {
+    const rows = await this.databaseService.query<GeneratedRow[]>(
+      `SELECT id, day_label, items_json, missing_json, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at
+       FROM saas_gps_final_routes WHERE id = ?`,
+      [id]
+    );
+    return rows[0] ? this.mapGenerated(rows[0]) : null;
+  }
+
+  private mapGenerated(row: GeneratedRow): GpsGeneratedFinalRoute {
+    const parse = <T>(raw: unknown): T => (typeof raw === "string" ? JSON.parse(raw) : raw) as T;
+    return {
+      id: row.id,
+      dayLabel: row.day_label,
+      createdAt: row.created_at,
+      items: parse<GpsFinalRouteItem[]>(row.items_json),
+      missing: parse<string[]>(row.missing_json)
+    };
+  }
+
   private requireValidPersona(personaKey: string) {
     if (!PERSONA_KEYS.has(personaKey)) {
       throw new BadRequestException("Pestaña inválida.");
@@ -242,6 +306,19 @@ export class GpsDataService implements OnModuleInit {
          client_ids_json JSON NOT NULL,
          confirmed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
          PRIMARY KEY (day_label, repartidor_username)
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+
+    // Rutas finales ya generadas (22/10/2026): la seleccion de cada
+    // repartidor se reinicia al generar, asi que la ruta queda guardada aca.
+    // created_at en UTC (se lee con DATE_FORMAT + "Z").
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_gps_final_routes (
+         id INT AUTO_INCREMENT PRIMARY KEY,
+         day_label VARCHAR(10) NOT NULL,
+         items_json JSON NOT NULL,
+         missing_json JSON NOT NULL,
+         created_at DATETIME NOT NULL DEFAULT (UTC_TIMESTAMP())
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
 

@@ -121,6 +121,22 @@ export class GpsController {
     return this.gpsRoutingService.getUsage();
   }
 
+  // Genera la ruta final con lo que ya guardaron (aunque falten), la deja
+  // guardada y reinicia las rutas de todos (pedido explicito 22/10/2026).
+  @HttpCode(HttpStatus.OK)
+  @Post("final/generate")
+  async generateFinalRoute(@Headers("authorization") authorization: string | undefined) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.generateFinalRoute();
+  }
+
+  // La ultima ruta final generada, para volver a verla.
+  @Get("final/last")
+  async getLastFinalRoute(@Headers("authorization") authorization: string | undefined) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return { route: await this.gpsDataService.getLastGeneratedFinalRoute() };
+  }
+
   @Get("picks/final")
   async getFinalRoute(@Headers("authorization") authorization: string | undefined, @Query("day") day?: string) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
