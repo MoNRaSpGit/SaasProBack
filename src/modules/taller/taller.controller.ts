@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
 import { CreateTallerQuoteDto } from "./dto/create-taller-quote.dto";
 import { CreateTallerStockItemDto } from "./dto/create-taller-stock-item.dto";
 import { UpdateTallerStockItemDto } from "./dto/update-taller-stock-item.dto";
@@ -36,5 +36,11 @@ export class TallerController {
   @Post("quotes")
   createQuote(@Body() dto: CreateTallerQuoteDto) {
     return this.tallerService.createQuote(dto);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("entrada")
+  registrarEntrada() {
+    return this.tallerService.recordEntrada().then(() => ({ ok: true }));
   }
 }

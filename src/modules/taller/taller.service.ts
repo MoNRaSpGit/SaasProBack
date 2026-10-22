@@ -142,7 +142,26 @@ export class TallerService implements OnModuleInit {
       await this.databaseService.execute(`UPDATE saas_taller_stock SET quantity = quantity - ? WHERE id = ?`, [part.quantity, part.stockId]);
     }
 
+    await this.recordAccess(
+      "presupuesto_generado",
+      `Presupuesto #${result.insertId} - ${dto.vehicleInfo.trim()} - $${total.toLocaleString("es-UY")}`
+    );
+
     return this.getQuoteOrThrow(result.insertId);
+  }
+
+  // Login no real (pedido explicito, 21/10/2026: "que solo diga entrar
+  // nada mas, es para ver cuando entro alguien") -- un boton "Entrar" sin
+  // usuario ni contrasena, solo para dejar constancia de que alguien abrio
+  // la app. Se consulta con backend/scripts/inspect-taller-access.js, no
+  // tiene pantalla propia dentro de la app.
+  async recordEntrada(): Promise<void> {
+    await this.recordAccess("entrada", null);
+  }
+
+  private async recordAccess(event: "entrada" | "presupuesto_generado", detail: string | null): Promise<void> {
+    await this.ensureTables();
+    await this.databaseService.execute(`INSERT INTO saas_taller_access_log (event, detail) VALUES (?, ?)`, [event, detail]);
   }
 
   private async getStockItemOrThrow(stockId: number): Promise<TallerStockItem> {
@@ -209,6 +228,14 @@ export class TallerService implements OnModuleInit {
          labor_items_json JSON NOT NULL,
          parts_json JSON NOT NULL,
          total DECIMAL(10, 2) NOT NULL,
+         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    );
+    await this.databaseService.execute(
+      `CREATE TABLE IF NOT EXISTS saas_taller_access_log (
+         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+         event ENUM('entrada', 'presupuesto_generado') NOT NULL,
+         detail VARCHAR(255) NULL,
          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     );
