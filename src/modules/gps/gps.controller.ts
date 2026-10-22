@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
+import { AssignGpsClientsDto } from "./dto/assign-gps-clients.dto";
 import { ComputeGpsRouteDto } from "./dto/compute-gps-route.dto";
 import { LoginGpsPasswordDto } from "./dto/login-gps-password.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
@@ -57,6 +58,20 @@ export class GpsController {
       throw new BadRequestException("Falta indicar la pestaña (persona).");
     }
     return this.gpsDataService.listClients(persona);
+  }
+
+  // Pestaña "Clientes": todos los clientes con su repartidor asignado.
+  @Get("clients/assignments")
+  async listAssignments(@Headers("authorization") authorization: string | undefined) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.listAssignments();
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("clients/assign")
+  async assignClients(@Headers("authorization") authorization: string | undefined, @Body() dto: AssignGpsClientsDto) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.assignClients(dto.clientIds, dto.persona ?? null);
   }
 
   @Get("picks/me")

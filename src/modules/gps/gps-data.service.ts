@@ -34,7 +34,25 @@ type GeneratedRow = RowDataPacket & {
   created_at: string;
 };
 
-type ClientRow = RowDataPacket & { id: number; name: string; address: string; lat: number; lng: number; assigned_username: string | null };
+type ClientRow = RowDataPacket & {
+  id: number;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  assigned_username: string | null;
+  geo_quality: string | null;
+};
+
+// Para la pestaña "Clientes": a quien pertenece cada uno y que tan precisa
+// es su ubicacion (puerta / esquina / calle = aproximada).
+export type GpsClientAssignment = {
+  id: number;
+  name: string;
+  address: string;
+  assignedUsername: string | null;
+  geoQuality: string | null;
+};
 type SelectionRow = RowDataPacket & { repartidor_username: string; client_ids_json: string };
 
 // Pedido explicito (20/10/2026): ya no hay una cuenta de login por
@@ -50,34 +68,10 @@ export const PERSONAS: GpsPersona[] = [
 
 const PERSONA_KEYS = new Set(PERSONAS.map((persona) => persona.key));
 
-// 20 clientes ficticios para la demo del proyecto -- no son datos reales de
-// ningun cliente. Desde el 22/10/2026 (pedido explicito) son de
-// TACUAREMBO: el proyecto es para alli. Las calles existen y la ubicacion
-// de cada una se busco en OpenStreetMap (los numeros de puerta son
-// inventados). Cuando lleguen los datos reales se reemplazan. Cada
-// cliente es fijo de UNA pestaña (persona), nunca se superponen.
-const DEMO_CLIENTS: Array<Omit<GpsClient, "id"> & { assignedUsername: string }> = [
-  { name: "Panadería La Espiga", address: "18 de Julio 412, Tacuarembó", lat: -31.729204, lng: -55.997809, assignedUsername: "martin" },
-  { name: "Almacén Don Pepe", address: "25 de Mayo 287, Tacuarembó", lat: -31.724104, lng: -55.993633, assignedUsername: "martin" },
-  { name: "Kiosco Rayitos", address: "Sarandí 530, Tacuarembó", lat: -31.7181, lng: -55.975534, assignedUsername: "martin" },
-  { name: "Farmacia Sur", address: "Treinta y Tres 198, Tacuarembó", lat: -31.717933, lng: -55.982632, assignedUsername: "martin" },
-  { name: "Mini Mercado Centro", address: "Ituzaingó 344, Tacuarembó", lat: -31.712492, lng: -55.981062, assignedUsername: "martin" },
-  { name: "Verdulería Los Pinos", address: "Washington Beltrán 121, Tacuarembó", lat: -31.714415, lng: -55.983251, assignedUsername: "ana" },
-  { name: "Carnicería El Novillo", address: "Ruta 26 Brig. Gral. Leandro Gómez 1450, Tacuarembó", lat: -31.73382, lng: -56.002198, assignedUsername: "ana" },
-  { name: "Panificadora Santa Fe", address: "Av. Dr. Juan Domingo Arena 905, Tacuarembó", lat: -31.72686, lng: -55.953905, assignedUsername: "ana" },
-  { name: "Autoservicio Belvedere", address: "Av. Pablo G. Ríos 610, Tacuarembó", lat: -31.720228, lng: -55.977972, assignedUsername: "ana" },
-  { name: "Despensa La Esquina", address: "Concejal José Catalogne 233, Tacuarembó", lat: -31.717365, lng: -55.987214, assignedUsername: "ana" },
-  { name: "Almacén El Progreso", address: "Dr. Luis Alberto de Herrera 377, Tacuarembó", lat: -31.710233, lng: -55.979291, assignedUsername: "juan" },
-  { name: "Kiosco Central", address: "Dr. Ivo Ferreira 158, Tacuarembó", lat: -31.714269, lng: -55.985806, assignedUsername: "juan" },
-  { name: "Fiambrería Montevideo", address: "Av. José Batlle y Ordóñez 1120, Tacuarembó", lat: -31.729894, lng: -55.96772, assignedUsername: "juan" },
-  { name: "Panadería El Trigal", address: "Wilson Ferreira Aldunate 265, Tacuarembó", lat: -31.712847, lng: -55.987205, assignedUsername: "juan" },
-  { name: "Supermercado Familiar", address: "Gral. Líber Seregni 480, Tacuarembó", lat: -31.706829, lng: -55.9792, assignedUsername: "juan" },
-  { name: "Almacén Don Carlos", address: "Carlos Gardel 702, Tacuarembó", lat: -31.721194, lng: -55.973162, assignedUsername: "pedro" },
-  { name: "Kiosco La Rambla", address: "Bernardo Gadola 2608, Tacuarembó", lat: -31.732571, lng: -56.025965, assignedUsername: "pedro" },
-  { name: "Verdulería Don Juan", address: "Florencio Sánchez 319, Tacuarembó", lat: -31.706982, lng: -55.97722, assignedUsername: "pedro" },
-  { name: "Despensa Rural", address: "General Flores 245, Tacuarembó", lat: -31.716055, lng: -55.982006, assignedUsername: "pedro" },
-  { name: "Mini Market 24hs", address: "Juan Antonio Lavalleja 450, Tacuarembó", lat: -31.706652, lng: -55.980701, assignedUsername: "pedro" }
-];
+// Clientes REALES (22/10/2026): se cargaron desde el listado del cliente
+// (importacion unica desde el listado PDF). Ya no se siembran clientes demo.
+// Cada cliente es de UNA pestaña (assigned_username) o queda sin asignar
+// (NULL) hasta que se lo asignen en la pestaña "Clientes".
 
 // mysql2 ya deserializa las columnas JSON a objetos/arrays cuando puede --
 // JSON.parse directo revienta en ese caso (mismo bug visto en el modulo
@@ -101,7 +95,6 @@ export class GpsDataService implements OnModuleInit {
 
   async onModuleInit() {
     await this.ensureTables();
-    await this.ensureDemoClients();
   }
 
   listPersonas(): GpsPersona[] {
@@ -123,6 +116,34 @@ export class GpsDataService implements OnModuleInit {
           `SELECT id, name, address, lat, lng, assigned_username FROM saas_gps_clients ORDER BY name ASC`
         );
     return rows.map((row) => ({ id: row.id, name: row.name, address: row.address, lat: Number(row.lat), lng: Number(row.lng) }));
+  }
+
+  async listAssignments(): Promise<GpsClientAssignment[]> {
+    await this.ensureTables();
+    const rows = await this.databaseService.query<ClientRow[]>(
+      `SELECT id, name, address, assigned_username, geo_quality FROM saas_gps_clients ORDER BY name ASC`
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      assignedUsername: row.assigned_username,
+      geoQuality: row.geo_quality
+    }));
+  }
+
+  // Pestaña "Clientes" (22/10/2026, pedido explicito): se elige un
+  // repartidor y se le van dando clientes; persona null = devolverlos a
+  // "sin asignar".
+  async assignClients(clientIds: number[], personaKey: string | null): Promise<{ updated: number }> {
+    await this.ensureTables();
+    if (personaKey !== null) this.requireValidPersona(personaKey);
+    const uniqueIds = [...new Set(clientIds)];
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_gps_clients SET assigned_username = ? WHERE id IN (${uniqueIds.map(() => "?").join(", ")})`,
+      [personaKey, ...uniqueIds]
+    );
+    return { updated: result.affectedRows };
   }
 
   async getMyPicks(personaKey: string, dayLabel = todayDayLabel()): Promise<number[]> {
@@ -357,6 +378,16 @@ export class GpsDataService implements OnModuleInit {
       await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN assigned_username VARCHAR(60) NULL`);
     }
 
+    // Migracion (22/10/2026): precision de la ubicacion de cada cliente
+    // real (puerta / esquina / calle).
+    const geoColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_clients' AND column_name = 'geo_quality'`
+    );
+    if (Number(geoColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN geo_quality VARCHAR(10) NULL`);
+    }
+
     // Migracion (23/10/2026): orden de visita editado a mano.
     const orderColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
       `SELECT COUNT(*) AS total FROM information_schema.columns
@@ -364,42 +395,6 @@ export class GpsDataService implements OnModuleInit {
     );
     if (Number(orderColumn[0]?.total || 0) === 0) {
       await this.databaseService.execute(`ALTER TABLE saas_gps_final_routes ADD COLUMN order_json JSON NULL`);
-    }
-  }
-
-  // Siembra los clientes demo que falten y corrige el dueño (assigned_username)
-  // de los que ya existian -- idempotente por nombre, asi cubre la primera
-  // corrida, la migracion de 5 a 20 clientes, y ahora el paso de 3 a 4
-  // pestañas (20/10/2026, se reparten 5/5/5/5 en vez de 7/7/6).
-  private async ensureDemoClients() {
-    const existingRows = await this.databaseService.query<RowDataPacket[]>(
-      `SELECT id, name, address, lat, lng, assigned_username FROM saas_gps_clients`
-    );
-    const existingByName = new Map(existingRows.map((row) => [row.name, row]));
-
-    for (const client of DEMO_CLIENTS) {
-      const existing = existingByName.get(client.name);
-      if (!existing) {
-        await this.databaseService.execute(`INSERT INTO saas_gps_clients (name, address, lat, lng, assigned_username) VALUES (?, ?, ?, ?, ?)`, [
-          client.name,
-          client.address,
-          client.lat,
-          client.lng,
-          client.assignedUsername
-        ]);
-      } else if (
-        existing.assigned_username !== client.assignedUsername ||
-        existing.address !== client.address ||
-        Number(existing.lat) !== client.lat ||
-        Number(existing.lng) !== client.lng
-      ) {
-        // Mismo id: se conserva lo que cada repartidor ya habia tildado
-        // (asi paso el cambio de Montevideo a Tacuarembo, 22/10/2026).
-        await this.databaseService.execute(
-          `UPDATE saas_gps_clients SET assigned_username = ?, address = ?, lat = ?, lng = ? WHERE id = ?`,
-          [client.assignedUsername, client.address, client.lat, client.lng, existing.id]
-        );
-      }
     }
   }
 }
