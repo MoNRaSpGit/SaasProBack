@@ -131,7 +131,13 @@ export class GpsRoutingService {
     const coordinates = [[DEPOT.lng, DEPOT.lat], ...orderedClientIds.map((id) => [byId.get(id)!.lng, byId.get(id)!.lat])];
     const directions = await this.callOrs<{
       features?: Array<{ geometry: { coordinates: Array<[number, number]> }; properties: { summary: { distance?: number; duration?: number } } }>;
-    }>("directions", "/v2/directions/driving-car/geojson", { coordinates });
+    }>("directions", "/v2/directions/driving-car/geojson", {
+      coordinates,
+      // -1 = sin radio maximo: cada punto se engancha a la calle mas cercana
+      // aunque este lejos (por defecto son 350 m y un cliente con la
+      // ubicacion un poco corrida, o en la costa, hacia fallar toda la ruta).
+      radiuses: coordinates.map(() => -1)
+    });
 
     const feature = directions.features?.[0];
     if (!feature) throw new ServiceUnavailableException("El servicio de rutas no devolvió un recorrido.");

@@ -184,10 +184,11 @@ export class GpsDataService implements OnModuleInit {
       )
     ]);
 
+    // ready = las 4 guardaron. Desde 22/10/2026 (pedido explicito) la ruta
+    // final se puede armar igual con las que ya guardaron: los items traen
+    // siempre lo confirmado hasta ahora, y es el frontend el que pregunta
+    // "faltan X e Y, ¿generar igual?".
     const ready = status.length > 0 && status.every((entry) => entry.confirmed);
-    if (!ready) {
-      return { ready: false, status, items: [] };
-    }
 
     const clientsById = new Map(clients.map((client) => [client.id, client]));
     const nameByPersona = new Map(status.map((entry) => [entry.username, entry.fullName]));
@@ -202,7 +203,7 @@ export class GpsDataService implements OnModuleInit {
       }
     }
 
-    return { ready: true, status, items };
+    return { ready, status, items };
   }
 
   private requireValidPersona(personaKey: string) {
