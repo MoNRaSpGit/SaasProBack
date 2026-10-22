@@ -21,9 +21,18 @@ export type GpsGeneratedFinalRoute = {
   items: GpsFinalRouteItem[];
   // Quienes no habian guardado su ruta cuando se genero.
   missing: string[];
+  // Orden de visita elegido a mano (null = el optimo que calcula el servicio).
+  customOrder: number[] | null;
 };
 
-type GeneratedRow = RowDataPacket & { id: number; day_label: string; items_json: unknown; missing_json: unknown; created_at: string };
+type GeneratedRow = RowDataPacket & {
+  id: number;
+  day_label: string;
+  items_json: unknown;
+  missing_json: unknown;
+  order_json: unknown;
+  created_at: string;
+};
 
 type ClientRow = RowDataPacket & { id: number; name: string; address: string; lat: number; lng: number; assigned_username: string | null };
 type SelectionRow = RowDataPacket & { repartidor_username: string; client_ids_json: string };
@@ -246,15 +255,30 @@ export class GpsDataService implements OnModuleInit {
   async getLastGeneratedFinalRoute(): Promise<GpsGeneratedFinalRoute | null> {
     await this.ensureTables();
     const rows = await this.databaseService.query<GeneratedRow[]>(
-      `SELECT id, day_label, items_json, missing_json, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at
+      `SELECT id, day_label, items_json, missing_json, order_json, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at
        FROM saas_gps_final_routes ORDER BY id DESC LIMIT 1`
     );
     return rows[0] ? this.mapGenerated(rows[0]) : null;
   }
 
+  // Guarda el orden elegido a mano: tienen que ser exactamente los mismos
+  // clientes de la ruta, solo cambiados de lugar.
+  async saveFinalRouteOrder(id: number, clientIds: number[]): Promise<GpsGeneratedFinalRoute> {
+    await this.ensureTables();
+    const route = await this.getGeneratedFinalRoute(id);
+    if (!route) throw new BadRequestException("Esa ruta final ya no existe.");
+    const routeIds = route.items.map((item) => item.client.id).sort((a, b) => a - b);
+    const givenIds = [...clientIds].sort((a, b) => a - b);
+    if (routeIds.length !== givenIds.length || routeIds.some((value, index) => value !== givenIds[index])) {
+      throw new BadRequestException("El orden no coincide con los clientes de la ruta.");
+    }
+    await this.databaseService.execute(`UPDATE saas_gps_final_routes SET order_json = ? WHERE id = ?`, [JSON.stringify(clientIds), id]);
+    return (await this.getGeneratedFinalRoute(id))!;
+  }
+
   private async getGeneratedFinalRoute(id: number): Promise<GpsGeneratedFinalRoute | null> {
     const rows = await this.databaseService.query<GeneratedRow[]>(
-      `SELECT id, day_label, items_json, missing_json, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at
+      `SELECT id, day_label, items_json, missing_json, order_json, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at
        FROM saas_gps_final_routes WHERE id = ?`,
       [id]
     );
@@ -268,7 +292,8 @@ export class GpsDataService implements OnModuleInit {
       dayLabel: row.day_label,
       createdAt: row.created_at,
       items: parse<GpsFinalRouteItem[]>(row.items_json),
-      missing: parse<string[]>(row.missing_json)
+      missing: parse<string[]>(row.missing_json),
+      customOrder: row.order_json === null || row.order_json === undefined ? null : parse<number[]>(row.order_json)
     };
   }
 
@@ -330,6 +355,15 @@ export class GpsDataService implements OnModuleInit {
     );
     if (Number(assignedColumn[0]?.total || 0) === 0) {
       await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN assigned_username VARCHAR(60) NULL`);
+    }
+
+    // Migracion (23/10/2026): orden de visita editado a mano.
+    const orderColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_final_routes' AND column_name = 'order_json'`
+    );
+    if (Number(orderColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_gps_final_routes ADD COLUMN order_json JSON NULL`);
     }
   }
 

@@ -103,7 +103,10 @@ export class GpsRoutingService {
   // (optimization) y despues el recorrido por calles en ese orden
   // (directions). Las coordenadas salen de la base, no del pedido: la API
   // no sirve para calcular rutas a puntos cualquiera.
-  async computeRoute(clientIds: number[]): Promise<GpsRouteResult> {
+  // keepOrder (23/10/2026, "editar el orden y rehacer la ruta"): se respeta
+  // el orden recibido y NO se llama a la optimizacion (la de menos cupo);
+  // solo se gasta 1 llamada de recorrido por calles.
+  async computeRoute(clientIds: number[], keepOrder = false): Promise<GpsRouteResult> {
     await this.ensureTables();
     const uniqueIds = [...new Set(clientIds)];
     if (uniqueIds.length === 0) throw new BadRequestException("No hay clientes para armar la ruta.");
@@ -113,8 +116,16 @@ export class GpsRoutingService {
 
     // Mismo conjunto de clientes = misma ruta: se reutiliza sin gastar
     // llamadas (abrir el mapa varias veces no consume nada).
+    // Con orden fijo, el orden es parte de la clave.
+    const byIdForKey = new Map(clients.map((client) => [client.id, client]));
     const cacheKey = createHash("sha1")
-      .update(JSON.stringify({ depot: DEPOT, clients: clients.map((c) => [c.id, c.lat, c.lng]).sort((a, b) => Number(a[0]) - Number(b[0])) }))
+      .update(
+        JSON.stringify(
+          keepOrder
+            ? { depot: DEPOT, fixed: uniqueIds.map((id) => [id, byIdForKey.get(id)!.lat, byIdForKey.get(id)!.lng]) }
+            : { depot: DEPOT, clients: clients.map((c) => [c.id, c.lat, c.lng]).sort((a, b) => Number(a[0]) - Number(b[0])) }
+        )
+      )
       .digest("hex");
     const cached = await this.databaseService.query<Array<RowDataPacket & { result_json: unknown }>>(
       `SELECT result_json FROM saas_gps_route_cache WHERE cache_key = ? LIMIT 1`,
@@ -125,8 +136,8 @@ export class GpsRoutingService {
       return { ...(result as GpsRouteResult), fromCache: true };
     }
 
-    let orderedClientIds = clients.map((client) => client.id);
-    if (clients.length > 1) {
+    let orderedClientIds = keepOrder ? uniqueIds : clients.map((client) => client.id);
+    if (!keepOrder && clients.length > 1) {
       const optimization = await this.callOrs<{ routes?: Array<{ steps: Array<{ type: string; job?: number }> }> }>("optimization", {
         jobs: clients.map((client) => ({ id: client.id, location: [client.lng, client.lat] })),
         vehicles: [{ id: 1, profile: "driving-car", start: [DEPOT.lng, DEPOT.lat] }]

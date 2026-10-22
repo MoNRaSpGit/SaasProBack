@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, 
 import { ComputeGpsRouteDto } from "./dto/compute-gps-route.dto";
 import { LoginGpsPasswordDto } from "./dto/login-gps-password.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
+import { SaveGpsFinalOrderDto } from "./dto/save-gps-final-order.dto";
 import { SubmitGpsPicksDto } from "./dto/submit-gps-picks.dto";
 import { GpsAuthService } from "./gps-auth.service";
 import { GpsDataService } from "./gps-data.service";
@@ -111,7 +112,7 @@ export class GpsController {
   @Post("route")
   async computeRoute(@Headers("authorization") authorization: string | undefined, @Body() dto: ComputeGpsRouteDto) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
-    return this.gpsRoutingService.computeRoute(dto.clientIds);
+    return this.gpsRoutingService.computeRoute(dto.clientIds, dto.keepOrder ?? false);
   }
 
   // Consumo del servicio de rutas, para el panel del admin.
@@ -128,6 +129,15 @@ export class GpsController {
   async generateFinalRoute(@Headers("authorization") authorization: string | undefined) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
     return this.gpsDataService.generateFinalRoute();
+  }
+
+  // Orden de visita editado a mano (23/10/2026): p.ej. pasar al final a
+  // un cliente que todavia no abrio. Queda guardado en la ruta final.
+  @HttpCode(HttpStatus.OK)
+  @Post("final/order")
+  async saveFinalRouteOrder(@Headers("authorization") authorization: string | undefined, @Body() dto: SaveGpsFinalOrderDto) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.saveFinalRouteOrder(dto.routeId, dto.clientIds);
   }
 
   // La ultima ruta final generada, para volver a verla.
