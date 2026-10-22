@@ -38,6 +38,7 @@ type ScrumClientRow = RowDataPacket & {
   next_payment_at: Date | string;
   debt_amount: string | number | null;
   created_at: Date | string;
+  created_at_raw: string;
   updated_at: Date | string;
 };
 
@@ -600,6 +601,7 @@ export class ScrumService {
          next_payment_at,
          debt_amount,
          created_at,
+         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at_raw,
          updated_at
        FROM saas_scrum_clients
        ORDER BY id DESC`
@@ -696,6 +698,7 @@ export class ScrumService {
          next_payment_at,
          debt_amount,
          created_at,
+         DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at_raw,
          updated_at
        FROM saas_scrum_clients
        WHERE id = ?
@@ -756,6 +759,7 @@ export class ScrumService {
       amount: Number(row.amount),
       frequency: row.frequency,
       nextPaymentAt: toDateOnly(row.next_payment_at),
+      createdAt: `${row.created_at_raw}Z`,
       debtAmount,
       debtPaidAmount,
       debtRemaining,
