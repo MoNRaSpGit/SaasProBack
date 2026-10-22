@@ -73,6 +73,15 @@ function todayDayLabel() {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Montevideo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
+// "fetch failed" no dice nada: el motivo real (ETIMEDOUT, ECONNRESET,
+// certificado, etc.) viene en error.cause.
+function describeFetchError(error: unknown) {
+  const err = error as Error & { cause?: { code?: string; message?: string } };
+  if (err?.name === "TimeoutError") return "tardó más de 20 s";
+  const cause = err?.cause?.code ?? err?.cause?.message;
+  return [err?.message, cause].filter(Boolean).join(": ") || "error desconocido";
+}
+
 // Error que el frontend reconoce para mostrar el cartel grande.
 export class GpsQuotaExceededException extends HttpException {
   constructor() {
@@ -245,9 +254,8 @@ export class GpsRoutingService {
       [day, service]
     );
 
-    let response: Response;
-    try {
-      response = await fetch(ORS_URLS[service], {
+    const send = () =>
+      fetch(ORS_URLS[service], {
         method: "POST",
         // La ruta por calles responde en GeoJSON: con "Accept: application/json" a
         // secas devuelve 406.
@@ -255,9 +263,27 @@ export class GpsRoutingService {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(20000)
       });
+
+    // 22/10/2026: desde Render las llamadas empezaron a fallar sin llegar a
+    // OpenRouteService (su contador no bajaba) mientras desde afuera
+    // andaban. Se reintenta una vez, y si igual falla: no se cuenta la
+    // llamada (no gasto cupo) y el motivo tecnico va en el mensaje para
+    // poder diagnosticarlo sin ver los registros de Render.
+    let response: Response;
+    try {
+      response = await send().catch(async (firstError) => {
+        this.logger.warn(`OpenRouteService ${service} fallo, reintento: ${describeFetchError(firstError)}`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return send();
+      });
     } catch (error) {
-      this.logger.warn(`OpenRouteService ${service} no respondio: ${(error as Error).message}`);
-      throw new ServiceUnavailableException("El servicio de rutas no respondió. Probá de nuevo en un rato.");
+      const reason = describeFetchError(error);
+      this.logger.warn(`OpenRouteService ${service} no respondio: ${reason}`);
+      await this.databaseService.execute(
+        `UPDATE saas_gps_api_usage SET calls = GREATEST(calls - 1, 0) WHERE day_label = ? AND service = ?`,
+        [day, service]
+      );
+      throw new ServiceUnavailableException(`El servicio de rutas no respondió (${reason}). Probá de nuevo en un rato.`);
     }
 
     const remoteRemaining = Number(response.headers.get("x-ratelimit-remaining"));
