@@ -12,10 +12,10 @@ export class MovimientosController {
   }
 
   @Get(":appKey/detail")
-  getDetail(@Param("appKey") appKey: string, @Query("date") date?: string) {
+  getDetail(@Param("appKey") appKey: string, @Query("date") date?: string, @Query("client") client?: string) {
     if (date && !isValidDayLabel(date)) {
       throw new BadRequestException("Fecha invalida, se espera YYYY-MM-DD.");
     }
-    return this.movimientosService.getDetail(appKey, date);
+    return this.movimientosService.getDetail(appKey, date, client);
   }
 }

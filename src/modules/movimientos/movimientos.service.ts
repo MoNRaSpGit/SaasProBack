@@ -3,8 +3,21 @@ import { RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from "./movimientos.dateUtils";
 
-export type MovimientosAppSummary = { key: string; label: string; count: number };
+// clients: sub-tarjetas por cliente (hoy solo Gym, 23/10/2026: "entro a
+// Gym y me sale Ale Gym y Pablo M").
+export type MovimientosClientSummary = { key: string; label: string; count: number };
+export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[] };
 export type MovimientosDetailItem = { time: string; label: string; detail: string };
+
+// Gym: cada workspace es un cliente (gimnasio). Los de demo y el
+// "public" (pruebas internas) van juntos en "Otros".
+export const GYM_OTHERS_KEY = "otros";
+function isRealGymWorkspace(workspaceKey: string) {
+  return workspaceKey !== "public" && !workspaceKey.startsWith("demo");
+}
+// Nombre lindo para los clientes que ya conocemos; el resto usa el nombre
+// del usuario del gym (o la clave del workspace).
+const GYM_CLIENT_LABELS: Record<string, string> = { alegym: "Ale Gym", pablom: "Pablo M" };
 
 // Unico cliente real de frontend-agro hoy (ver memoria del proyecto).
 const AGRO_TENANT_ID = 123;
@@ -111,7 +124,7 @@ export class MovimientosService {
   async getSummary(): Promise<MovimientosAppSummary[]> {
     const [piloto, gym, agro, distribuidora, qq, juez] = await Promise.all([
       this.countSqlAudit("piloto"),
-      this.countGym(),
+      this.countGymByClient(),
       this.countAgro(),
       this.countSqlAudit("distribuidora"),
       this.countSqlAudit("qq"),
@@ -119,7 +132,7 @@ export class MovimientosService {
     ]);
 
     return [
-      { key: "gym", label: "Gym", count: gym },
+      { key: "gym", label: "Gym", count: gym.reduce((total, client) => total + client.count, 0), clients: gym },
       { key: "piloto", label: "Piloto", count: piloto },
       { key: "agro", label: "Agro", count: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
@@ -128,10 +141,10 @@ export class MovimientosService {
     ];
   }
 
-  async getDetail(appKey: string, dayLabel?: string): Promise<MovimientosDetailItem[]> {
+  async getDetail(appKey: string, dayLabel?: string, client?: string): Promise<MovimientosDetailItem[]> {
     switch (appKey) {
       case "gym":
-        return this.detailGym(dayLabel);
+        return this.detailGym(dayLabel, client);
       case "agro":
         return this.detailAgro(dayLabel);
       case "piloto":
@@ -200,26 +213,54 @@ export class MovimientosService {
     );
   }
 
-  private async countGym() {
-    const rows = await this.loadGymWorkspaces();
+  // Movimientos de hoy por cliente (workspace): los reales cada uno con su
+  // tarjeta, los de demo/pruebas juntos en "Otros" (solo si hay alguno).
+  private async countGymByClient(): Promise<MovimientosClientSummary[]> {
+    const [rows, users] = await Promise.all([
+      this.loadGymWorkspaces(),
+      this.databaseService.query<(RowDataPacket & { workspace_key: string; full_name: string | null })[]>(
+        `SELECT workspace_key, MIN(full_name) AS full_name FROM saas_gym_users GROUP BY workspace_key`
+      )
+    ]);
+    const nameByWorkspace = new Map(users.map((user) => [user.workspace_key, user.full_name]));
     const { startMs, endMs } = epochRangeMs();
-    let count = 0;
+    const clients: MovimientosClientSummary[] = [];
+    let othersCount = 0;
+    let hasOthers = false;
     for (const row of rows) {
       const data = this.parseJson(row.workspace_json);
       const auditLog = Array.isArray(data?.auditLog) ? data.auditLog : [];
-      count += auditLog.filter((entry: { timestamp?: string }) => {
+      const count = auditLog.filter((entry: { timestamp?: string }) => {
         if (!entry.timestamp) return false;
         const t = new Date(entry.timestamp).getTime();
         return t >= startMs && t < endMs;
       }).length;
+      if (isRealGymWorkspace(row.workspace_key)) {
+        const label = GYM_CLIENT_LABELS[row.workspace_key] || nameByWorkspace.get(row.workspace_key) || row.workspace_key;
+        clients.push({ key: row.workspace_key, label, count });
+      } else {
+        othersCount += count;
+        hasOthers = true;
+      }
     }
-    return count;
+    clients.sort((a, b) => a.label.localeCompare(b.label, "es"));
+    if (hasOthers) clients.push({ key: GYM_OTHERS_KEY, label: "Otros (demos y pruebas)", count: othersCount });
+    return clients;
   }
 
-  private async detailGym(dayLabel?: string): Promise<MovimientosDetailItem[]> {
-    const rows = await this.loadGymWorkspaces();
+  // client = workspace del gimnasio, "otros" = demos/pruebas, sin client =
+  // todos juntos (como antes).
+  private async detailGym(dayLabel?: string, client?: string): Promise<MovimientosDetailItem[]> {
+    const allRows = await this.loadGymWorkspaces();
+    const rows = !client
+      ? allRows
+      : client === GYM_OTHERS_KEY
+        ? allRows.filter((row) => !isRealGymWorkspace(row.workspace_key))
+        : allRows.filter((row) => row.workspace_key === client);
     const { startMs, endMs } = epochRangeMs(dayLabel);
-    const items: MovimientosDetailItem[] = [];
+    // Se ordena por la hora real (t): ordenar el texto "08:21 p. m." vs
+    // "12:07 a. m." dejaba los de la noche abajo de los de la madrugada.
+    const items: Array<MovimientosDetailItem & { t: number }> = [];
 
     for (const row of rows) {
       const data = this.parseJson(row.workspace_json);
@@ -230,13 +271,15 @@ export class MovimientosService {
         if (t < startMs || t >= endMs) continue;
         items.push({
           time: new Date(entry.timestamp).toLocaleTimeString("es-UY", { timeZone: "America/Montevideo", hour: "2-digit", minute: "2-digit" }),
-          label: `${GYM_ACTION_LABELS[entry.action || ""] || entry.action || "Movimiento"} (${row.workspace_key})`,
-          detail: entry.details || ""
+          // Con un solo gimnasio elegido no hace falta repetir de cual es.
+          label: `${GYM_ACTION_LABELS[entry.action || ""] || entry.action || "Movimiento"}${client && client !== GYM_OTHERS_KEY ? "" : ` (${row.workspace_key})`}`,
+          detail: entry.details || "",
+          t
         });
       }
     }
 
-    return items.sort((a, b) => b.time.localeCompare(a.time));
+    return items.sort((a, b) => b.t - a.t).map(({ time, label, detail }) => ({ time, label, detail }));
   }
 
   // ---------------- Agro: tenant unico (Rosendo), animalMovements + auditLog. ----
