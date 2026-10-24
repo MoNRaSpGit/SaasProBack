@@ -5,6 +5,7 @@ import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
+import { SetPilotoProductImageDto } from "./dto/set-piloto-product-image.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
@@ -89,14 +90,21 @@ export class PilotoController {
     return this.pilotoService.resetProductLookupCache();
   }
 
-  // Sirve la imagen en binario (no en el JSON del producto) con cache
-  // fuerte via ETag: el navegador la pide una sola vez y la reusa despues,
-  // en vez de bajar el base64 completo en cada busqueda por codigo de barra.
+  // Sirve la imagen con cache fuerte: si esta en Cloudinary (imagenes
+  // nuevas, 24/10/2026), redirige para que el CDN de Cloudinary la sirva
+  // directo -- si todavia es una de las viejas guardadas en binario, se
+  // sigue sirviendo igual que antes via ETag, hasta que se migre.
   @Get("products/:id/image")
   async getProductImage(@Param("id", ParseIntPipe) productId: number, @Req() req: Request, @Res() res: Response) {
     const image = await this.pilotoService.getProductImage(productId);
     if (!image) {
       res.status(404).end();
+      return;
+    }
+
+    if ("cloudinaryUrl" in image) {
+      res.set({ "Cache-Control": "public, max-age=31536000, immutable" });
+      res.redirect(302, image.cloudinaryUrl);
       return;
     }
 
@@ -112,6 +120,22 @@ export class PilotoController {
       ETag: etag
     });
     res.send(image.buffer);
+  }
+
+  // Subir/reemplazar la imagen de un producto (24/10/2026, pedido
+  // explicito): va directo a Cloudinary, en la base solo queda la URL.
+  @Post("products/:id/image")
+  async setProductImage(@Param("id", ParseIntPipe) productId: number, @Body() dto: SetPilotoProductImageDto) {
+    await this.pilotoService.getProductOrThrow(productId);
+    const result = await this.pilotoService.setProductImage(productId, dto.dataUri);
+    await this.auditService.record({
+      action: "update",
+      entityType: "product",
+      entityId: productId,
+      entityLabel: `Producto #${productId}`,
+      details: { imageUpdated: true }
+    });
+    return result;
   }
 
   // QZ Tray pide el certificado como texto plano (no JSON) via

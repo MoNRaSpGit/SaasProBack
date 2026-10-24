@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { CloudinaryService } from "../../shared/cloudinary/cloudinary.service";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
@@ -29,9 +30,10 @@ type PilotoProductRow = RowDataPacket & {
 };
 
 type PilotoProductImageRow = RowDataPacket & {
-  image_data: Buffer;
+  image_data: Buffer | null;
   mime_type: string;
   source_hash: string;
+  cloudinary_url: string | null;
 };
 
 // La imagen NO va en esta tabla: se guarda aparte, en binario, en
@@ -80,7 +82,10 @@ const PRODUCT_LOOKUP_CACHE_ENABLED = false;
 export class PilotoService {
   private readonly productLookupCache = new Map<string, CachedProductLookup>();
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly cloudinaryService: CloudinaryService
+  ) {}
 
   async findByBarcode(barcode: string): Promise<{ item: PilotoProduct }> {
     const normalizedBarcode = normalizeBarcode(barcode);
@@ -322,49 +327,67 @@ export class PilotoService {
     };
   }
 
-  // Imagen del producto: se guarda en saas_piloto_product_images (binario,
-  // no base64) y se sirve por separado via GET /piloto/products/:id/image,
-  // con cache headers (ver piloto.controller.ts). Devuelve null si el
-  // producto no tiene imagen o el hash no coincide con el guardado (permite
-  // invalidar cache del lado del cliente).
-  async getProductImage(productId: number): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
+  // Imagen del producto: se sirve por separado via GET
+  // /piloto/products/:id/image, con cache headers (ver piloto.controller.ts).
+  // Las imagenes nuevas (24/10/2026) se guardan en Cloudinary y aca solo
+  // devolvemos la URL para que el controller haga un redirect -- las viejas
+  // (cargadas antes, antes de Cloudinary) siguen sirviendose en binario
+  // hasta que se migren. Devuelve null si el producto no tiene imagen.
+  async getProductImage(
+    productId: number
+  ): Promise<{ cloudinaryUrl: string } | { buffer: Buffer; mimeType: string; sourceHash: string } | null> {
     const rows = await this.databaseService.query<PilotoProductImageRow[]>(
-      `SELECT image_data, mime_type, source_hash FROM saas_piloto_product_images WHERE product_id = ? LIMIT 1`,
+      `SELECT image_data, mime_type, source_hash, cloudinary_url FROM saas_piloto_product_images WHERE product_id = ? LIMIT 1`,
       [productId]
     );
 
-    if (!rows[0]) {
+    const row = rows[0];
+    if (!row) {
       return null;
     }
 
-    return { buffer: rows[0].image_data, mimeType: rows[0].mime_type, sourceHash: rows[0].source_hash };
+    if (row.cloudinary_url) {
+      return { cloudinaryUrl: row.cloudinary_url };
+    }
+
+    if (!row.image_data) {
+      return null;
+    }
+
+    return { buffer: row.image_data, mimeType: row.mime_type, sourceHash: row.source_hash };
   }
 
-  // Acepta un data URI base64 (formato historico) y lo guarda como binario.
-  // No hay UI hoy que suba imagenes; queda listo para cuando haga falta
-  // (por ejemplo, un import por script o una futura pantalla de edicion).
-  async setProductImage(productId: number, dataUri: string): Promise<void> {
+  // Acepta un data URI base64 y lo sube a Cloudinary (24/10/2026, pedido
+  // explicito: "las imagenes pesaban mucho la base, probemos con Piloto
+  // primero") -- ya no se guarda el binario en la base para imagenes
+  // nuevas, solo la URL que devuelve Cloudinary.
+  async setProductImage(productId: number, dataUri: string): Promise<{ url: string }> {
     const parsed = parseImageDataUri(dataUri);
     if (!parsed) {
       throw new BadRequestException("La imagen debe ser un data URI base64 valido.");
     }
 
     const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
+    const upload = await this.cloudinaryService.uploadBuffer(parsed.buffer, "piloto/products", `product-${productId}`);
 
     await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_piloto_product_images (product_id, image_data, mime_type, source_hash, byte_size)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO saas_piloto_product_images (product_id, image_data, mime_type, source_hash, byte_size, cloudinary_url, cloudinary_public_id)
+       VALUES (?, NULL, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
-         image_data = VALUES(image_data),
+         image_data = NULL,
          mime_type = VALUES(mime_type),
          source_hash = VALUES(source_hash),
-         byte_size = VALUES(byte_size)`,
-      [productId, parsed.buffer, parsed.mimeType, sourceHash, parsed.buffer.length]
+         byte_size = VALUES(byte_size),
+         cloudinary_url = VALUES(cloudinary_url),
+         cloudinary_public_id = VALUES(cloudinary_public_id)`,
+      [productId, parsed.mimeType, sourceHash, parsed.buffer.length, upload.url, upload.publicId]
     );
 
     await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_piloto_products SET has_image = 1 WHERE id = ?`, [
       productId
     ]);
+
+    return { url: upload.url };
   }
 
   private mapProduct(row: PilotoProductRow): PilotoProduct {

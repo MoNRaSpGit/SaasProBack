@@ -1,4 +1,5 @@
 import { Module } from "@nestjs/common";
+import { CloudinaryModule } from "../../shared/cloudinary/cloudinary.module";
 import { DatabaseModule } from "../../shared/database/database.module";
 import { PilotoAuditService } from "./piloto-audit.service";
 import { PilotoClientsService } from "./piloto-clients.service";
@@ -8,7 +9,7 @@ import { PilotoPrintingService } from "./piloto-printing.service";
 import { PilotoService } from "./piloto.service";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, CloudinaryModule],
   controllers: [PilotoController],
   providers: [PilotoService, PilotoAuditService, PilotoPrintingService, PilotoPriceEntriesService, PilotoClientsService]
 })

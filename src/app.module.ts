@@ -27,6 +27,7 @@ import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
 import { TallerModule } from "./modules/taller/taller.module";
 import { AuthzModule } from "./shared/authz/authz.module";
+import { CloudinaryModule } from "./shared/cloudinary/cloudinary.module";
 import { DatabaseModule } from "./shared/database/database.module";
 import { HealthController } from "./shared/health/health.controller";
 import { AuthRateLimitMiddleware } from "./shared/http/auth-rate-limit.middleware";
@@ -38,6 +39,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     ScheduleModule.forRoot(),
     AuthzModule,
     DatabaseModule,
+    CloudinaryModule,
     AuthModule,
     SaasAdminModule,
     CamionesModule,
