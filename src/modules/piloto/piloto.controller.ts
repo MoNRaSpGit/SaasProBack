@@ -14,6 +14,7 @@ import { PilotoClientsService } from "./piloto-clients.service";
 import { PilotoPriceEntriesService } from "./piloto-price-entries.service";
 import { PilotoPrintingService } from "./piloto-printing.service";
 import { PilotoService } from "./piloto.service";
+import { PilotoTicketsService } from "./piloto-tickets.service";
 
 const PRODUCT_AUDIT_FIELDS = ["name", "price"] as const;
 
@@ -24,12 +25,39 @@ export class PilotoController {
     private readonly auditService: PilotoAuditService,
     private readonly printingService: PilotoPrintingService,
     private readonly priceEntriesService: PilotoPriceEntriesService,
-    private readonly clientsService: PilotoClientsService
+    private readonly clientsService: PilotoClientsService,
+    private readonly ticketsService: PilotoTicketsService
   ) {}
 
   @Get("products")
-  listProducts(@Query("search") search?: string) {
-    return this.pilotoService.listProducts(search);
+  listProducts(@Query("search") search?: string, @Query("ids") ids?: string) {
+    const parsedIds = ids
+      ? ids
+          .split(",")
+          .map((id) => Number(id.trim()))
+          .filter((id) => Number.isFinite(id))
+      : undefined;
+    return this.pilotoService.listProducts(search, parsedIds);
+  }
+
+  // Pestaña "Tickets" (Modo Pro): productos con codigo inventado para
+  // imprimir en la tiquetera. Editar nombre/precio = PATCH products/:id.
+  @Get("tickets")
+  listTickets() {
+    return this.ticketsService.listTickets();
+  }
+
+  @Post("tickets")
+  async createTicket(@Body() dto: CreatePilotoProductDto) {
+    const result = await this.ticketsService.createTicket(dto);
+    await this.auditService.record({
+      action: "create",
+      entityType: "product",
+      entityId: result.item.id,
+      entityLabel: result.item.name,
+      details: { barcode: result.item.barcode, price: result.item.price, ticket: true }
+    });
+    return result;
   }
 
   @Get("products/barcode/:barcode")

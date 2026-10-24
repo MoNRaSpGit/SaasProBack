@@ -140,24 +140,37 @@ export class PilotoService {
     }
   }
 
-  async listProducts(search?: string): Promise<{ items: PilotoProduct[] }> {
+  // `ids` (24/10/2026, pedido explicito): para pantallas que necesitan
+  // productos puntuales por id (ej. confirmar visualmente la migracion de
+  // imagenes a Cloudinary) sin depender del tope de 100 ni del orden
+  // alfabetico de abajo, que podia dejarlos afuera.
+  async listProducts(search?: string, ids?: number[]): Promise<{ items: PilotoProduct[] }> {
     const trimmedSearch = search?.trim();
 
-    const rows = trimmedSearch
-      ? await this.databaseService.query<PilotoProductRow[]>(
-          `SELECT ${PRODUCT_COLUMNS}
-           FROM saas_piloto_products
-           WHERE name LIKE ?
-           ORDER BY name ASC
-           LIMIT 100`,
-          [`%${trimmedSearch}%`]
-        )
-      : await this.databaseService.query<PilotoProductRow[]>(
-          `SELECT ${PRODUCT_COLUMNS}
-           FROM saas_piloto_products
-           ORDER BY name ASC
-           LIMIT 100`
-        );
+    const rows =
+      ids && ids.length
+        ? await this.databaseService.query<PilotoProductRow[]>(
+            `SELECT ${PRODUCT_COLUMNS}
+             FROM saas_piloto_products
+             WHERE id IN (${ids.map(() => "?").join(",")})
+             ORDER BY name ASC`,
+            ids
+          )
+        : trimmedSearch
+          ? await this.databaseService.query<PilotoProductRow[]>(
+              `SELECT ${PRODUCT_COLUMNS}
+               FROM saas_piloto_products
+               WHERE name LIKE ?
+               ORDER BY name ASC
+               LIMIT 100`,
+              [`%${trimmedSearch}%`]
+            )
+          : await this.databaseService.query<PilotoProductRow[]>(
+              `SELECT ${PRODUCT_COLUMNS}
+               FROM saas_piloto_products
+               ORDER BY name ASC
+               LIMIT 100`
+            );
 
     return { items: rows.map((row) => this.mapProduct(row)) };
   }
