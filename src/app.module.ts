@@ -7,6 +7,7 @@ import { AlquilerModule } from "./modules/alquiler/alquiler.module";
 import { CamisetasModule } from "./modules/camisetas/camisetas.module";
 import { CarnetModule } from "./modules/carnet/carnet.module";
 import { CamionesModule } from "./modules/camiones/camiones.module";
+import { ClientesTacuaModule } from "./modules/clientes-tacua/clientes-tacua.module";
 import { ConstruccionModule } from "./modules/construccion/construccion.module";
 import { DeliveryModule } from "./modules/delivery/delivery.module";
 import { DgiModule } from "./modules/dgi/dgi.module";
@@ -40,6 +41,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     AuthModule,
     SaasAdminModule,
     CamionesModule,
+    ClientesTacuaModule,
     CamisetasModule,
     DeliveryModule,
     DgiModule,
