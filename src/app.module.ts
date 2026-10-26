@@ -21,6 +21,7 @@ import { MovimientosModule } from "./modules/movimientos/movimientos.module";
 import { OriolModule } from "./modules/oriol/oriol.module";
 import { PeluqueriaModule } from "./modules/peluqueria/peluqueria.module";
 import { PilotoModule } from "./modules/piloto/piloto.module";
+import { PlanillaModule } from "./modules/planilla/planilla.module";
 import { QqModule } from "./modules/qq/qq.module";
 import { RetosModule } from "./modules/retos/retos.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
@@ -61,6 +62,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     ConstruccionModule,
     DistribuidoraModule,
     MovimientosModule,
+    PlanillaModule,
     GpsModule,
     AlquilerModule,
     TallerModule,
