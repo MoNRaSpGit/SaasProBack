@@ -135,6 +135,30 @@ export class GpsDataService implements OnModuleInit {
   // Pestaña "Clientes" (22/10/2026, pedido explicito): se elige un
   // repartidor y se le van dando clientes; persona null = devolverlos a
   // "sin asignar".
+  // Cliente cargado a mano (27/10/2026): queda sin asignar, como los
+  // importados; despues un repartidor lo toma desde la pestaña Clientes.
+  async createClient(input: {
+    name: string;
+    address: string;
+    lat: number;
+    lng: number;
+    geoQuality: "puerta" | "esquina" | "calle";
+  }): Promise<GpsClientAssignment> {
+    await this.ensureTables();
+    const name = input.name.trim();
+    const address = input.address.trim();
+    const duplicate = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT id FROM saas_gps_clients WHERE LOWER(name) = LOWER(?) AND LOWER(address) = LOWER(?) LIMIT 1`,
+      [name, address]
+    );
+    if (duplicate.length > 0) throw new BadRequestException("Ya existe un cliente con ese nombre y esa dirección.");
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_gps_clients (name, address, lat, lng, assigned_username, geo_quality) VALUES (?, ?, ?, ?, NULL, ?)`,
+      [name, address, input.lat, input.lng, input.geoQuality]
+    );
+    return { id: result.insertId, name, address, assignedUsername: null, geoQuality: input.geoQuality };
+  }
+
   async assignClients(clientIds: number[], personaKey: string | null): Promise<{ updated: number }> {
     await this.ensureTables();
     if (personaKey !== null) this.requireValidPersona(personaKey);

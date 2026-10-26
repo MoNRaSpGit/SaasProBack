@@ -1,12 +1,14 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
 import { AssignGpsClientsDto } from "./dto/assign-gps-clients.dto";
 import { ComputeGpsRouteDto } from "./dto/compute-gps-route.dto";
+import { CreateGpsClientDto, GeocodeGpsAddressDto } from "./dto/create-gps-client.dto";
 import { LoginGpsPasswordDto } from "./dto/login-gps-password.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 import { SaveGpsFinalOrderDto } from "./dto/save-gps-final-order.dto";
 import { SubmitGpsPicksDto } from "./dto/submit-gps-picks.dto";
 import { GpsAuthService } from "./gps-auth.service";
 import { GpsDataService } from "./gps-data.service";
+import { GpsGeocodingService } from "./gps-geocoding.service";
 import { GpsRoutingService } from "./gps-routing.service";
 
 @Controller("gps")
@@ -14,7 +16,8 @@ export class GpsController {
   constructor(
     private readonly gpsAuthService: GpsAuthService,
     private readonly gpsDataService: GpsDataService,
-    private readonly gpsRoutingService: GpsRoutingService
+    private readonly gpsRoutingService: GpsRoutingService,
+    private readonly gpsGeocodingService: GpsGeocodingService
   ) {}
 
   @HttpCode(HttpStatus.OK)
@@ -65,6 +68,22 @@ export class GpsController {
   async listAssignments(@Headers("authorization") authorization: string | undefined) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
     return this.gpsDataService.listAssignments();
+  }
+
+  // "Agregar cliente" a mano (27/10/2026, pedido explicito): primero se
+  // busca la direccion en el mapa (geocodificador IDE, no gasta cupo de
+  // rutas) y, confirmada, se guarda el cliente sin asignar.
+  @HttpCode(HttpStatus.OK)
+  @Post("clients/geocode")
+  async geocodeAddress(@Headers("authorization") authorization: string | undefined, @Body() dto: GeocodeGpsAddressDto) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsGeocodingService.geocode(dto.address);
+  }
+
+  @Post("clients")
+  async createClient(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateGpsClientDto) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.createClient(dto);
   }
 
   @HttpCode(HttpStatus.OK)
