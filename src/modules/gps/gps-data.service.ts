@@ -59,11 +59,16 @@ type SelectionRow = RowDataPacket & { repartidor_username: string; client_ids_js
 // persona -- el login es un solo rol generico "repartidor" (ver
 // gps-auth.service.ts) y adentro se elige una de estas 4 pestañas. Si el
 // dia de mañana hay un 5to repartidor, se agrega aca nomas.
+//
+// Nombres reales (27/10/2026, pedido explicito): Matias, Andres, Edinson y
+// Rodrigo reemplazan a los de prueba. Las claves (martin/ana/juan/pedro)
+// NO se cambian: con ellas estan guardados los clientes asignados y las
+// selecciones de cada repartidor; son solo internas.
 export const PERSONAS: GpsPersona[] = [
-  { key: "martin", fullName: "Martín" },
-  { key: "ana", fullName: "Ana" },
-  { key: "juan", fullName: "Juan" },
-  { key: "pedro", fullName: "Pedro" }
+  { key: "martin", fullName: "Matías" },
+  { key: "ana", fullName: "Andrés" },
+  { key: "juan", fullName: "Edinson" },
+  { key: "pedro", fullName: "Rodrigo" }
 ];
 
 const PERSONA_KEYS = new Set(PERSONAS.map((persona) => persona.key));
