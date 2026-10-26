@@ -122,6 +122,13 @@ export class GpsRoutingService {
 
     const clients = (await this.gpsDataService.listClients()).filter((client) => uniqueIds.includes(client.id));
     if (clients.length !== uniqueIds.length) throw new BadRequestException("Hay clientes que no existen.");
+    // Clientes sin ubicacion (direccion no encontrada) nunca entran a una ruta.
+    const withoutLocation = clients.filter((client) => !client.hasLocation);
+    if (withoutLocation.length > 0) {
+      throw new BadRequestException(
+        `No se puede hacer la ruta con ${withoutLocation.map((client) => client.name).join(", ")}: su ubicación no es correcta.`
+      );
+    }
 
     // Mismo conjunto de clientes = misma ruta: se reutiliza sin gastar
     // llamadas (abrir el mapa varias veces no consume nada).

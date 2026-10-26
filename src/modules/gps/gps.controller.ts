@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Post, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, ParseIntPipe, Patch, Post, Query } from "@nestjs/common";
 import { AssignGpsClientsDto } from "./dto/assign-gps-clients.dto";
 import { ComputeGpsRouteDto } from "./dto/compute-gps-route.dto";
-import { CreateGpsClientDto, GeocodeGpsAddressDto } from "./dto/create-gps-client.dto";
+import { CreateGpsClientDto, GeocodeGpsAddressDto, UpdateGpsClientLocationDto } from "./dto/create-gps-client.dto";
 import { LoginGpsPasswordDto } from "./dto/login-gps-password.dto";
 import { LoginGpsUserDto } from "./dto/login-gps-user.dto";
 import { SaveGpsFinalOrderDto } from "./dto/save-gps-final-order.dto";
@@ -84,6 +84,16 @@ export class GpsController {
   async createClient(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateGpsClientDto) {
     await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
     return this.gpsDataService.createClient(dto);
+  }
+
+  @Patch("clients/:id/location")
+  async updateClientLocation(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) clientId: number,
+    @Body() dto: UpdateGpsClientLocationDto
+  ) {
+    await this.gpsAuthService.requireRole(authorization, "admin", "repartidor");
+    return this.gpsDataService.updateClientLocation(clientId, dto);
   }
 
   @HttpCode(HttpStatus.OK)

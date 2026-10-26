@@ -2,7 +2,11 @@ import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 
-export type GpsClient = { id: number; name: string; address: string; lat: number; lng: number };
+// hasLocation=false: cliente cargado a mano cuya direccion no se encontro
+// (27/10/2026): lat/lng vienen en 0 y NO puede entrar en una ruta.
+export type GpsClient = { id: number; name: string; address: string; lat: number; lng: number; hasLocation: boolean };
+
+export type GpsGeoQuality = "puerta" | "esquina" | "calle" | "ninguna";
 
 export type GpsPersona = { key: string; fullName: string };
 
@@ -38,8 +42,8 @@ type ClientRow = RowDataPacket & {
   id: number;
   name: string;
   address: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   assigned_username: string | null;
   geo_quality: string | null;
 };
@@ -120,7 +124,14 @@ export class GpsDataService implements OnModuleInit {
       : await this.databaseService.query<ClientRow[]>(
           `SELECT id, name, address, lat, lng, assigned_username FROM saas_gps_clients ORDER BY name ASC`
         );
-    return rows.map((row) => ({ id: row.id, name: row.name, address: row.address, lat: Number(row.lat), lng: Number(row.lng) }));
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      lat: row.lat === null ? 0 : Number(row.lat),
+      lng: row.lng === null ? 0 : Number(row.lng),
+      hasLocation: row.lat !== null && row.lng !== null
+    }));
   }
 
   async listAssignments(): Promise<GpsClientAssignment[]> {
@@ -142,16 +153,20 @@ export class GpsDataService implements OnModuleInit {
   // "sin asignar".
   // Cliente cargado a mano (27/10/2026): queda sin asignar, como los
   // importados; despues un repartidor lo toma desde la pestaña Clientes.
+  // Si la direccion no se encontro (geoQuality "ninguna") se guarda igual,
+  // sin ubicacion: aparece como "ubicacion no encontrada" y no puede entrar
+  // en una ruta hasta que se actualice (updateClientLocation).
   async createClient(input: {
     name: string;
     address: string;
-    lat: number;
-    lng: number;
-    geoQuality: "puerta" | "esquina" | "calle";
+    lat?: number;
+    lng?: number;
+    geoQuality: GpsGeoQuality;
   }): Promise<GpsClientAssignment> {
     await this.ensureTables();
     const name = input.name.trim();
     const address = input.address.trim();
+    const located = input.geoQuality !== "ninguna" && typeof input.lat === "number" && typeof input.lng === "number";
     const duplicate = await this.databaseService.query<RowDataPacket[]>(
       `SELECT id FROM saas_gps_clients WHERE LOWER(name) = LOWER(?) AND LOWER(address) = LOWER(?) LIMIT 1`,
       [name, address]
@@ -159,9 +174,30 @@ export class GpsDataService implements OnModuleInit {
     if (duplicate.length > 0) throw new BadRequestException("Ya existe un cliente con ese nombre y esa dirección.");
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_gps_clients (name, address, lat, lng, assigned_username, geo_quality) VALUES (?, ?, ?, ?, NULL, ?)`,
-      [name, address, input.lat, input.lng, input.geoQuality]
+      [name, address, located ? input.lat : null, located ? input.lng : null, located ? input.geoQuality : "ninguna"]
     );
-    return { id: result.insertId, name, address, assignedUsername: null, geoQuality: input.geoQuality };
+    return { id: result.insertId, name, address, assignedUsername: null, geoQuality: located ? input.geoQuality : "ninguna" };
+  }
+
+  // "Actualizar ubicacion" de un cliente (tipico: el que quedo sin
+  // ubicacion). Se confirma en la pantalla con "Buscar direccion".
+  async updateClientLocation(
+    clientId: number,
+    input: { address: string; lat: number; lng: number; geoQuality: Exclude<GpsGeoQuality, "ninguna"> }
+  ): Promise<GpsClientAssignment> {
+    await this.ensureTables();
+    const address = input.address.trim();
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_gps_clients SET address = ?, lat = ?, lng = ?, geo_quality = ? WHERE id = ?`,
+      [address, input.lat, input.lng, input.geoQuality, clientId]
+    );
+    if (result.affectedRows === 0) throw new BadRequestException("Ese cliente ya no existe.");
+    const rows = await this.databaseService.query<ClientRow[]>(
+      `SELECT id, name, address, assigned_username, geo_quality FROM saas_gps_clients WHERE id = ?`,
+      [clientId]
+    );
+    const row = rows[0];
+    return { id: row.id, name: row.name, address: row.address, assignedUsername: row.assigned_username, geoQuality: row.geo_quality };
   }
 
   async assignClients(clientIds: number[], personaKey: string | null): Promise<{ updated: number }> {
@@ -196,6 +232,12 @@ export class GpsDataService implements OnModuleInit {
     const ownClientIds = new Set(ownClients.map((client) => client.id));
     if (clientIds.some((id) => !ownClientIds.has(id))) {
       throw new BadRequestException("Hay clientes que no le pertenecen a esta pestaña.");
+    }
+    const withoutLocation = ownClients.filter((client) => clientIds.includes(client.id) && !client.hasLocation);
+    if (withoutLocation.length > 0) {
+      throw new BadRequestException(
+        `No se puede hacer la ruta con ${withoutLocation.map((client) => client.name).join(", ")}: su ubicación no es correcta. Actualizala en Clientes.`
+      );
     }
 
     const existing = await this.databaseService.query<RowDataPacket[]>(
@@ -415,6 +457,16 @@ export class GpsDataService implements OnModuleInit {
     );
     if (Number(geoColumn[0]?.total || 0) === 0) {
       await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN geo_quality VARCHAR(10) NULL`);
+    }
+
+    // Migracion (27/10/2026): clientes sin ubicacion (direccion no
+    // encontrada) -> lat/lng pueden quedar vacios.
+    const latColumn = await this.databaseService.query<Array<RowDataPacket & { nullable: string }>>(
+      `SELECT IS_NULLABLE AS nullable FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_clients' AND column_name = 'lat'`
+    );
+    if (latColumn[0]?.nullable === "NO") {
+      await this.databaseService.execute(`ALTER TABLE saas_gps_clients MODIFY lat DECIMAL(10, 6) NULL, MODIFY lng DECIMAL(10, 6) NULL`);
     }
 
     // Migracion (23/10/2026): orden de visita editado a mano.
