@@ -205,7 +205,7 @@ export class GpsDataService implements OnModuleInit {
     if (personaKey !== null) this.requireValidPersona(personaKey);
     const uniqueIds = [...new Set(clientIds)];
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_gps_clients SET assigned_username = ? WHERE id IN (${uniqueIds.map(() => "?").join(", ")})`,
+      `UPDATE saas_gps_clients SET assigned_username = ?, assigned_at = UTC_TIMESTAMP() WHERE id IN (${uniqueIds.map(() => "?").join(", ")})`,
       [personaKey, ...uniqueIds]
     );
     return { updated: result.affectedRows };
@@ -473,6 +473,17 @@ export class GpsDataService implements OnModuleInit {
         `ALTER TABLE saas_gps_clients ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`
       );
       await this.databaseService.execute(`UPDATE saas_gps_clients SET created_at = '2026-01-01 00:00:00'`);
+    }
+
+    // Migracion (27/10/2026): fecha de la ultima asignacion/desasignacion
+    // de cliente a un repartidor, para el panel interno de Movimientos
+    // ("si se le asigna un cliente a uno de los repartidores").
+    const assignedAtColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_clients' AND column_name = 'assigned_at'`
+    );
+    if (Number(assignedAtColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN assigned_at TIMESTAMP NULL DEFAULT NULL`);
     }
 
     // Migracion (27/10/2026): clientes sin ubicacion (direccion no

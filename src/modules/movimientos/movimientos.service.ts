@@ -22,6 +22,10 @@ const GYM_CLIENT_LABELS: Record<string, string> = { alegym: "Ale Gym", pablom: "
 // Unico cliente real de frontend-agro hoy (ver memoria del proyecto).
 const AGRO_TENANT_ID = 123;
 
+// Mismos nombres que PERSONAS en gps-data.service.ts (las claves
+// martin/ana/juan/pedro son legacy, los nombres mostrados ya cambiaron).
+const GPS_PERSONA_LABELS: Record<string, string> = { martin: "Matías", ana: "Andrés", juan: "Edinson", pedro: "Rodrigo" };
+
 const GYM_ACTION_LABELS: Record<string, string> = {
   login: "Inicio de sesión",
   login_failed: "Intento fallido",
@@ -168,7 +172,7 @@ export class MovimientosService {
 
   private async countGps() {
     const { start, end } = dayRangeUtc();
-    const [loginRows, clientRows, routeRows] = await Promise.all([
+    const [loginRows, clientRows, assignRows, routeRows] = await Promise.all([
       this.databaseService.query<(RowDataPacket & { total: number })[]>(
         `SELECT COUNT(*) AS total FROM saas_gps_sessions WHERE created_at >= ? AND created_at < ?`,
         [start, end]
@@ -178,16 +182,25 @@ export class MovimientosService {
         [start, end]
       ),
       this.databaseService.query<(RowDataPacket & { total: number })[]>(
+        `SELECT COUNT(*) AS total FROM saas_gps_clients WHERE assigned_at >= ? AND assigned_at < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { total: number })[]>(
         `SELECT COUNT(*) AS total FROM saas_gps_final_routes WHERE created_at >= ? AND created_at < ?`,
         [start, end]
       )
     ]);
-    return Number(loginRows[0]?.total ?? 0) + Number(clientRows[0]?.total ?? 0) + Number(routeRows[0]?.total ?? 0);
+    return (
+      Number(loginRows[0]?.total ?? 0) +
+      Number(clientRows[0]?.total ?? 0) +
+      Number(assignRows[0]?.total ?? 0) +
+      Number(routeRows[0]?.total ?? 0)
+    );
   }
 
   private async detailGps(dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const { start, end } = dayRangeUtc(dayLabel);
-    const [logins, clients, routes] = await Promise.all([
+    const [logins, clients, assignments, routes] = await Promise.all([
       this.databaseService.query<(RowDataPacket & { when_raw: string; username: string; full_name: string | null; role: string })[]>(
         `SELECT DATE_FORMAT(s.created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, u.username, u.full_name, u.role
          FROM saas_gps_sessions s
@@ -201,6 +214,13 @@ export class MovimientosService {
          FROM saas_gps_clients
          WHERE created_at >= ? AND created_at < ?
          ORDER BY created_at DESC`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { when_raw: string; name: string; assigned_username: string | null })[]>(
+        `SELECT DATE_FORMAT(assigned_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, name, assigned_username
+         FROM saas_gps_clients
+         WHERE assigned_at >= ? AND assigned_at < ?
+         ORDER BY assigned_at DESC`,
         [start, end]
       ),
       this.databaseService.query<(RowDataPacket & { when_raw: string; day_label: string })[]>(
@@ -225,6 +245,15 @@ export class MovimientosService {
     }
     for (const row of clients) {
       items.push({ time: formatMontevideoTime(row.when_raw), label: "Alta de cliente", detail: `${row.name} · ${row.address}`, t: row.when_raw });
+    }
+    for (const row of assignments) {
+      const personaLabel = row.assigned_username ? GPS_PERSONA_LABELS[row.assigned_username] || row.assigned_username : "Sin asignar";
+      items.push({
+        time: formatMontevideoTime(row.when_raw),
+        label: row.assigned_username ? "Asignación de cliente" : "Cliente desasignado",
+        detail: `${row.name} → ${personaLabel}`,
+        t: row.when_raw
+      });
     }
     for (const row of routes) {
       items.push({ time: formatMontevideoTime(row.when_raw), label: "Ruta final generada", detail: `Día ${row.day_label}`, t: row.when_raw });
