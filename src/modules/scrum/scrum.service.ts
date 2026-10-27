@@ -134,7 +134,6 @@ export class ScrumService {
 
   async getWorkspace() {
     await this.ensureTables();
-    await this.ensureDailyTasksForToday();
 
     const [tasks, clients, debts] = await Promise.all([this.listTasks(), this.listClients(), this.listDebts()]);
 
@@ -249,14 +248,7 @@ export class ScrumService {
 
   async deleteTask(taskId: number) {
     await this.ensureTables();
-    const currentTask = await this.getTaskById(taskId);
-
-    if (currentTask.dailyTaskKey) {
-      await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_tasks WHERE daily_task_key = ?`, [
-        currentTask.dailyTaskKey
-      ]);
-      return { ok: true };
-    }
+    await this.assertTaskExists(taskId);
 
     await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_tasks WHERE id = ?`, [taskId]);
 
@@ -774,78 +766,6 @@ export class ScrumService {
 
   private async assertClientExists(clientId: number) {
     await this.getClientById(clientId);
-  }
-
-  private async ensureDailyTasksForToday() {
-    const today = getMontevideoDateKey(new Date());
-    const rows = await this.databaseService.query<
-      Array<
-        RowDataPacket & {
-          daily_task_key: string;
-          title: string;
-          description: string | null;
-          estimated_minutes: number;
-          duration_unit: "days" | "weeks" | "months";
-          duration_value: number;
-          task_day: Date | string;
-          status: "todo" | "in_progress" | "done";
-        }
-      >
-    >(
-      `SELECT
-         t1.daily_task_key,
-         t1.title,
-         t1.description,
-         t1.estimated_minutes,
-         t1.duration_unit,
-         t1.duration_value,
-         t1.task_day,
-         t1.status
-       FROM saas_scrum_tasks t1
-       INNER JOIN (
-         SELECT daily_task_key, MAX(id) AS latest_id
-         FROM saas_scrum_tasks
-         WHERE daily_task_key IS NOT NULL
-         GROUP BY daily_task_key
-       ) latest ON latest.daily_task_key = t1.daily_task_key AND latest.latest_id = t1.id`
-    );
-
-    for (const row of rows) {
-      if (toDateOnly(row.task_day) >= today) {
-        continue;
-      }
-
-      // Si la instancia de ayer quedo sin terminar, no se genera una nueva copia:
-      // se deja tal cual esta hasta que el usuario la complete.
-      if (row.status !== "done") {
-        continue;
-      }
-
-      await this.databaseService.execute<ResultSetHeader>(
-        `INSERT INTO saas_scrum_tasks (
-           title,
-           description,
-           estimated_minutes,
-           duration_unit,
-           duration_value,
-           difficulty,
-           daily_task_key,
-           task_day,
-           status,
-           started_at,
-           completed_at
-         ) VALUES (?, ?, ?, ?, ?, 'blue', ?, ?, 'todo', NULL, NULL)`,
-        [
-          row.title,
-          row.description,
-          Number(row.estimated_minutes),
-          row.duration_unit,
-          Number(row.duration_value),
-          row.daily_task_key,
-          today
-        ]
-      );
-    }
   }
 
   private async ensureTables() {
