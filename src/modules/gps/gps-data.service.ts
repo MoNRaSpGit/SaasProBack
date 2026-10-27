@@ -459,6 +459,22 @@ export class GpsDataService implements OnModuleInit {
       await this.databaseService.execute(`ALTER TABLE saas_gps_clients ADD COLUMN geo_quality VARCHAR(10) NULL`);
     }
 
+    // Migracion (27/10/2026): fecha de alta de cada cliente, para poder
+    // mostrarla en el panel interno de Movimientos ("cuando ponen un
+    // cliente nuevo"). Los clientes ya existentes se dejan con una fecha
+    // vieja fija (no HOY) para que no aparezcan como "altas de hoy" el
+    // dia que corre esta migracion.
+    const createdAtColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
+      `SELECT COUNT(*) AS total FROM information_schema.columns
+       WHERE table_schema = DATABASE() AND table_name = 'saas_gps_clients' AND column_name = 'created_at'`
+    );
+    if (Number(createdAtColumn[0]?.total || 0) === 0) {
+      await this.databaseService.execute(
+        `ALTER TABLE saas_gps_clients ADD COLUMN created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`
+      );
+      await this.databaseService.execute(`UPDATE saas_gps_clients SET created_at = '2026-01-01 00:00:00'`);
+    }
+
     // Migracion (27/10/2026): clientes sin ubicacion (direccion no
     // encontrada) -> lat/lng pueden quedar vacios.
     const latColumn = await this.databaseService.query<Array<RowDataPacket & { nullable: string }>>(

@@ -122,13 +122,14 @@ export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getSummary(): Promise<MovimientosAppSummary[]> {
-    const [piloto, gym, agro, distribuidora, qq, juez] = await Promise.all([
+    const [piloto, gym, agro, distribuidora, qq, juez, gps] = await Promise.all([
       this.countSqlAudit("piloto"),
       this.countGymByClient(),
       this.countAgro(),
       this.countSqlAudit("distribuidora"),
       this.countSqlAudit("qq"),
-      this.countSqlAudit("juez")
+      this.countSqlAudit("juez"),
+      this.countGps()
     ]);
 
     return [
@@ -137,7 +138,8 @@ export class MovimientosService {
       { key: "agro", label: "Agro", count: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
       { key: "qq", label: "QQ", count: qq },
-      { key: "juez", label: "Juez", count: juez }
+      { key: "juez", label: "Juez", count: juez },
+      { key: "gps", label: "GPS", count: gps }
     ];
   }
 
@@ -147,6 +149,8 @@ export class MovimientosService {
         return this.detailGym(dayLabel, client);
       case "agro":
         return this.detailAgro(dayLabel);
+      case "gps":
+        return this.detailGps(dayLabel);
       case "piloto":
       case "distribuidora":
       case "qq":
@@ -155,6 +159,78 @@ export class MovimientosService {
       default:
         return [];
     }
+  }
+
+  // ---------------- GPS: logins (sesiones), altas de cliente y rutas
+  // finales generadas -- no tiene una tabla de auditoria propia como
+  // piloto/distribuidora/qq/juez, asi que se arma a mano con las 3
+  // tablas que ya tienen su fecha real. ----
+
+  private async countGps() {
+    const { start, end } = dayRangeUtc();
+    const [loginRows, clientRows, routeRows] = await Promise.all([
+      this.databaseService.query<(RowDataPacket & { total: number })[]>(
+        `SELECT COUNT(*) AS total FROM saas_gps_sessions WHERE created_at >= ? AND created_at < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { total: number })[]>(
+        `SELECT COUNT(*) AS total FROM saas_gps_clients WHERE created_at >= ? AND created_at < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { total: number })[]>(
+        `SELECT COUNT(*) AS total FROM saas_gps_final_routes WHERE created_at >= ? AND created_at < ?`,
+        [start, end]
+      )
+    ]);
+    return Number(loginRows[0]?.total ?? 0) + Number(clientRows[0]?.total ?? 0) + Number(routeRows[0]?.total ?? 0);
+  }
+
+  private async detailGps(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const [logins, clients, routes] = await Promise.all([
+      this.databaseService.query<(RowDataPacket & { when_raw: string; username: string; full_name: string | null; role: string })[]>(
+        `SELECT DATE_FORMAT(s.created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, u.username, u.full_name, u.role
+         FROM saas_gps_sessions s
+         JOIN saas_gps_users u ON u.id = s.user_id
+         WHERE s.created_at >= ? AND s.created_at < ?
+         ORDER BY s.created_at DESC`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { when_raw: string; name: string; address: string })[]>(
+        `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, name, address
+         FROM saas_gps_clients
+         WHERE created_at >= ? AND created_at < ?
+         ORDER BY created_at DESC`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { when_raw: string; day_label: string })[]>(
+        `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, day_label
+         FROM saas_gps_final_routes
+         WHERE created_at >= ? AND created_at < ?
+         ORDER BY created_at DESC`,
+        [start, end]
+      )
+    ]);
+
+    const items: Array<MovimientosDetailItem & { t: string }> = [];
+
+    for (const row of logins) {
+      const roleLabel = row.role === "admin" ? "Administrador" : "Repartidor";
+      items.push({
+        time: formatMontevideoTime(row.when_raw),
+        label: "Inicio de sesión",
+        detail: `${roleLabel} · ${row.full_name || row.username}`,
+        t: row.when_raw
+      });
+    }
+    for (const row of clients) {
+      items.push({ time: formatMontevideoTime(row.when_raw), label: "Alta de cliente", detail: `${row.name} · ${row.address}`, t: row.when_raw });
+    }
+    for (const row of routes) {
+      items.push({ time: formatMontevideoTime(row.when_raw), label: "Ruta final generada", detail: `Día ${row.day_label}`, t: row.when_raw });
+    }
+
+    return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ time, label, detail }) => ({ time, label, detail }));
   }
 
   // ---------------- Piloto / Distribuidora / QQ / Juez: misma tabla de
