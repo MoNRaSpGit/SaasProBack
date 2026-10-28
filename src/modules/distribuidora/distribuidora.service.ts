@@ -440,19 +440,19 @@ export class DistribuidoraService {
     return order;
   }
 
-  // Editar un pedido PENDIENTE (uno ya facturado no se toca: la boleta
-  // ya salio con ese numero). Se manda la lista completa de renglones.
-  // Los productos que ya estaban conservan el nombre y el precio con que
-  // se tomo el pedido; los que se agregan entran al precio de hoy.
+  // Editar un pedido, pendiente o ya facturado (28/10/2026, pedido
+  // explicito: "editar la boleta" desde el Historial, corrigiendo un
+  // error de carga de hace unos dias). Si ya tiene boleta, el numero y
+  // la fecha de facturacion NO cambian -- solo se recalculan los
+  // renglones y el total. Se manda la lista completa de renglones. Los
+  // productos que ya estaban conservan el nombre y el precio con que se
+  // tomo el pedido; los que se agregan entran al precio de hoy.
   async updateOrder(
     orderId: number,
     dto: UpdateDistribuidoraOrderDto,
     context?: DistribuidoraAuditContext
   ): Promise<DistribuidoraOrder> {
     const current = await this.getOrder(orderId);
-    if (current.status !== "pendiente") {
-      throw new ConflictException("Ese pedido ya tiene boleta: no se puede editar.");
-    }
 
     const quantities = new Map<number, number>();
     for (const item of dto.items) {
@@ -483,21 +483,20 @@ export class DistribuidoraService {
     });
     const total = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
 
-    // El "AND status" evita pisar un pedido que se facturo justo mientras
-    // se lo estaba editando.
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_distribuidora_orders SET items = ?, total = ?, note = ? WHERE id = ? AND status = 'pendiente'`,
+      `UPDATE saas_distribuidora_orders SET items = ?, total = ?, note = ? WHERE id = ?`,
       [JSON.stringify(items), total, cleanOptional(dto.note), orderId]
     );
     if (result.affectedRows === 0) {
-      throw new ConflictException("Ese pedido ya tiene boleta: no se puede editar.");
+      throw new NotFoundException("No se encontró el pedido.");
     }
 
     const updated = await this.getOrder(orderId);
+    const facturadoTag = current.status === "facturado" ? " [boleta ya facturada]" : "";
     await this.audit(
       "order_update",
       updated.id,
-      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": $${current.total} -> $${updated.total}`,
+      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": $${current.total} -> $${updated.total}${facturadoTag}`,
       context,
       current,
       updated
