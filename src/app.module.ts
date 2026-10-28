@@ -27,6 +27,7 @@ import { RetosModule } from "./modules/retos/retos.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
 import { TallerModule } from "./modules/taller/taller.module";
+import { WhatsappModule } from "./modules/whatsapp/whatsapp.module";
 import { AuthzModule } from "./shared/authz/authz.module";
 import { CloudinaryModule } from "./shared/cloudinary/cloudinary.module";
 import { DatabaseModule } from "./shared/database/database.module";
@@ -66,7 +67,8 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     GpsModule,
     AlquilerModule,
     TallerModule,
-    RetosModule
+    RetosModule,
+    WhatsappModule
   ],
   controllers: [HealthController],
   providers: []
