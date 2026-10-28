@@ -13,9 +13,11 @@ export class WhatsappController {
     const challenge = req.query["hub.challenge"];
 
     if (mode === "subscribe" && token === this.whatsappService.verifyToken) {
+      console.log("Webhook de WhatsApp verificado por Meta.");
       res.status(200).send(challenge);
       return;
     }
+    console.warn("Verificacion de webhook de WhatsApp fallida.", { mode, token });
     res.sendStatus(403);
   }
 
@@ -25,6 +27,8 @@ export class WhatsappController {
     res.sendStatus(200);
 
     const body = req.body;
+    console.log("Evento de WhatsApp recibido:", JSON.stringify(body));
+
     const value = body?.entry?.[0]?.changes?.[0]?.value;
     const message = value?.messages?.[0];
     if (!message) return;
