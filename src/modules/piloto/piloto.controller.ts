@@ -1,16 +1,18 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { CreatePilotoAccountEntryDto } from "./dto/create-piloto-account-entry.dto";
 import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
+import { SetPilotoFondoCartDto } from "./dto/set-piloto-fondo-cart.dto";
 import { SetPilotoProductImageDto } from "./dto/set-piloto-product-image.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
 import { UpdatePilotoProductDto } from "./dto/update-piloto-product.dto";
 import { diffFields, PilotoAuditService } from "./piloto-audit.service";
 import { PilotoClientsService } from "./piloto-clients.service";
+import { PilotoFondoService } from "./piloto-fondo.service";
 import { PilotoPriceEntriesService } from "./piloto-price-entries.service";
 import { PilotoPrintingService } from "./piloto-printing.service";
 import { PilotoService } from "./piloto.service";
@@ -26,7 +28,8 @@ export class PilotoController {
     private readonly printingService: PilotoPrintingService,
     private readonly priceEntriesService: PilotoPriceEntriesService,
     private readonly clientsService: PilotoClientsService,
-    private readonly ticketsService: PilotoTicketsService
+    private readonly ticketsService: PilotoTicketsService,
+    private readonly fondoService: PilotoFondoService
   ) {}
 
   @Get("products")
@@ -240,5 +243,22 @@ export class PilotoController {
   async settleAccount(@Param("clientId", ParseIntPipe) clientId: number) {
     await this.clientsService.settleAccount(clientId);
     return { ok: true };
+  }
+
+  // Venta del "fondo" (30/10/2026): la tablet del fondo escanea y guarda
+  // aca; el mostrador la ve y la toma a su caja.
+  @Get("fondo")
+  getFondoCart() {
+    return this.fondoService.getCart();
+  }
+
+  @Put("fondo")
+  setFondoCart(@Body() dto: SetPilotoFondoCartDto) {
+    return this.fondoService.setCart(dto.items, dto.sent ?? false);
+  }
+
+  @Post("fondo/take")
+  takeFondoCart() {
+    return this.fondoService.takeCart();
   }
 }

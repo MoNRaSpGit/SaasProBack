@@ -3,6 +3,7 @@ import { CloudinaryModule } from "../../shared/cloudinary/cloudinary.module";
 import { DatabaseModule } from "../../shared/database/database.module";
 import { PilotoAuditService } from "./piloto-audit.service";
 import { PilotoClientsService } from "./piloto-clients.service";
+import { PilotoFondoService } from "./piloto-fondo.service";
 import { PilotoController } from "./piloto.controller";
 import { PilotoPriceEntriesService } from "./piloto-price-entries.service";
 import { PilotoPrintingService } from "./piloto-printing.service";
@@ -12,6 +13,6 @@ import { PilotoTicketsService } from "./piloto-tickets.service";
 @Module({
   imports: [DatabaseModule, CloudinaryModule],
   controllers: [PilotoController],
-  providers: [PilotoService, PilotoAuditService, PilotoPrintingService, PilotoPriceEntriesService, PilotoClientsService, PilotoTicketsService]
+  providers: [PilotoService, PilotoAuditService, PilotoPrintingService, PilotoPriceEntriesService, PilotoClientsService, PilotoTicketsService, PilotoFondoService]
 })
 export class PilotoModule {}
