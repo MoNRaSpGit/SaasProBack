@@ -26,6 +26,7 @@ import { UpdateQqClientDto } from "./dto/update-qq-client.dto";
 import { UpdateQqDiscountConfigDto } from "./dto/update-qq-discount-config.dto";
 import { UpdateQqProductDto } from "./dto/update-qq-product.dto";
 import { WhatsAppCheckoutDto } from "./dto/whatsapp-checkout-qq.dto";
+import { TrackQqEventDto } from "./dto/track-qq-event.dto";
 import { diffFields, QqAuditService } from "./qq-audit.service";
 import { QqAuthService } from "./qq-auth.service";
 import { QqCarouselService } from "./qq-carousel.service";
@@ -78,6 +79,29 @@ function isCheckoutReportAllowed(ip: string): boolean {
       if (timestamps.every((timestamp) => now - timestamp >= CHECKOUT_REPORT_WINDOW_MS)) {
         checkoutReportsByIp.delete(key);
       }
+    }
+  }
+  return true;
+}
+
+// Tope aparte para los eventos de visitantes (visita, tarjeta abierta,
+// carrito...): son muchos mas por persona que los de "Comprar por WhatsApp".
+const TRACK_LIMIT = 300;
+const TRACK_WINDOW_MS = 60 * 60 * 1000;
+const trackEventsByIp = new Map<string, number[]>();
+
+function isTrackAllowed(ip: string): boolean {
+  const now = Date.now();
+  const recent = (trackEventsByIp.get(ip) ?? []).filter((timestamp) => now - timestamp < TRACK_WINDOW_MS);
+  if (recent.length >= TRACK_LIMIT) {
+    trackEventsByIp.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  trackEventsByIp.set(ip, recent);
+  if (trackEventsByIp.size > 2000) {
+    for (const [key, timestamps] of trackEventsByIp) {
+      if (timestamps.every((timestamp) => now - timestamp >= TRACK_WINDOW_MS)) trackEventsByIp.delete(key);
     }
   }
   return true;
@@ -318,6 +342,25 @@ export class QqController {
         entityType: "cart",
         entityLabel: `${itemCount} suscripcion(es) por $${dto.total}/mes`,
         details: { total: dto.total, items: dto.items }
+      });
+    }
+    return { ok: true };
+  }
+
+  // Visitantes (30/10/2026, pedido explicito): "contar las visitas... si es
+  // el administrador, ni lo cuentes" (el frontend no manda nada si hay un
+  // admin logueado) + el recorrido de cada visita. Publico y siempre 200,
+  // igual que el de WhatsApp: nunca puede molestar al visitante.
+  @HttpCode(HttpStatus.OK)
+  @Post("events/track")
+  async trackVisitorEvent(@Req() req: Request, @Body() dto: TrackQqEventDto) {
+    if (isTrackAllowed(getClientIp(req))) {
+      await this.auditService.record({
+        action: dto.event,
+        entityType: "visitor",
+        entityId: dto.visitorId,
+        entityLabel: dto.label ?? null,
+        details: dto.productId ? { productId: dto.productId } : null
       });
     }
     return { ok: true };

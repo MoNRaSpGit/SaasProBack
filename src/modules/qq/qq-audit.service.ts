@@ -11,9 +11,15 @@ export type QqAuditAction =
   | "register"
   | "login"
   | "login_failed"
-  | "checkout_whatsapp";
+  | "checkout_whatsapp"
+  // Visitantes (30/10/2026): contador de visitas y recorrido, ver TrackQqEventDto.
+  | "visit"
+  | "view_product"
+  | "add_to_cart"
+  | "open_cart"
+  | "whatsapp_click";
 
-export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config";
+export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config" | "visitor";
 
 export type QqAuditEvent = {
   action: QqAuditAction;
