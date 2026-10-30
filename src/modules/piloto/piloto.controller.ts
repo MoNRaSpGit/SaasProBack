@@ -5,7 +5,7 @@ import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
-import { SetPilotoFondoCartDto } from "./dto/set-piloto-fondo-cart.dto";
+import { SetPilotoFondoCartDto, TakePilotoFondoDto } from "./dto/set-piloto-fondo-cart.dto";
 import { SetPilotoProductImageDto } from "./dto/set-piloto-product-image.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
@@ -248,17 +248,17 @@ export class PilotoController {
   // Venta del "fondo" (30/10/2026): la tablet del fondo escanea y guarda
   // aca; el mostrador la ve y la toma a su caja.
   @Get("fondo")
-  getFondoCart() {
-    return this.fondoService.getCart();
+  getFondoState() {
+    return this.fondoService.getState();
   }
 
   @Put("fondo")
   setFondoCart(@Body() dto: SetPilotoFondoCartDto) {
-    return this.fondoService.setCart(dto.items, dto.sent ?? false);
+    return dto.sent ? this.fondoService.sendOrder(dto.items) : this.fondoService.saveDraft(dto.items);
   }
 
   @Post("fondo/take")
-  takeFondoCart() {
-    return this.fondoService.takeCart();
+  takeFondoOrder(@Body() dto: TakePilotoFondoDto) {
+    return this.fondoService.take(dto.orderId);
   }
 }

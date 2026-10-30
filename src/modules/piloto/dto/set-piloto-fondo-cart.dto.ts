@@ -28,8 +28,16 @@ export class SetPilotoFondoCartDto {
   @Type(() => PilotoFondoItemDto)
   items!: PilotoFondoItemDto[];
 
-  // true = la tablet apreto "Enviar al mostrador" (el mostrador recibe aviso).
+  // true = la tablet apreto "Enviar al mostrador": se arma un pedido nuevo.
   @IsOptional()
   @IsBoolean()
   sent?: boolean;
+}
+
+// Tomar un pedido del fondo. Sin orderId = lo que la tablet esta pasando.
+export class TakePilotoFondoDto {
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  orderId?: number;
 }
