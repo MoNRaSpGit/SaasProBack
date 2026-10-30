@@ -7,6 +7,7 @@
 // Cada "visitante" es una apertura de la pagina (id al azar que vive solo
 // mientras la pagina esta abierta, sin cookies -- ver frontend-qq/qq.track.ts),
 // asi que recargar cuenta como otra visita. El administrador no se cuenta.
+// Los ids que empiezan con "test-" son pruebas nuestras y se ignoran.
 // Fechas: occurred_at esta en UTC; se pasa a Montevideo (UTC-3) en el SQL y
 // los limites se mandan como texto (mismo criterio que check-qq-activity.js).
 
@@ -47,7 +48,7 @@ async function main() {
   const [rows] = await connection.query(
     `SELECT DATE_FORMAT(DATE_SUB(occurred_at, INTERVAL 3 HOUR), '%Y-%m-%d %H:%i') AS at, action, entity_id AS visitor, entity_label AS label
      FROM saas_qq_audit_log
-     WHERE entity_type = 'visitor' AND occurred_at >= ? AND occurred_at < ?
+     WHERE entity_type = 'visitor' AND entity_id NOT LIKE 'test-%' AND occurred_at >= ? AND occurred_at < ?
      ORDER BY occurred_at`,
     [fromUtc, toUtc]
   );
