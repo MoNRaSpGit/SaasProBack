@@ -29,7 +29,10 @@ type SessionRow = RowDataPacket & {
 // Mismo esquema que gym-auth.service.ts: sesiones por token opaco (no
 // JWT). No hay registro publico -- los usuarios se crean con
 // scripts/create-distribuidora-user.js.
-const SESSION_TTL_DAYS = 30;
+// 02/11/2026, pedido explicito: la sesion dura 24 horas (antes 30 dias),
+// se cierre o no la app -- si queda abierta todo el dia, a las 24hs
+// igual pide login de nuevo.
+const SESSION_TTL_HOURS = 24;
 
 @Injectable()
 export class DistribuidoraAuthService {
@@ -47,7 +50,7 @@ export class DistribuidoraAuthService {
     }
 
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 60 * 60 * 1000);
     await this.databaseService.execute(`INSERT INTO saas_distribuidora_sessions (user_id, token, expires_at) VALUES (?, ?, ?)`, [
       row.id,
       token,
