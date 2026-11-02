@@ -82,6 +82,11 @@ const SQL_AUDIT_TABLES: Record<
     table: "saas_piloto_audit_log",
     timeCol: "occurred_at",
     columns: "action, entity_type, entity_id, entity_label, details",
+    actionLabels: {
+      create: "Alta",
+      update: "Edición",
+      sale: "Venta"
+    },
     buildDetail: (row, service) =>
       row.entity_label || service.summarizeJsonDetails(row.details) || `${row.entity_type || ""} #${row.entity_id ?? ""}`
   },
@@ -89,17 +94,52 @@ const SQL_AUDIT_TABLES: Record<
     table: "saas_distribuidora_audit_log",
     timeCol: "occurred_at",
     columns: "action, entity_id, summary",
+    actionLabels: {
+      order_create: "Alta de pedido",
+      order_update: "Edición de pedido",
+      order_delete: "Borrado de pedido",
+      order_invoice: "Facturación",
+      product_create: "Alta de producto",
+      product_update: "Edición de producto",
+      client_create: "Alta de cliente",
+      client_update: "Edición de cliente"
+    },
     buildDetail: (row) => row.summary || `#${row.entity_id ?? ""}`
   },
   qq: {
     table: "saas_qq_audit_log",
     timeCol: "occurred_at",
     columns: "action, entity_type, entity_id, entity_label, actor_email, actor_role, details",
-    buildDetail: (row, service) =>
-      row.entity_label ||
-      service.summarizeJsonDetails(row.details) ||
-      row.actor_email ||
-      `${row.entity_type || ""} #${row.entity_id ?? ""}`
+    // visit/view_product/add_to_cart/open_cart/whatsapp_click son de
+    // visitantes anonimos del catalogo (ver qq-audit.service.ts) -- nunca
+    // se les pone nombre real, y el detalle nunca cae en "visitor #<id
+    // al azar>" (pedido explicito 01/11/2026: nada que parezca un dato
+    // tecnico del visitante, como una IP).
+    actionLabels: {
+      create: "Alta de producto",
+      update: "Edición de producto",
+      delete: "Borrado de producto",
+      reorder: "Reorden",
+      upload_image: "Foto subida",
+      register: "Registro de cliente",
+      login: "Inicio de sesión",
+      login_failed: "Intento fallido",
+      checkout_whatsapp: "Compra por WhatsApp",
+      visit: "Visitante · entró",
+      view_product: "Visitante · abrió un producto",
+      add_to_cart: "Visitante · agregó al carrito",
+      open_cart: "Visitante · abrió el carrito",
+      whatsapp_click: "Visitante · fue a WhatsApp"
+    },
+    buildDetail: (row, service) => {
+      if (row.entity_type === "visitor") return row.entity_label || "";
+      return (
+        row.entity_label ||
+        service.summarizeJsonDetails(row.details) ||
+        row.actor_email ||
+        `${row.entity_type || ""} #${row.entity_id ?? ""}`
+      );
+    }
   },
   juez: {
     table: "saas_juez_audit_log",
