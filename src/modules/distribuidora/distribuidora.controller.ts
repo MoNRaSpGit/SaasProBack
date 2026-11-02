@@ -18,6 +18,7 @@ import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dt
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
 import { LoginDistribuidoraUserDto } from "./dto/login-distribuidora-user.dto";
 import { UpdateDistribuidoraClientDto } from "./dto/update-distribuidora-client.dto";
+import { UpdateDistribuidoraCommissionDto } from "./dto/update-distribuidora-commission.dto";
 import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
 import { DistribuidoraAuthService, extractBearerToken } from "./distribuidora-auth.service";
@@ -64,6 +65,27 @@ export class DistribuidoraController {
     const token = extractBearerToken(authorization);
     if (token) await this.distribuidoraAuthService.logout(token);
     return { ok: true };
+  }
+
+  // Pestaña Comisión del admin: cuanto se le paga a cada vendedor. Las
+  // ventas en si se calculan en el frontend con /orders (ya trae
+  // soldBy); esto es solo la lista de usuarios y su porcentaje.
+  @Get("users")
+  async listUsers(@Headers("authorization") authorization: string | undefined) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
+    return this.distribuidoraAuthService.listUsers();
+  }
+
+  @Patch("users/:id/commission")
+  async updateCommission(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) userId: number,
+    @Body() dto: UpdateDistribuidoraCommissionDto
+  ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
+    return this.distribuidoraAuthService.updateCommissionPercent(userId, dto.percent);
   }
 
   @Get("clients")

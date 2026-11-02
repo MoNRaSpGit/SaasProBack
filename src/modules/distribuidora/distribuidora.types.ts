@@ -73,3 +73,14 @@ export type DistribuidoraOrder = {
 
 export const DISTRIBUIDORA_ROLES = ["admin", "vendedor"] as const;
 export type DistribuidoraRole = (typeof DISTRIBUIDORA_ROLES)[number];
+
+// Para la pestaña Comisión del admin (02/11/2026, pedido explicito):
+// que porcentaje de lo que vende cada vendedor se le paga. Editable por
+// admin, un valor por usuario.
+export type DistribuidoraUserSummary = {
+  id: number;
+  username: string;
+  fullName: string | null;
+  role: DistribuidoraRole;
+  commissionPercent: number;
+};

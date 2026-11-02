@@ -1,10 +1,10 @@
-import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { compare } from "bcryptjs";
 import { randomBytes } from "node:crypto";
-import { RowDataPacket } from "mysql2";
+import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { LoginDistribuidoraUserDto } from "./dto/login-distribuidora-user.dto";
-import { DistribuidoraRole } from "./distribuidora.types";
+import { DistribuidoraRole, DistribuidoraUserSummary } from "./distribuidora.types";
 
 export type DistribuidoraUser = {
   id: number;
@@ -19,6 +19,14 @@ type UserRow = RowDataPacket & {
   password_hash: string;
   full_name: string | null;
   role: DistribuidoraRole;
+};
+
+type UserSummaryRow = RowDataPacket & {
+  id: number;
+  username: string;
+  full_name: string | null;
+  role: DistribuidoraRole;
+  commission_percent: string;
 };
 
 type SessionRow = RowDataPacket & {
@@ -76,6 +84,43 @@ export class DistribuidoraAuthService {
     if (user.role !== "admin") {
       throw new UnauthorizedException("Esa acción es solo para administradores.");
     }
+  }
+
+  // Para la pestaña Comisión del admin: cuanto se le paga a cada
+  // vendedor segun lo que vendio.
+  async listUsers(): Promise<DistribuidoraUserSummary[]> {
+    const rows = await this.databaseService.query<UserSummaryRow[]>(
+      `SELECT id, username, full_name, role, commission_percent FROM saas_distribuidora_users ORDER BY role DESC, full_name ASC`
+    );
+    return rows.map((row) => this.mapUserSummary(row));
+  }
+
+  async updateCommissionPercent(userId: number, percent: number): Promise<DistribuidoraUserSummary> {
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
+      throw new BadRequestException("El porcentaje tiene que estar entre 0 y 100.");
+    }
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_distribuidora_users SET commission_percent = ? WHERE id = ?`,
+      [percent, userId]
+    );
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("No existe ese usuario.");
+    }
+    const rows = await this.databaseService.query<UserSummaryRow[]>(
+      `SELECT id, username, full_name, role, commission_percent FROM saas_distribuidora_users WHERE id = ?`,
+      [userId]
+    );
+    return this.mapUserSummary(rows[0]);
+  }
+
+  private mapUserSummary(row: UserSummaryRow): DistribuidoraUserSummary {
+    return {
+      id: row.id,
+      username: row.username,
+      fullName: row.full_name,
+      role: row.role,
+      commissionPercent: Number(row.commission_percent)
+    };
   }
 
   private async getUserForToken(token: string): Promise<DistribuidoraUser | null> {
