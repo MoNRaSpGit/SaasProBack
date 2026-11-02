@@ -39,6 +39,7 @@ export const AUDIT_ACTIONS = [
   "order_invoice",
   "product_create",
   "product_update",
+  "product_delete",
   "client_create",
   "client_update"
 ] as const;
@@ -61,8 +62,14 @@ export type DistribuidoraOrder = {
   items: DistribuidoraOrderItem[];
   total: number;
   note: string | null;
+  // Nombre de quien tomo el pedido (02/11/2026, pedido explicito). Foto
+  // del nombre al momento de la venta, igual que clientName/clientRut.
+  soldBy: string | null;
   status: DistribuidoraOrderStatus;
   invoiceNumber: number | null;
   invoicedAt: string | null;
   createdAt: string;
 };
+
+export const DISTRIBUIDORA_ROLES = ["admin", "vendedor"] as const;
+export type DistribuidoraRole = (typeof DISTRIBUIDORA_ROLES)[number];

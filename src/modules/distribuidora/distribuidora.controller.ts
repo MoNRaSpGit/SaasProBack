@@ -6,6 +6,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -15,15 +16,17 @@ import {
 import { CreateDistribuidoraClientDto } from "./dto/create-distribuidora-client.dto";
 import { CreateDistribuidoraOrderDto } from "./dto/create-distribuidora-order.dto";
 import { CreateDistribuidoraProductDto } from "./dto/create-distribuidora-product.dto";
+import { LoginDistribuidoraUserDto } from "./dto/login-distribuidora-user.dto";
 import { UpdateDistribuidoraClientDto } from "./dto/update-distribuidora-client.dto";
 import { UpdateDistribuidoraOrderDto } from "./dto/update-distribuidora-order.dto";
 import { UpdateDistribuidoraProductDto } from "./dto/update-distribuidora-product.dto";
+import { DistribuidoraAuthService, extractBearerToken } from "./distribuidora-auth.service";
 import { DistribuidoraService } from "./distribuidora.service";
 import { DistribuidoraAuditContext, DistribuidoraOrderStatus, ORDER_STATUSES } from "./distribuidora.types";
 
 // Para la auditoria interna: desde que dispositivo se hizo cada cambio.
-// El id lo genera el navegador (no hay login) y viaja en X-Device-Id solo
-// en las operaciones que modifican algo.
+// El id lo genera el navegador y viaja en X-Device-Id solo en las
+// operaciones que modifican algo.
 function auditContext(deviceId?: string, userAgent?: string): DistribuidoraAuditContext {
   return {
     deviceId: deviceId && /^[A-Za-z0-9-]{8,40}$/.test(deviceId) ? deviceId : undefined,
@@ -31,65 +34,120 @@ function auditContext(deviceId?: string, userAgent?: string): DistribuidoraAudit
   };
 }
 
-// Sin login por ahora (08/10/2026, pedido explicito: "capaz que hacemos
-// un usuario solo, despues vemos como dividirlo"). El vendedor de la
-// calle y la oficina usan los mismos endpoints -- lo que cambia es la
-// pantalla del frontend. Cuando se separen los usuarios, los de oficina
-// (facturar, altas) son los que hay que proteger.
+// Login real desde 02/11/2026 (antes "sin login por ahora"): todo
+// endpoint que no sea de auth exige una sesion valida. Facturar, y dar
+// de alta/editar/eliminar productos y clientes, son solo para admin
+// (Matias); un vendedor (Valentina) puede armar y mandar pedidos, ver
+// pendientes/ventas y el catalogo, pero no facturar ni tocar el catalogo.
 @Controller("distribuidora")
 export class DistribuidoraController {
-  constructor(private readonly distribuidoraService: DistribuidoraService) {}
+  constructor(
+    private readonly distribuidoraService: DistribuidoraService,
+    private readonly distribuidoraAuthService: DistribuidoraAuthService
+  ) {}
+
+  @HttpCode(HttpStatus.OK)
+  @Post("auth/login")
+  login(@Body() dto: LoginDistribuidoraUserDto) {
+    return this.distribuidoraAuthService.login(dto);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("auth/me")
+  async me(@Headers("authorization") authorization: string | undefined) {
+    return { user: await this.distribuidoraAuthService.requireUser(authorization) };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("auth/logout")
+  async logout(@Headers("authorization") authorization: string | undefined) {
+    const token = extractBearerToken(authorization);
+    if (token) await this.distribuidoraAuthService.logout(token);
+    return { ok: true };
+  }
 
   @Get("clients")
-  listClients(@Query("q") search?: string) {
+  async listClients(@Headers("authorization") authorization: string | undefined, @Query("q") search?: string) {
+    await this.distribuidoraAuthService.requireUser(authorization);
     return this.distribuidoraService.listClients(search);
   }
 
   @Post("clients")
-  createClient(
+  async createClient(
+    @Headers("authorization") authorization: string | undefined,
     @Body() dto: CreateDistribuidoraClientDto,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
     return this.distribuidoraService.createClient(dto, auditContext(deviceId, userAgent));
   }
 
   @Patch("clients/:id")
-  updateClient(
+  async updateClient(
+    @Headers("authorization") authorization: string | undefined,
     @Param("id", ParseIntPipe) id: number,
     @Body() dto: UpdateDistribuidoraClientDto,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
     return this.distribuidoraService.updateClient(id, dto, auditContext(deviceId, userAgent));
   }
 
   @Get("products")
-  listProducts(@Query("q") search?: string, @Query("all") all?: string) {
+  async listProducts(
+    @Headers("authorization") authorization: string | undefined,
+    @Query("q") search?: string,
+    @Query("all") all?: string
+  ) {
+    await this.distribuidoraAuthService.requireUser(authorization);
     return this.distribuidoraService.listProducts(search, all === "1");
   }
 
   @Post("products")
-  createProduct(
+  async createProduct(
+    @Headers("authorization") authorization: string | undefined,
     @Body() dto: CreateDistribuidoraProductDto,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
     return this.distribuidoraService.createProduct(dto, auditContext(deviceId, userAgent));
   }
 
   @Patch("products/:id")
-  updateProduct(
+  async updateProduct(
+    @Headers("authorization") authorization: string | undefined,
     @Param("id", ParseIntPipe) productId: number,
     @Body() dto: UpdateDistribuidoraProductDto,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
     return this.distribuidoraService.updateProduct(productId, dto, auditContext(deviceId, userAgent));
   }
 
+  @Delete("products/:id")
+  @HttpCode(204)
+  async deleteProduct(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) productId: number,
+    @Headers("x-device-id") deviceId?: string,
+    @Headers("user-agent") userAgent?: string
+  ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
+    await this.distribuidoraService.deleteProduct(productId, auditContext(deviceId, userAgent));
+  }
+
   @Get("orders")
-  listOrders(@Query("status") status?: string) {
+  async listOrders(@Headers("authorization") authorization: string | undefined, @Query("status") status?: string) {
+    await this.distribuidoraAuthService.requireUser(authorization);
     if (status && !(ORDER_STATUSES as readonly string[]).includes(status)) {
       throw new BadRequestException("status tiene que ser pendiente o facturado");
     }
@@ -97,47 +155,57 @@ export class DistribuidoraController {
   }
 
   @Get("orders/:id")
-  getOrder(@Param("id", ParseIntPipe) orderId: number) {
+  async getOrder(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) orderId: number) {
+    await this.distribuidoraAuthService.requireUser(authorization);
     return this.distribuidoraService.getOrder(orderId);
   }
 
   @Post("orders")
-  createOrder(
+  async createOrder(
+    @Headers("authorization") authorization: string | undefined,
     @Body() dto: CreateDistribuidoraOrderDto,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
-    return this.distribuidoraService.createOrder(dto, auditContext(deviceId, userAgent));
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    return this.distribuidoraService.createOrder(dto, user.fullName ?? user.username, auditContext(deviceId, userAgent));
   }
 
   @Patch("orders/:id")
-  updateOrder(
+  async updateOrder(
+    @Headers("authorization") authorization: string | undefined,
     @Param("id", ParseIntPipe) orderId: number,
     @Body() dto: UpdateDistribuidoraOrderDto,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    await this.distribuidoraAuthService.requireUser(authorization);
     return this.distribuidoraService.updateOrder(orderId, dto, auditContext(deviceId, userAgent));
   }
 
   @Delete("orders/:id")
   @HttpCode(204)
   async deleteOrder(
+    @Headers("authorization") authorization: string | undefined,
     @Param("id", ParseIntPipe) orderId: number,
     @Query("boleta") boleta?: string,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    await this.distribuidoraAuthService.requireUser(authorization);
     // ?boleta=1 = "se que tiene boleta, borrala igual".
     await this.distribuidoraService.deleteOrder(orderId, boleta === "1", auditContext(deviceId, userAgent));
   }
 
   @Patch("orders/:id/invoice")
-  invoiceOrder(
+  async invoiceOrder(
+    @Headers("authorization") authorization: string | undefined,
     @Param("id", ParseIntPipe) orderId: number,
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    this.distribuidoraAuthService.requireAdmin(user);
     return this.distribuidoraService.invoiceOrder(orderId, auditContext(deviceId, userAgent));
   }
 }

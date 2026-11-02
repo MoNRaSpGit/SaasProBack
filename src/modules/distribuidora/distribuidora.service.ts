@@ -45,6 +45,7 @@ type OrderRow = RowDataPacket & {
   items: string | DistribuidoraOrderItem[];
   total: string;
   note: string | null;
+  sold_by: string | null;
   status: DistribuidoraOrderStatus;
   invoice_number: number | null;
   invoiced_at: string | null;
@@ -56,7 +57,7 @@ const CLIENT_COLUMNS = "id, code, name, contact_name, rut, address, phone";
 // Las fechas se guardan en UTC (UTC_TIMESTAMP) y se traen con DATE_FORMAT
 // ya terminadas en "Z" -- mysql2 NO debe construir el Date (bug de +3hs
 // encontrado el 18/09/2026, ver scripts/check-oriol-activity.js).
-const ORDER_COLUMNS = `id, client_id, client_name, client_rut, client_address, items, total, note, status, invoice_number,
+const ORDER_COLUMNS = `id, client_id, client_name, client_rut, client_address, items, total, note, sold_by, status, invoice_number,
   DATE_FORMAT(invoiced_at, '%Y-%m-%dT%H:%i:%sZ') AS invoiced_at,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%sZ') AS created_at`;
 
@@ -114,6 +115,7 @@ function mapOrder(row: OrderRow): DistribuidoraOrder {
     items: typeof row.items === "string" ? (JSON.parse(row.items) as DistribuidoraOrderItem[]) : row.items,
     total: Number(row.total),
     note: row.note,
+    soldBy: row.sold_by,
     status: row.status,
     invoiceNumber: row.invoice_number,
     invoicedAt: row.invoiced_at,
@@ -362,6 +364,23 @@ export class DistribuidoraService {
     return after;
   }
 
+  // Eliminar de verdad, a diferencia de "dar de baja" (02/11/2026, pedido
+  // explicito: boton de eliminar con confirmacion, dejando apretado el
+  // producto). Es seguro: los pedidos guardan su propia foto de nombre y
+  // precio (name/price en items), no un FK al producto.
+  async deleteProduct(productId: number, context?: DistribuidoraAuditContext): Promise<void> {
+    const rows = await this.databaseService.query<ProductRow[]>(`SELECT ${PRODUCT_COLUMNS} FROM saas_distribuidora_products WHERE id = ?`, [
+      productId
+    ]);
+    if (!rows[0]) {
+      throw new NotFoundException("No existe ese producto.");
+    }
+    const product = mapProduct(rows[0]);
+
+    await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_distribuidora_products WHERE id = ?`, [productId]);
+    await this.audit("product_delete", product.id, `Se eliminó el producto "${product.name}" ($${product.price})`, context, product, null);
+  }
+
   async listOrders(status?: DistribuidoraOrderStatus): Promise<DistribuidoraOrder[]> {
     const rows = status
       ? await this.databaseService.query<OrderRow[]>(
@@ -387,7 +406,7 @@ export class DistribuidoraService {
     return mapOrder(rows[0]);
   }
 
-  async createOrder(dto: CreateDistribuidoraOrderDto, context?: DistribuidoraAuditContext): Promise<DistribuidoraOrder> {
+  async createOrder(dto: CreateDistribuidoraOrderDto, soldBy: string | null, context?: DistribuidoraAuditContext): Promise<DistribuidoraOrder> {
     const clients = await this.databaseService.query<ClientRow[]>(
       `SELECT ${CLIENT_COLUMNS} FROM saas_distribuidora_clients WHERE id = ?`,
       [dto.clientId]
@@ -423,9 +442,9 @@ export class DistribuidoraService {
     const total = roundMoney(items.reduce((sum, item) => sum + item.subtotal, 0));
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_distribuidora_orders (client_id, client_name, client_rut, client_address, items, total, note, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
-      [client.id, client.name, client.rut, client.address, JSON.stringify(items), total, cleanOptional(dto.note)]
+      `INSERT INTO saas_distribuidora_orders (client_id, client_name, client_rut, client_address, items, total, note, sold_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP())`,
+      [client.id, client.name, client.rut, client.address, JSON.stringify(items), total, cleanOptional(dto.note), cleanOptional(soldBy ?? undefined)]
     );
 
     const order = await this.getOrder(result.insertId);
