@@ -201,8 +201,8 @@ export class DistribuidoraController {
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
-    await this.distribuidoraAuthService.requireUser(authorization);
-    return this.distribuidoraService.updateOrder(orderId, dto, auditContext(deviceId, userAgent));
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    return this.distribuidoraService.updateOrder(orderId, dto, user.fullName ?? user.username, auditContext(deviceId, userAgent));
   }
 
   @Delete("orders/:id")
@@ -214,9 +214,9 @@ export class DistribuidoraController {
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
-    await this.distribuidoraAuthService.requireUser(authorization);
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
     // ?boleta=1 = "se que tiene boleta, borrala igual".
-    await this.distribuidoraService.deleteOrder(orderId, boleta === "1", auditContext(deviceId, userAgent));
+    await this.distribuidoraService.deleteOrder(orderId, boleta === "1", user.fullName ?? user.username, auditContext(deviceId, userAgent));
   }
 
   @Patch("orders/:id/invoice")
@@ -228,6 +228,6 @@ export class DistribuidoraController {
   ) {
     const user = await this.distribuidoraAuthService.requireUser(authorization);
     this.distribuidoraAuthService.requireAdmin(user);
-    return this.distribuidoraService.invoiceOrder(orderId, auditContext(deviceId, userAgent));
+    return this.distribuidoraService.invoiceOrder(orderId, user.fullName ?? user.username, auditContext(deviceId, userAgent));
   }
 }

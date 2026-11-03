@@ -451,7 +451,7 @@ export class DistribuidoraService {
     await this.audit(
       "order_create",
       order.id,
-      `Pedido N.º ${order.id} de "${order.clientName}" por $${order.total} (${order.items.length} producto(s))`,
+      `Pedido N.º ${order.id} de "${order.clientName}" por $${order.total} (${order.items.length} producto(s)) · ${soldBy ?? "sin vendedor"}`,
       context,
       null,
       order
@@ -469,6 +469,7 @@ export class DistribuidoraService {
   async updateOrder(
     orderId: number,
     dto: UpdateDistribuidoraOrderDto,
+    actorName: string | null,
     context?: DistribuidoraAuditContext
   ): Promise<DistribuidoraOrder> {
     const current = await this.getOrder(orderId);
@@ -515,7 +516,7 @@ export class DistribuidoraService {
     await this.audit(
       "order_update",
       updated.id,
-      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": $${current.total} -> $${updated.total}${facturadoTag}`,
+      `Edicion del pedido N.º ${updated.id} de "${updated.clientName}": $${current.total} -> $${updated.total}${facturadoTag} · ${actorName ?? "sin vendedor"}`,
       context,
       current,
       updated
@@ -531,7 +532,12 @@ export class DistribuidoraService {
   // OJO numeracion: el proximo numero de boleta es el maximo + 1, asi que
   // borrar la ULTIMA boleta hace que su numero se vuelva a usar, y borrar
   // una del medio deja un hueco.
-  async deleteOrder(orderId: number, allowInvoiced = false, context?: DistribuidoraAuditContext): Promise<void> {
+  async deleteOrder(
+    orderId: number,
+    allowInvoiced = false,
+    actorName: string | null = null,
+    context?: DistribuidoraAuditContext
+  ): Promise<void> {
     const current = await this.getOrder(orderId);
     if (current.status !== "pendiente" && !allowInvoiced) {
       throw new ConflictException("Ese pedido ya tiene boleta. Para eliminarlo, dejalo apretado en Facturados.");
@@ -550,13 +556,20 @@ export class DistribuidoraService {
       current.invoiceNumber !== null
         ? `BOLETA ${formatInvoice(current.invoiceNumber)} (pedido N.º ${current.id})`
         : `pedido N.º ${current.id}`;
-    await this.audit("order_delete", current.id, `Se elimino ${label} de "${current.clientName}" por $${current.total}`, context, current, null);
+    await this.audit(
+      "order_delete",
+      current.id,
+      `Se elimino ${label} de "${current.clientName}" por $${current.total} · ${actorName ?? "sin vendedor"}`,
+      context,
+      current,
+      null
+    );
   }
 
   // La oficina "toma" el pedido y lo pasa a boleta: se le asigna el
   // numero siguiente. Volver a facturar un pedido ya facturado no cambia
   // nada (devuelve la misma boleta), asi un doble click no gasta numeros.
-  async invoiceOrder(orderId: number, context?: DistribuidoraAuditContext): Promise<DistribuidoraOrder> {
+  async invoiceOrder(orderId: number, actorName: string | null, context?: DistribuidoraAuditContext): Promise<DistribuidoraOrder> {
     let invoicedNow = false;
     await this.databaseService.withTransaction(async (connection) => {
       const [rows] = await connection.query<OrderRow[]>(
@@ -591,7 +604,7 @@ export class DistribuidoraService {
       await this.audit(
         "order_invoice",
         order.id,
-        `Boleta ${formatInvoice(order.invoiceNumber)} generada para el pedido N.º ${order.id} de "${order.clientName}" por $${order.total}`,
+        `Boleta ${formatInvoice(order.invoiceNumber)} generada para el pedido N.º ${order.id} de "${order.clientName}" por $${order.total} · ${actorName ?? "sin vendedor"}`,
         context,
         null,
         order
