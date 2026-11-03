@@ -41,3 +41,25 @@ export class TakePilotoFondoDto {
   @Min(2)
   orderId?: number;
 }
+
+// Sincronizar lo que ya se le entrego a la caja del borrador "en vivo"
+// (03/11/2026, pedido explicito). claim = true solo en el primer click de
+// "Tomar y seguir recibiendo" -- las sincronizaciones de ahi en mas no lo
+// mandan.
+export class SyncPilotoFondoDraftDto {
+  @IsOptional()
+  @IsBoolean()
+  claim?: boolean;
+}
+
+export class ReportPilotoFondoUnknownBarcodeDto {
+  @IsString()
+  @MaxLength(64)
+  barcode!: string;
+}
+
+export class ResolvePilotoFondoUnknownBarcodeDto {
+  @IsString()
+  @MaxLength(64)
+  barcode!: string;
+}

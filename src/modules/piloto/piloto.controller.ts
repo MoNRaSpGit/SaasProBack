@@ -5,7 +5,13 @@ import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
-import { SetPilotoFondoCartDto, TakePilotoFondoDto } from "./dto/set-piloto-fondo-cart.dto";
+import {
+  ReportPilotoFondoUnknownBarcodeDto,
+  ResolvePilotoFondoUnknownBarcodeDto,
+  SetPilotoFondoCartDto,
+  SyncPilotoFondoDraftDto,
+  TakePilotoFondoDto
+} from "./dto/set-piloto-fondo-cart.dto";
 import { SetPilotoProductImageDto } from "./dto/set-piloto-product-image.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
@@ -260,5 +266,24 @@ export class PilotoController {
   @Post("fondo/take")
   takeFondoOrder(@Body() dto: TakePilotoFondoDto) {
     return this.fondoService.take(dto.orderId);
+  }
+
+  // "Tomar y seguir recibiendo" (03/11/2026): primer llamado con claim=true
+  // reclama el borrador y entrega lo que haya hasta el momento; de ahi en
+  // mas, el mostrador sincroniza cada pocos segundos (claim ausente/false)
+  // y solo recibe lo nuevo.
+  @Post("fondo/sync")
+  syncFondoDraft(@Body() dto: SyncPilotoFondoDraftDto) {
+    return this.fondoService.syncDraft(Boolean(dto.claim));
+  }
+
+  @Post("fondo/unknown-barcode")
+  reportFondoUnknownBarcode(@Body() dto: ReportPilotoFondoUnknownBarcodeDto) {
+    return this.fondoService.reportUnknownBarcode(dto.barcode);
+  }
+
+  @Post("fondo/unknown-barcode/resolve")
+  resolveFondoUnknownBarcode(@Body() dto: ResolvePilotoFondoUnknownBarcodeDto) {
+    return this.fondoService.resolveUnknownBarcode(dto.barcode);
   }
 }
