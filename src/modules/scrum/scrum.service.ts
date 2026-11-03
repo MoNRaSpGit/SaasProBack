@@ -128,13 +128,9 @@ function normalizeTaskDuration(durationUnit?: "days" | "weeks" | "months", durat
 
 @Injectable()
 export class ScrumService {
-  private ensureTablesPromise: Promise<void> | null = null;
-
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getWorkspace() {
-    await this.ensureTables();
-
     const [tasks, clients, debts] = await Promise.all([this.listTasks(), this.listClients(), this.listDebts()]);
 
     return {
@@ -146,7 +142,6 @@ export class ScrumService {
   }
 
   async createTask(dto: CreateScrumTaskDto) {
-    await this.ensureTables();
     const isDailyTask = dto.difficulty === "blue";
     const today = getMontevideoDateKey(new Date());
     const dailyTaskKey = isDailyTask ? `daily-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : null;
@@ -187,7 +182,6 @@ export class ScrumService {
   }
 
   async updateTaskStatus(taskId: number, dto: UpdateScrumTaskStatusDto) {
-    await this.ensureTables();
     await this.assertTaskExists(taskId);
 
     await this.databaseService.execute<ResultSetHeader>(
@@ -211,7 +205,6 @@ export class ScrumService {
   }
 
   async updateTaskDuration(taskId: number, dto: UpdateScrumTaskDurationDto) {
-    await this.ensureTables();
     await this.assertTaskExists(taskId);
     const duration = normalizeTaskDuration(dto.durationUnit, dto.durationValue);
 
@@ -230,7 +223,6 @@ export class ScrumService {
   }
 
   async updateTaskDifficulty(taskId: number, dto: UpdateScrumTaskDifficultyDto) {
-    await this.ensureTables();
     await this.assertTaskExists(taskId);
 
     await this.databaseService.execute<ResultSetHeader>(
@@ -247,7 +239,6 @@ export class ScrumService {
   }
 
   async deleteTask(taskId: number) {
-    await this.ensureTables();
     await this.assertTaskExists(taskId);
 
     await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_tasks WHERE id = ?`, [taskId]);
@@ -256,8 +247,6 @@ export class ScrumService {
   }
 
   async createClient(dto: CreateScrumClientDto) {
-    await this.ensureTables();
-
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_scrum_clients (
          name,
@@ -282,7 +271,6 @@ export class ScrumService {
   }
 
   async updateClient(clientId: number, dto: UpdateScrumClientDto) {
-    await this.ensureTables();
     const currentClient = await this.getClientById(clientId);
 
     const nextName = dto.name?.trim() || currentClient.name;
@@ -317,7 +305,6 @@ export class ScrumService {
   }
 
   async registerClientPayment(clientId: number) {
-    await this.ensureTables();
     const currentClient = await this.getClientById(clientId);
     const nextPaymentAt = addBillingCycle(currentClient.nextPaymentAt, currentClient.frequency);
 
@@ -335,7 +322,6 @@ export class ScrumService {
   }
 
   async registerClientDebtPayment(clientId: number, dto: RegisterScrumClientDebtPaymentDto) {
-    await this.ensureTables();
     const currentClient = await this.getClientById(clientId);
 
     if (currentClient.debtAmount === null) {
@@ -354,7 +340,6 @@ export class ScrumService {
   }
 
   async deleteClient(clientId: number) {
-    await this.ensureTables();
     await this.assertClientExists(clientId);
 
     await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_clients WHERE id = ?`, [clientId]);
@@ -363,8 +348,6 @@ export class ScrumService {
   }
 
   async createDebt(dto: CreateScrumDebtDto) {
-    await this.ensureTables();
-
     const dueDate = dto.dueDate || addMonths(toDateOnly(new Date()), 1);
 
     const result = await this.databaseService.execute<ResultSetHeader>(
@@ -379,7 +362,6 @@ export class ScrumService {
   }
 
   async updateDebt(debtId: number, dto: UpdateScrumDebtDto) {
-    await this.ensureTables();
     const currentDebt = await this.getDebtById(debtId);
 
     const nextName = dto.name?.trim() || currentDebt.name;
@@ -398,7 +380,6 @@ export class ScrumService {
   }
 
   async addDebtCharge(debtId: number, dto: CreateScrumDebtChargeDto) {
-    await this.ensureTables();
     await this.assertDebtExists(debtId);
 
     await this.databaseService.execute<ResultSetHeader>(
@@ -413,7 +394,6 @@ export class ScrumService {
   }
 
   async addDebtPayment(debtId: number, dto: CreateScrumDebtPaymentDto) {
-    await this.ensureTables();
     await this.assertDebtExists(debtId);
 
     await this.databaseService.execute<ResultSetHeader>(`INSERT INTO saas_scrum_debt_payments (debt_id, amount) VALUES (?, ?)`, [
@@ -428,7 +408,6 @@ export class ScrumService {
   }
 
   async deleteDebt(debtId: number) {
-    await this.ensureTables();
     await this.assertDebtExists(debtId);
 
     await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_debts WHERE id = ?`, [debtId]);
@@ -766,214 +745,5 @@ export class ScrumService {
 
   private async assertClientExists(clientId: number) {
     await this.getClientById(clientId);
-  }
-
-  private async ensureTables() {
-    if (!this.ensureTablesPromise) {
-      this.ensureTablesPromise = this.createTables().catch((error) => {
-        this.ensureTablesPromise = null;
-        throw error;
-      });
-    }
-
-    await this.ensureTablesPromise;
-  }
-
-  private async createTables() {
-    await this.databaseService.execute(`DROP TABLE IF EXISTS saas_scrum_samples`);
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_tasks (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         title VARCHAR(180) NOT NULL,
-         description VARCHAR(500) NULL,
-         estimated_minutes INT UNSIGNED NOT NULL,
-         duration_unit ENUM('days', 'weeks', 'months') NOT NULL DEFAULT 'days',
-         duration_value INT UNSIGNED NOT NULL DEFAULT 1,
-         difficulty ENUM('green', 'yellow', 'red', 'blue') NOT NULL,
-         daily_task_key VARCHAR(80) NULL,
-         task_day DATE NOT NULL,
-         status ENUM('todo', 'in_progress', 'done') NOT NULL DEFAULT 'todo',
-         started_at DATETIME NULL,
-         completed_at DATETIME NULL,
-         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-         PRIMARY KEY (id)
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    const descriptionColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = 'saas_scrum_tasks'
-         AND column_name = 'description'`
-    );
-
-    if (Number(descriptionColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(`ALTER TABLE saas_scrum_tasks ADD COLUMN description VARCHAR(500) NULL AFTER title`);
-    }
-
-    const durationUnitColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = 'saas_scrum_tasks'
-         AND column_name = 'duration_unit'`
-    );
-
-    if (Number(durationUnitColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(
-        `ALTER TABLE saas_scrum_tasks ADD COLUMN duration_unit ENUM('days', 'weeks', 'months') NOT NULL DEFAULT 'days' AFTER estimated_minutes`
-      );
-    }
-
-    const durationValueColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = 'saas_scrum_tasks'
-         AND column_name = 'duration_value'`
-    );
-
-    if (Number(durationValueColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(
-        `ALTER TABLE saas_scrum_tasks ADD COLUMN duration_value INT UNSIGNED NOT NULL DEFAULT 1 AFTER duration_unit`
-      );
-    }
-
-    const dailyTaskKeyColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = 'saas_scrum_tasks'
-         AND column_name = 'daily_task_key'`
-    );
-
-    if (Number(dailyTaskKeyColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(
-        `ALTER TABLE saas_scrum_tasks ADD COLUMN daily_task_key VARCHAR(80) NULL AFTER difficulty`
-      );
-    }
-
-    const taskDayColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = 'saas_scrum_tasks'
-         AND column_name = 'task_day'`
-    );
-
-    if (Number(taskDayColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(
-        `ALTER TABLE saas_scrum_tasks ADD COLUMN task_day DATE NOT NULL DEFAULT '2026-07-06' AFTER daily_task_key`
-      );
-      await this.databaseService.execute(
-        `UPDATE saas_scrum_tasks
-         SET task_day = DATE(COALESCE(created_at, CURRENT_TIMESTAMP))
-         WHERE task_day = '2026-07-06'`
-      );
-    }
-
-    await this.databaseService.execute(
-      `ALTER TABLE saas_scrum_tasks
-       MODIFY COLUMN difficulty ENUM('green', 'yellow', 'red', 'blue') NOT NULL`
-    );
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_clients (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         name VARCHAR(180) NOT NULL,
-         amount DECIMAL(12, 2) NOT NULL,
-         frequency ENUM('monthly', 'semiannual') NOT NULL,
-         next_payment_at DATE NOT NULL,
-         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-         PRIMARY KEY (id)
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    const debtAmountColumn = await this.databaseService.query<Array<RowDataPacket & { total: number }>>(
-      `SELECT COUNT(*) AS total
-       FROM information_schema.columns
-       WHERE table_schema = DATABASE()
-         AND table_name = 'saas_scrum_clients'
-         AND column_name = 'debt_amount'`
-    );
-
-    if (Number(debtAmountColumn[0]?.total || 0) === 0) {
-      await this.databaseService.execute(`ALTER TABLE saas_scrum_clients ADD COLUMN debt_amount DECIMAL(12, 2) NULL AFTER frequency`);
-    }
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_client_debt_payments (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         client_id BIGINT UNSIGNED NOT NULL,
-         amount DECIMAL(12, 2) NOT NULL,
-         paid_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         PRIMARY KEY (id),
-         KEY idx_saas_scrum_client_debt_payments_client (client_id),
-         CONSTRAINT fk_saas_scrum_client_debt_payments_client
-           FOREIGN KEY (client_id) REFERENCES saas_scrum_clients (id)
-           ON DELETE CASCADE
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_client_amount_changes (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         client_id BIGINT UNSIGNED NOT NULL,
-         previous_amount DECIMAL(12, 2) NOT NULL,
-         new_amount DECIMAL(12, 2) NOT NULL,
-         description VARCHAR(255) NOT NULL,
-         changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         PRIMARY KEY (id),
-         KEY idx_saas_scrum_client_amount_changes_client (client_id),
-         CONSTRAINT fk_saas_scrum_client_amount_changes_client
-           FOREIGN KEY (client_id) REFERENCES saas_scrum_clients (id)
-           ON DELETE CASCADE
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_debts (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         name VARCHAR(180) NOT NULL,
-         initial_amount DECIMAL(12, 2) NOT NULL,
-         due_date DATE NOT NULL,
-         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-         PRIMARY KEY (id)
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_debt_charges (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         debt_id BIGINT UNSIGNED NOT NULL,
-         amount DECIMAL(12, 2) NOT NULL,
-         detail VARCHAR(255) NOT NULL,
-         charged_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         PRIMARY KEY (id),
-         KEY idx_saas_scrum_debt_charges_debt (debt_id),
-         CONSTRAINT fk_saas_scrum_debt_charges_debt
-           FOREIGN KEY (debt_id) REFERENCES saas_scrum_debts (id)
-           ON DELETE CASCADE
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
-
-    await this.databaseService.execute(
-      `CREATE TABLE IF NOT EXISTS saas_scrum_debt_payments (
-         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-         debt_id BIGINT UNSIGNED NOT NULL,
-         amount DECIMAL(12, 2) NOT NULL,
-         paid_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-         PRIMARY KEY (id),
-         KEY idx_saas_scrum_debt_payments_debt (debt_id),
-         CONSTRAINT fk_saas_scrum_debt_payments_debt
-           FOREIGN KEY (debt_id) REFERENCES saas_scrum_debts (id)
-           ON DELETE CASCADE
-       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-    );
   }
 }
