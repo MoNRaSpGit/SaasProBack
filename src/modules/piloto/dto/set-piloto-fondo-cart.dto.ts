@@ -20,6 +20,15 @@ export class PilotoFondoItemDto {
   @IsOptional()
   @IsString()
   imageUrl?: string | null;
+
+  // "Producto no encontrado" (03/11/2026): el codigo con el que la
+  // tablet no encontro el producto. Viaja con la linea para que, al
+  // editarla en el mostrador, se pueda crear el producto real con ese
+  // codigo en vez de solo renombrar el renglon.
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  pendingBarcode?: string | null;
 }
 
 export class SetPilotoFondoCartDto {
