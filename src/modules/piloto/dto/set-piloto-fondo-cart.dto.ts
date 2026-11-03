@@ -51,15 +51,3 @@ export class SyncPilotoFondoDraftDto {
   @IsBoolean()
   claim?: boolean;
 }
-
-export class ReportPilotoFondoUnknownBarcodeDto {
-  @IsString()
-  @MaxLength(64)
-  barcode!: string;
-}
-
-export class ResolvePilotoFondoUnknownBarcodeDto {
-  @IsString()
-  @MaxLength(64)
-  barcode!: string;
-}

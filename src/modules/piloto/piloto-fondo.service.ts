@@ -10,7 +10,6 @@ type FondoRow = RowDataPacket & {
   claimed: number;
   delivered_items: string | PilotoFondoItemDto[] | null;
   closing: number;
-  pending_unknown_barcode: string | null;
 };
 
 // Un pedido enviado desde la tablet. number = Pedido 1, 2, 3... en orden de
@@ -18,15 +17,15 @@ type FondoRow = RowDataPacket & {
 export type PilotoFondoOrder = { id: number; number: number; items: PilotoFondoItemDto[]; sentAt: string | null };
 
 // orders: pedidos enviados, en orden, esperando en el mostrador.
-// draftItems: lo que la tablet esta pasando ahora (todavia sin enviar).
+// draftItems: lo que la tablet esta pasando ahora (todavia sin enviar). Un
+// codigo escaneado sin catalogar llega aca como una linea mas, "Producto
+// no encontrado" (la tablet la arma, ver PilotoTabletScreen.tsx) -- no es
+// un caso especial para este servicio.
 // draftClaimed: alguna caja ya empezo a recibir en vivo lo que se escanea.
-// pendingUnknownBarcode: codigo escaneado en la tablet que no existe en
-// el catalogo, esperando que el mostrador lo cargue.
 export type PilotoFondoState = {
   orders: PilotoFondoOrder[];
   draftItems: PilotoFondoItemDto[];
   draftClaimed: boolean;
-  pendingUnknownBarcode: string | null;
 };
 
 function parseItems(raw: string | PilotoFondoItemDto[] | null | undefined): PilotoFondoItemDto[] {
@@ -73,7 +72,7 @@ export class PilotoFondoService {
 
   async getState(): Promise<PilotoFondoState> {
     const rows = await this.databaseService.query<FondoRow[]>(
-      `SELECT id, items, DATE_FORMAT(sent_at, '%Y-%m-%dT%H:%i:%s') AS sent_at, claimed, pending_unknown_barcode
+      `SELECT id, items, DATE_FORMAT(sent_at, '%Y-%m-%dT%H:%i:%s') AS sent_at, claimed
        FROM saas_piloto_fondo_cart ORDER BY id`
     );
     const draft = rows.find((r) => r.id === DRAFT_ID);
@@ -84,8 +83,7 @@ export class PilotoFondoService {
     return {
       orders,
       draftItems: parseItems(draft?.items),
-      draftClaimed: Boolean(draft?.claimed),
-      pendingUnknownBarcode: draft?.pending_unknown_barcode ?? null
+      draftClaimed: Boolean(draft?.claimed)
     };
   }
 
@@ -192,28 +190,5 @@ export class PilotoFondoService {
       }
       return { items };
     });
-  }
-
-  // La tablet escaneo algo que no esta en el catalogo: queda avisado para
-  // el mostrador (pedido explicito: "que me salga otro pop-up... y ella
-  // sigue ahi"). Si ya habia uno pendiente sin resolver, este lo reemplaza
-  // -- no hay cola, es un aviso puntual.
-  async reportUnknownBarcode(barcode: string): Promise<void> {
-    await this.databaseService.execute(
-      `INSERT INTO saas_piloto_fondo_cart (id, items, pending_unknown_barcode, updated_at) VALUES (1, JSON_ARRAY(), ?, NOW())
-       ON DUPLICATE KEY UPDATE pending_unknown_barcode = VALUES(pending_unknown_barcode), updated_at = NOW()`,
-      [barcode]
-    );
-  }
-
-  // El mostrador ya resolvio (lo cargo, o lo descarto) el aviso de este
-  // codigo puntual. Compara y limpia: si mientras tanto llego un aviso
-  // distinto, no se lo pisa.
-  async resolveUnknownBarcode(barcode: string): Promise<void> {
-    await this.databaseService.execute(
-      `UPDATE saas_piloto_fondo_cart SET pending_unknown_barcode = NULL, updated_at = NOW()
-       WHERE id = 1 AND pending_unknown_barcode = ?`,
-      [barcode]
-    );
   }
 }

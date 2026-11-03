@@ -5,13 +5,7 @@ import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
-import {
-  ReportPilotoFondoUnknownBarcodeDto,
-  ResolvePilotoFondoUnknownBarcodeDto,
-  SetPilotoFondoCartDto,
-  SyncPilotoFondoDraftDto,
-  TakePilotoFondoDto
-} from "./dto/set-piloto-fondo-cart.dto";
+import { SetPilotoFondoCartDto, SyncPilotoFondoDraftDto, TakePilotoFondoDto } from "./dto/set-piloto-fondo-cart.dto";
 import { SetPilotoProductImageDto } from "./dto/set-piloto-product-image.dto";
 import { SignQzRequestDto } from "./dto/sign-qz-request.dto";
 import { UpdatePilotoPriceEntryDto } from "./dto/update-piloto-price-entry.dto";
@@ -275,15 +269,5 @@ export class PilotoController {
   @Post("fondo/sync")
   syncFondoDraft(@Body() dto: SyncPilotoFondoDraftDto) {
     return this.fondoService.syncDraft(Boolean(dto.claim));
-  }
-
-  @Post("fondo/unknown-barcode")
-  reportFondoUnknownBarcode(@Body() dto: ReportPilotoFondoUnknownBarcodeDto) {
-    return this.fondoService.reportUnknownBarcode(dto.barcode);
-  }
-
-  @Post("fondo/unknown-barcode/resolve")
-  resolveFondoUnknownBarcode(@Body() dto: ResolvePilotoFondoUnknownBarcodeDto) {
-    return this.fondoService.resolveUnknownBarcode(dto.barcode);
   }
 }
