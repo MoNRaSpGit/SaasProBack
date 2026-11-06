@@ -21,7 +21,7 @@ export type PilotoFondoOrder = { id: number; number: number; items: PilotoFondoI
 // codigo escaneado sin catalogar llega aca como una linea mas, "Producto
 // no encontrado" (la tablet la arma, ver PilotoTabletScreen.tsx) -- no es
 // un caso especial para este servicio.
-// draftClaimed: alguna caja ya empezo a recibir en vivo lo que se escanea.
+// draftClaimed: ya no se usa (siempre false); se deja para las apps viejas.
 export type PilotoFondoState = {
   orders: PilotoFondoOrder[];
   draftItems: PilotoFondoItemDto[];
@@ -33,39 +33,17 @@ function parseItems(raw: string | PilotoFondoItemDto[] | null | undefined): Pilo
   return typeof raw === "string" ? JSON.parse(raw) : raw;
 }
 
-// Lo nuevo entre "current" (lo que hay ahora) y "delivered" (lo que ya se
-// le entrego a alguna caja): por cada producto, solo la cantidad de mas.
-// Nunca negativo -- si el borrador bajo una cantidad despues de entregada
-// (alguien le dio "-" en la tablet a algo que el mostrador ya se llevo),
-// no hay forma de "desentregarlo", asi que se ignora esa baja.
-function diffItems(current: PilotoFondoItemDto[], delivered: PilotoFondoItemDto[]): PilotoFondoItemDto[] {
-  const deliveredQuantities = new Map(delivered.map((item) => [item.productId, item.quantity]));
-  const delta: PilotoFondoItemDto[] = [];
-  for (const item of current) {
-    const already = deliveredQuantities.get(item.productId) ?? 0;
-    const extra = item.quantity - already;
-    if (extra > 0) delta.push({ ...item, quantity: extra });
-  }
-  return delta;
-}
-
 const DRAFT_ID = 1;
 
-// Venta del "fondo" (30/10/2026, extendido 03/11/2026 con "tomar y seguir
-// recibiendo"): la tablet del fondo guarda en la fila 1 lo que va
-// escaneando (el "borrador") y el mostrador lo lee cada pocos segundos.
+// Venta del "fondo" (30/10/2026): la tablet del fondo guarda en la fila 1 lo
+// que va escaneando (el "borrador") y, al apretar "Enviar", ese borrador pasa
+// a ser un Pedido numerado que espera en el mostrador.
 //
-// Antes, "tomar" el borrador lo vaciaba de una. Pedido explicito
-// (03/11/2026): "si yo quiero, lo agarro... y si ella sigue pasando, me
-// sigue sumando en el mio... cuando le de enviar, ahi cortaria". Ahora
-// "tomar" (claim) marca el borrador como reclamado y entrega lo que haya
-// hasta el momento; de ahi en mas, cada sincronizacion (sync) entrega solo
-// lo NUEVO desde la ultima vez (delivered_items guarda la ultima foto ya
-// entregada). "Enviar" con el borrador reclamado no crea un Pedido nuevo
-// (ya se esta entregando en vivo) -- solo marca "closing", y la ultima
-// sincronizacion que alcance a entregar todo lo pendiente cierra y vacia
-// la fila. Si nadie lo reclamo, "Enviar" sigue funcionando como siempre:
-// un Pedido nuevo esperando en la bandeja.
+// "Tomar y seguir recibiendo" (03/11/2026) se SACO el 06/11/2026, pedido
+// explicito: "que no se pueda robar el pedido... solo cuando le de enviar,
+// ahi se queda con el pedido". El mostrador ya no reclama el borrador: solo
+// ve y toma Pedidos enviados. Las columnas claimed/delivered_items/closing
+// quedan en la tabla pero ya no se usan (siempre en reposo).
 @Injectable()
 export class PilotoFondoService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -83,12 +61,11 @@ export class PilotoFondoService {
     return {
       orders,
       draftItems: parseItems(draft?.items),
-      draftClaimed: Boolean(draft?.claimed)
+      draftClaimed: false
     };
   }
 
-  // La tablet guarda lo que va pasando (borrador). No toca claimed/closing:
-  // seguir escaneando con el borrador reclamado es exactamente el punto.
+  // La tablet guarda lo que va pasando (borrador).
   async saveDraft(items: PilotoFondoItemDto[]): Promise<PilotoFondoState> {
     await this.databaseService.execute(
       `INSERT INTO saas_piloto_fondo_cart (id, items, sent_at, updated_at) VALUES (1, ?, NULL, NOW())
@@ -98,65 +75,23 @@ export class PilotoFondoService {
     return this.getState();
   }
 
-  // "Tomar y seguir recibiendo" (primer click) y las sincronizaciones de
-  // ahi en mas (claim=false): devuelve SOLO lo nuevo desde la ultima vez
-  // (nunca la foto completa, que ya se suma aparte en la caja -- sumarla
-  // de nuevo la duplicaria). Si quedaba "closing" pendiente y esta
-  // sincronizacion alcanza a entregar todo, cierra el borrador: lo deja
-  // vacio y sin reclamar, listo para el proximo cliente.
-  async syncDraft(claim: boolean): Promise<{ items: PilotoFondoItemDto[]; closed: boolean }> {
-    return this.databaseService.withTransaction(async (connection) => {
-      const [rows] = await connection.query<FondoRow[]>("SELECT * FROM saas_piloto_fondo_cart WHERE id = ? FOR UPDATE", [DRAFT_ID]);
-      const row = rows[0];
-      if (!row) return { items: [], closed: false };
-
-      const isClaimed = Boolean(row.claimed);
-      if (!isClaimed && !claim) return { items: [], closed: false };
-
-      const current = parseItems(row.items);
-      const delivered = parseItems(row.delivered_items);
-      const delta = diffItems(current, delivered);
-
-      // Ya se entrego todo lo que habia Y la tablet aprieto Enviar
-      // mientras tanto: se cierra, vacio y sin reclamar.
-      if (row.closing && delta.length === 0) {
-        await connection.query(
-          `UPDATE saas_piloto_fondo_cart
-           SET items = JSON_ARRAY(), claimed = 0, delivered_items = NULL, closing = 0, sent_at = NULL, updated_at = NOW()
-           WHERE id = ?`,
-          [DRAFT_ID]
-        );
-        return { items: [], closed: true };
-      }
-
-      await connection.query(
-        `UPDATE saas_piloto_fondo_cart SET claimed = 1, delivered_items = ?, updated_at = NOW() WHERE id = ?`,
-        [JSON.stringify(current), DRAFT_ID]
-      );
-      return { items: delta, closed: false };
-    });
+  // Compatibilidad (06/11/2026): versiones viejas de la app que todavia
+  // esten abiertas en el local llaman a esto para "robar" el borrador. Ya no
+  // se puede: no reclama nada ni entrega nada. Se puede borrar cuando no
+  // quede ninguna app vieja abierta.
+  async syncDraft(_claim: boolean): Promise<{ items: PilotoFondoItemDto[]; closed: boolean }> {
+    return { items: [], closed: false };
   }
 
-  // "Enviar al mostrador": si nadie reclamo el borrador, un pedido nuevo
-  // al final de la fila (como siempre). Si YA esta reclamado, no hace
-  // falta crear nada -- se viene entregando en vivo -- solo se marca
-  // "closing" para que la proxima sincronizacion, al entregar lo ultimo
-  // que falte, cierre y vacie.
+  // "Enviar al mostrador": el borrador pasa a ser un pedido nuevo al final de
+  // la fila y la tablet queda vacia.
   async sendOrder(items: PilotoFondoItemDto[]): Promise<PilotoFondoState> {
     await this.databaseService.withTransaction(async (connection) => {
       await connection.query(
         `INSERT INTO saas_piloto_fondo_cart (id, items, sent_at, updated_at) VALUES (1, JSON_ARRAY(), NULL, NOW())
          ON DUPLICATE KEY UPDATE updated_at = updated_at`
       );
-      const [rows] = await connection.query<FondoRow[]>("SELECT claimed FROM saas_piloto_fondo_cart WHERE id = 1 FOR UPDATE");
-      const isClaimed = Boolean(rows[0]?.claimed);
-
-      if (isClaimed) {
-        await connection.query(`UPDATE saas_piloto_fondo_cart SET items = ?, closing = 1, updated_at = NOW() WHERE id = 1`, [
-          JSON.stringify(items)
-        ]);
-        return;
-      }
+      await connection.query("SELECT id FROM saas_piloto_fondo_cart WHERE id = 1 FOR UPDATE");
 
       if (!items.length) return;
       await connection.query("DELETE FROM saas_piloto_fondo_cart WHERE id > 1 AND JSON_LENGTH(items) = 0");
@@ -166,7 +101,9 @@ export class PilotoFondoService {
         nextId,
         JSON.stringify(items)
       ]);
-      await connection.query("UPDATE saas_piloto_fondo_cart SET items = JSON_ARRAY(), sent_at = NULL, updated_at = NOW() WHERE id = 1");
+      await connection.query(
+        "UPDATE saas_piloto_fondo_cart SET items = JSON_ARRAY(), sent_at = NULL, claimed = 0, delivered_items = NULL, closing = 0, updated_at = NOW() WHERE id = 1"
+      );
     });
     return this.getState();
   }
