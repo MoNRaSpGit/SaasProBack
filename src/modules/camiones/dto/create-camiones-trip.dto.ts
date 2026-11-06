@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsDateString, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 export class CreateCamionesTripDto {
   @Type(() => Number)
@@ -17,6 +17,10 @@ export class CreateCamionesTripDto {
   @IsString()
   @MaxLength(255)
   placeName?: string;
+
+  @IsOptional()
+  @IsIn(["mercedes", "honda"])
+  truck?: "mercedes" | "honda";
 
   @IsDateString()
   tripDate!: string;

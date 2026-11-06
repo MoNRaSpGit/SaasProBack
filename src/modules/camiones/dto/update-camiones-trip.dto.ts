@@ -13,6 +13,10 @@ export class UpdateCamionesTripDto {
   @MaxLength(255)
   placeName?: string;
 
+  @IsOptional()
+  @IsIn(["mercedes", "honda"])
+  truck?: "mercedes" | "honda";
+
   @IsDateString()
   tripDate!: string;
 

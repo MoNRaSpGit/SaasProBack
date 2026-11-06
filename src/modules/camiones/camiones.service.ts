@@ -33,6 +33,7 @@ type CamionesTripRow = RowDataPacket & {
   user_id: number;
   trip_date: string;
   place: string;
+  truck: "mercedes" | "honda" | null;
   kilometers: string;
   status: "confirmed" | "pending" | "paid" | "cancelled";
   collected_amount: string | null;
@@ -487,6 +488,7 @@ export class CamionesService {
          t.user_id,
          t.trip_date,
          t.place,
+         t.truck,
          t.kilometers,
          t.status,
          t.collected_amount,
@@ -584,12 +586,13 @@ export class CamionesService {
          user_id,
          trip_date,
          place,
+         truck,
          kilometers,
          status,
          collected_amount,
          notes
        )
-       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'confirmed', NULL, ?)`,
+       VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'confirmed', NULL, ?)`,
       [
         currentUser.tenantId,
         client.id,
@@ -597,6 +600,7 @@ export class CamionesService {
         currentUser.userId,
         dto.tripDate,
         resolvedPlaceName,
+        dto.truck ?? null,
         Number(dto.kilometers.toFixed(2)),
         dto.notes?.trim() || null
       ]
@@ -612,6 +616,7 @@ export class CamionesService {
          t.user_id,
          t.trip_date,
          t.place,
+         t.truck,
          t.kilometers,
          t.status,
          t.collected_amount,
@@ -681,6 +686,7 @@ export class CamionesService {
        SET trip_date = ?,
            place_id = ?,
            place = ?,
+           truck = ?,
            kilometers = ?,
            status = ?,
            collected_amount = ?,
@@ -692,6 +698,7 @@ export class CamionesService {
         dto.tripDate,
         resolvedPlaceId,
         resolvedPlaceName,
+        dto.truck ?? null,
         Number(dto.kilometers.toFixed(2)),
         normalizedStatus,
         collectedAmount,
@@ -716,6 +723,7 @@ export class CamionesService {
          t.user_id,
          t.trip_date,
          t.place,
+         t.truck,
          t.kilometers,
          t.status,
          t.collected_amount,
@@ -765,6 +773,7 @@ export class CamionesService {
          t.user_id,
          t.trip_date,
          t.place,
+         t.truck,
          t.kilometers,
          t.status,
          t.collected_amount,
@@ -837,6 +846,7 @@ export class CamionesService {
       userId: row.user_id,
       tripDate: row.trip_date,
       place: row.place_name || row.place,
+      truck: row.truck ?? null,
       kilometers: Number(row.kilometers),
       status: row.status,
       collectedAmount: row.collected_amount === null ? null : Number(row.collected_amount),
