@@ -175,6 +175,41 @@ export class GabyService {
     return { items: rows.map((row) => this.mapProduct(row)) };
   }
 
+  // Pestana Stock (07/11/2026): listado para cargar/ver el stock. Con
+  // busqueda por nombre (hasta 200); sin busqueda, solo los que tienen
+  // stock cargado (para ver de un vistazo lo que hay).
+  async listStock(search?: string): Promise<{ items: GabyProduct[] }> {
+    const trimmedSearch = search?.trim();
+    const rows = trimmedSearch
+      ? await this.databaseService.query<GabyProductRow[]>(
+          `SELECT ${PRODUCT_COLUMNS}
+           FROM saas_gaby_products
+           WHERE name LIKE ?
+           ORDER BY name ASC
+           LIMIT 200`,
+          [`%${trimmedSearch}%`]
+        )
+      : await this.databaseService.query<GabyProductRow[]>(
+          `SELECT ${PRODUCT_COLUMNS}
+           FROM saas_gaby_products
+           WHERE stock > 0
+           ORDER BY name ASC
+           LIMIT 500`
+        );
+    return { items: rows.map((row) => this.mapProduct(row)) };
+  }
+
+  async setStock(productId: number, stock: number): Promise<{ item: GabyProduct }> {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      "UPDATE saas_gaby_products SET stock = ? WHERE id = ?",
+      [Math.round(stock * 100) / 100, productId]
+    );
+    if (result.affectedRows === 0) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+    return this.getProductOrThrow(productId);
+  }
+
   async createProduct(dto: CreateGabyProductDto): Promise<{ item: GabyProduct }> {
     const name = dto.name.trim();
     const barcode = dto.barcode.trim();
@@ -324,6 +359,15 @@ export class GabyService {
            ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [createdSaleId, item.productId, item.name, item.unitPrice, item.quantity, item.lineTotal, item.imageUrl]
         );
+
+        // El stock baja con cada venta (nunca queda en negativo: si todavia
+        // no se cargo el stock de ese producto, se queda en 0).
+        if (item.productId !== null && item.productId > 0) {
+          await connection.execute<ResultSetHeader>(
+            "UPDATE saas_gaby_products SET stock = GREATEST(stock - ?, 0) WHERE id = ?",
+            [item.quantity, item.productId]
+          );
+        }
       }
 
       return createdSaleId;

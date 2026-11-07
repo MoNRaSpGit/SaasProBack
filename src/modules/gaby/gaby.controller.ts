@@ -5,6 +5,7 @@ import { CreateGabyClientDto } from "./dto/create-gaby-client.dto";
 import { CreateGabyProductDto } from "./dto/create-gaby-product.dto";
 import { CreateGabySaleDto } from "./dto/create-gaby-sale.dto";
 import { SetGabyProductImageDto } from "./dto/set-gaby-product-image.dto";
+import { SetGabyStockDto } from "./dto/set-gaby-stock.dto";
 import { UpdateGabyProductDto } from "./dto/update-gaby-product.dto";
 import { diffFields, GabyAuditService } from "./gaby-audit.service";
 import { GabyClientsService } from "./gaby-clients.service";
@@ -33,6 +34,28 @@ export class GabyController {
           .filter((id) => Number.isFinite(id))
       : undefined;
     return this.gabyService.listProducts(search, parsedIds);
+  }
+
+  @Get("stock")
+  listStock(@Query("search") search?: string) {
+    return this.gabyService.listStock(search);
+  }
+
+  @Patch("products/:id/stock")
+  async setStock(@Param("id", ParseIntPipe) productId: number, @Body() dto: SetGabyStockDto) {
+    const before = await this.gabyService.getProductOrThrow(productId);
+    const result = await this.gabyService.setStock(productId, dto.stock);
+    const changes = diffFields(before.item, result.item, ["stock"] as const);
+    if (changes) {
+      await this.auditService.record({
+        action: "update",
+        entityType: "product",
+        entityId: productId,
+        entityLabel: result.item.name,
+        details: { changes }
+      });
+    }
+    return result;
   }
 
   @Get("products/barcode/:barcode")
