@@ -11,7 +11,7 @@ import { diffFields, GabyAuditService } from "./gaby-audit.service";
 import { GabyClientsService } from "./gaby-clients.service";
 import { GabyService } from "./gaby.service";
 
-const PRODUCT_AUDIT_FIELDS = ["name", "price"] as const;
+const PRODUCT_AUDIT_FIELDS = ["name", "price", "stock"] as const;
 
 // Gaby Almacen (07/11/2026): version BASICA de Piloto para una clienta
 // nueva -- escaner + venta + cuenta corriente (clientes). Mismas rutas

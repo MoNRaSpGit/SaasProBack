@@ -6,6 +6,9 @@ export type GabyProduct = {
   barcode: string;
   price: number;
   stock: number;
+  // true = ya se le cargo un stock a mano (aunque sea 0). Sirve para el
+  // futuro "stock bajo": solo cuentan los productos con stock registrado.
+  stockTracked: boolean;
   hasImage: boolean;
   status: GabyProductStatus;
   createdAt: string;

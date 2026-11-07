@@ -11,4 +11,9 @@ export class UpdateGabyProductDto {
   @IsNumber()
   @Min(0.01)
   price?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  stock?: number;
 }

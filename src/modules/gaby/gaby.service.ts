@@ -23,6 +23,7 @@ type GabyProductRow = RowDataPacket & {
   barcode: string;
   price: string | number;
   stock: string | number;
+  stock_tracked: number;
   has_image: number;
   status: "active" | "inactive";
   created_at: string | Date;
@@ -46,6 +47,7 @@ const PRODUCT_COLUMNS = `
   barcode,
   price,
   stock,
+  stock_tracked,
   has_image,
   status,
   created_at,
@@ -176,8 +178,8 @@ export class GabyService {
   }
 
   // Pestana Stock (07/11/2026): listado para cargar/ver el stock. Con
-  // busqueda por nombre (hasta 200); sin busqueda, solo los que tienen
-  // stock cargado (para ver de un vistazo lo que hay).
+  // busqueda por nombre (hasta 200); sin busqueda, solo los que ya
+  // tienen stock registrado (stock_tracked = 1).
   async listStock(search?: string): Promise<{ items: GabyProduct[] }> {
     const trimmedSearch = search?.trim();
     const rows = trimmedSearch
@@ -192,7 +194,7 @@ export class GabyService {
       : await this.databaseService.query<GabyProductRow[]>(
           `SELECT ${PRODUCT_COLUMNS}
            FROM saas_gaby_products
-           WHERE stock > 0
+           WHERE stock_tracked = 1
            ORDER BY name ASC
            LIMIT 500`
         );
@@ -201,7 +203,7 @@ export class GabyService {
 
   async setStock(productId: number, stock: number): Promise<{ item: GabyProduct }> {
     const result = await this.databaseService.execute<ResultSetHeader>(
-      "UPDATE saas_gaby_products SET stock = ? WHERE id = ?",
+      "UPDATE saas_gaby_products SET stock = ?, stock_tracked = 1 WHERE id = ?",
       [Math.round(stock * 100) / 100, productId]
     );
     if (result.affectedRows === 0) {
@@ -238,9 +240,10 @@ export class GabyService {
          barcode_normalized,
          price,
          stock,
+         stock_tracked,
          status
-       ) VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, barcode, normalizedBarcode, dto.price, dto.stock ?? 0, dto.status ?? "active"]
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [name, barcode, normalizedBarcode, dto.price, dto.stock ?? 0, dto.stock !== undefined ? 1 : 0, dto.status ?? "active"]
     );
 
     const rows = await this.databaseService.query<GabyProductRow[]>(
@@ -293,13 +296,28 @@ export class GabyService {
     const nextName = dto.name?.trim() || existing.name;
     const nextPrice = dto.price ?? Number(existing.price);
 
-    await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_gaby_products
-       SET name = ?,
-           price = ?
-       WHERE id = ?`,
-      [nextName, nextPrice, productId]
-    );
+    // Stock opcional (07/11/2026): si viene, se registra y el producto
+    // pasa a "con stock registrado" (stock_tracked = 1). Si no viene, el
+    // stock queda como estaba -- no es obligatorio.
+    if (dto.stock !== undefined) {
+      await this.databaseService.execute<ResultSetHeader>(
+        `UPDATE saas_gaby_products
+         SET name = ?,
+             price = ?,
+             stock = ?,
+             stock_tracked = 1
+         WHERE id = ?`,
+        [nextName, nextPrice, Math.round(dto.stock * 100) / 100, productId]
+      );
+    } else {
+      await this.databaseService.execute<ResultSetHeader>(
+        `UPDATE saas_gaby_products
+         SET name = ?,
+             price = ?
+         WHERE id = ?`,
+        [nextName, nextPrice, productId]
+      );
+    }
 
     const rows = await this.databaseService.query<GabyProductRow[]>(
       `SELECT ${PRODUCT_COLUMNS}
@@ -454,6 +472,7 @@ export class GabyService {
       barcode: row.barcode,
       price: Number(row.price),
       stock: Number(row.stock),
+      stockTracked: Boolean(row.stock_tracked),
       hasImage: Boolean(row.has_image),
       status: row.status,
       createdAt: this.toIsoString(row.created_at),
