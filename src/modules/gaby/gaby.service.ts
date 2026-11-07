@@ -1,0 +1,500 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { createHash } from "crypto";
+import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { CloudinaryService } from "../../shared/cloudinary/cloudinary.service";
+import { DatabaseService } from "../../shared/database/database.service";
+import { CreateGabyProductDto } from "./dto/create-gaby-product.dto";
+import { CreateGabySaleDto } from "./dto/create-gaby-sale.dto";
+import { UpdateGabyProductDto } from "./dto/update-gaby-product.dto";
+import { buildDayRangeUtc, getTodayDateLabel } from "./gaby.dateUtils";
+import {
+  GABY_PROFIT_MARGIN_RATIO,
+  GabyPaymentMethod,
+  GabyProduct,
+  GabySale,
+  GabySaleMovement,
+  GabySaleMovementItem,
+  GabySalesSummary
+} from "./gaby.types";
+
+type GabyProductRow = RowDataPacket & {
+  id: number;
+  name: string;
+  barcode: string;
+  price: string | number;
+  stock: string | number;
+  has_image: number;
+  status: "active" | "inactive";
+  created_at: string | Date;
+  updated_at: string | Date;
+};
+
+type GabyProductImageRow = RowDataPacket & {
+  image_data: Buffer | null;
+  mime_type: string;
+  source_hash: string;
+  cloudinary_url: string | null;
+};
+
+// La imagen NO va en esta tabla: se guarda aparte, en binario, en
+// saas_gaby_product_images (ver getProductImage/setProductImage). Traer
+// el binario en cada SELECT de productos (como se hacia antes con
+// image_url en base64) hacia lento cualquier busqueda o listado.
+const PRODUCT_COLUMNS = `
+  id,
+  name,
+  barcode,
+  price,
+  stock,
+  has_image,
+  status,
+  created_at,
+  updated_at
+`;
+
+// data:<mime>;base64,<payload> -- formato que mandaba el frontend viejo (y
+// el que se sigue aceptando por compatibilidad si algun script externo lo
+// manda asi).
+function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(value.trim());
+  if (!match) return null;
+  return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
+}
+
+function normalizeBarcode(value: string) {
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "");
+}
+
+type CachedProductLookup = {
+  cachedAt: number;
+  product: GabyProduct;
+};
+
+const PRODUCT_LOOKUP_CACHE_TTL_MS = 1000 * 60 * 10;
+const PRODUCT_LOOKUP_CACHE_MAX_ENTRIES = 1000;
+// Deshabilitado temporalmente: sospecha de que estaba causando errores al
+// editar muchos productos seguidos. Volver a poner en true para reactivarlo.
+const PRODUCT_LOOKUP_CACHE_ENABLED = false;
+
+@Injectable()
+export class GabyService {
+  private readonly productLookupCache = new Map<string, CachedProductLookup>();
+
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly cloudinaryService: CloudinaryService
+  ) {}
+
+  async findByBarcode(barcode: string): Promise<{ item: GabyProduct }> {
+    const normalizedBarcode = normalizeBarcode(barcode);
+    if (!normalizedBarcode) {
+      throw new BadRequestException("Codigo de barras invalido");
+    }
+
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      const cachedEntry = this.productLookupCache.get(normalizedBarcode);
+      if (cachedEntry) {
+        if (Date.now() - cachedEntry.cachedAt <= PRODUCT_LOOKUP_CACHE_TTL_MS) {
+          return { item: cachedEntry.product };
+        }
+        this.productLookupCache.delete(normalizedBarcode);
+      }
+    }
+
+    const rows = await this.databaseService.query<GabyProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_gaby_products
+       WHERE barcode_normalized = ?
+       LIMIT 1`,
+      [normalizedBarcode]
+    );
+
+    if (!rows[0]) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+
+    const product = this.mapProduct(rows[0]);
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      this.setProductLookupCache(normalizedBarcode, product);
+    }
+    return { item: product };
+  }
+
+  resetProductLookupCache() {
+    this.productLookupCache.clear();
+    return { ok: true };
+  }
+
+  private setProductLookupCache(normalizedBarcode: string, product: GabyProduct) {
+    this.productLookupCache.set(normalizedBarcode, { cachedAt: Date.now(), product });
+
+    if (this.productLookupCache.size <= PRODUCT_LOOKUP_CACHE_MAX_ENTRIES) {
+      return;
+    }
+
+    const oldestKey = this.productLookupCache.keys().next().value;
+    if (oldestKey) {
+      this.productLookupCache.delete(oldestKey);
+    }
+  }
+
+  // `ids` (24/10/2026, pedido explicito): para pantallas que necesitan
+  // productos puntuales por id (ej. confirmar visualmente la migracion de
+  // imagenes a Cloudinary) sin depender del tope de 100 ni del orden
+  // alfabetico de abajo, que podia dejarlos afuera.
+  async listProducts(search?: string, ids?: number[]): Promise<{ items: GabyProduct[] }> {
+    const trimmedSearch = search?.trim();
+
+    const rows =
+      ids && ids.length
+        ? await this.databaseService.query<GabyProductRow[]>(
+            `SELECT ${PRODUCT_COLUMNS}
+             FROM saas_gaby_products
+             WHERE id IN (${ids.map(() => "?").join(",")})
+             ORDER BY name ASC`,
+            ids
+          )
+        : trimmedSearch
+          ? await this.databaseService.query<GabyProductRow[]>(
+              `SELECT ${PRODUCT_COLUMNS}
+               FROM saas_gaby_products
+               WHERE name LIKE ?
+               ORDER BY name ASC
+               LIMIT 100`,
+              [`%${trimmedSearch}%`]
+            )
+          : await this.databaseService.query<GabyProductRow[]>(
+              `SELECT ${PRODUCT_COLUMNS}
+               FROM saas_gaby_products
+               ORDER BY name ASC
+               LIMIT 100`
+            );
+
+    return { items: rows.map((row) => this.mapProduct(row)) };
+  }
+
+  async createProduct(dto: CreateGabyProductDto): Promise<{ item: GabyProduct }> {
+    const name = dto.name.trim();
+    const barcode = dto.barcode.trim();
+    const normalizedBarcode = normalizeBarcode(barcode);
+
+    if (!normalizedBarcode) {
+      throw new BadRequestException("Codigo de barras invalido");
+    }
+
+    const duplicateRows = await this.databaseService.query<GabyProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_gaby_products
+       WHERE barcode_normalized = ?
+       LIMIT 1`,
+      [normalizedBarcode]
+    );
+
+    if (duplicateRows[0]) {
+      throw new BadRequestException("Ya existe un producto con ese codigo de barras");
+    }
+
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_gaby_products (
+         name,
+         barcode,
+         barcode_normalized,
+         price,
+         stock,
+         status
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, barcode, normalizedBarcode, dto.price, dto.stock ?? 0, dto.status ?? "active"]
+    );
+
+    const rows = await this.databaseService.query<GabyProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_gaby_products
+       WHERE id = ?
+       LIMIT 1`,
+      [result.insertId]
+    );
+
+    const product = this.mapProduct(rows[0]);
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      this.setProductLookupCache(normalizedBarcode, product);
+    }
+    return { item: product };
+  }
+
+  // Usado por el controller antes de updateProduct, para poder auditar el
+  // "antes" contra el "despues" (ver GabyAuditService.diffFields).
+  async getProductOrThrow(productId: number): Promise<{ item: GabyProduct }> {
+    const rows = await this.databaseService.query<GabyProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_gaby_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    if (!rows[0]) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+
+    return { item: this.mapProduct(rows[0]) };
+  }
+
+  async updateProduct(productId: number, dto: UpdateGabyProductDto): Promise<{ item: GabyProduct }> {
+    const existingRows = await this.databaseService.query<GabyProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_gaby_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new NotFoundException("Producto no encontrado");
+    }
+
+    const nextName = dto.name?.trim() || existing.name;
+    const nextPrice = dto.price ?? Number(existing.price);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_gaby_products
+       SET name = ?,
+           price = ?
+       WHERE id = ?`,
+      [nextName, nextPrice, productId]
+    );
+
+    const rows = await this.databaseService.query<GabyProductRow[]>(
+      `SELECT ${PRODUCT_COLUMNS}
+       FROM saas_gaby_products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId]
+    );
+
+    const product = this.mapProduct(rows[0]);
+    if (PRODUCT_LOOKUP_CACHE_ENABLED) {
+      this.setProductLookupCache(normalizeBarcode(product.barcode), product);
+    }
+    return { item: product };
+  }
+
+  async createSale(dto: CreateGabySaleDto): Promise<{ item: GabySale }> {
+    const paymentMethod = dto.paymentMethod ?? "efectivo";
+    const normalizedItems = dto.items.map((item) => {
+      const lineTotal = Math.round(item.price * item.quantity * 100) / 100;
+      return {
+        productId: item.productId ?? null,
+        name: item.name.trim(),
+        unitPrice: item.price,
+        quantity: item.quantity,
+        lineTotal,
+        imageUrl: item.imageUrl ?? null
+      };
+    });
+
+    const totalAmount = Math.round(normalizedItems.reduce((total, item) => total + item.lineTotal, 0) * 100) / 100;
+    const itemsCount = normalizedItems.reduce((total, item) => total + item.quantity, 0);
+
+    const saleId = await this.databaseService.withTransaction(async (connection) => {
+      const [saleResult] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_gaby_sales (
+           total_amount,
+           items_count,
+           payment_method,
+           status
+         ) VALUES (?, ?, ?, 'confirmed')`,
+        [totalAmount, itemsCount, paymentMethod]
+      );
+
+      const createdSaleId = Number(saleResult.insertId);
+
+      for (const item of normalizedItems) {
+        await connection.execute<ResultSetHeader>(
+          `INSERT INTO saas_gaby_sale_items (
+             sale_id,
+             product_id,
+             product_name,
+             unit_price,
+             quantity,
+             line_total,
+             image_url
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [createdSaleId, item.productId, item.name, item.unitPrice, item.quantity, item.lineTotal, item.imageUrl]
+        );
+      }
+
+      return createdSaleId;
+    });
+
+    return {
+      item: {
+        id: saleId,
+        totalAmount,
+        itemsCount,
+        paymentMethod,
+        createdAt: new Date().toISOString()
+      }
+    };
+  }
+
+  // Imagen del producto: se sirve por separado via GET
+  // /gaby/products/:id/image, con cache headers (ver gaby.controller.ts).
+  // Las imagenes nuevas (24/10/2026) se guardan en Cloudinary y aca solo
+  // devolvemos la URL para que el controller haga un redirect -- las viejas
+  // (cargadas antes, antes de Cloudinary) siguen sirviendose en binario
+  // hasta que se migren. Devuelve null si el producto no tiene imagen.
+  async getProductImage(
+    productId: number
+  ): Promise<{ cloudinaryUrl: string } | { buffer: Buffer; mimeType: string; sourceHash: string } | null> {
+    const rows = await this.databaseService.query<GabyProductImageRow[]>(
+      `SELECT image_data, mime_type, source_hash, cloudinary_url FROM saas_gaby_product_images WHERE product_id = ? LIMIT 1`,
+      [productId]
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    if (row.cloudinary_url) {
+      return { cloudinaryUrl: row.cloudinary_url };
+    }
+
+    if (!row.image_data) {
+      return null;
+    }
+
+    return { buffer: row.image_data, mimeType: row.mime_type, sourceHash: row.source_hash };
+  }
+
+  // Acepta un data URI base64 y lo sube a Cloudinary (24/10/2026, pedido
+  // explicito: "las imagenes pesaban mucho la base, probemos con Gaby
+  // primero") -- ya no se guarda el binario en la base para imagenes
+  // nuevas, solo la URL que devuelve Cloudinary.
+  async setProductImage(productId: number, dataUri: string): Promise<{ url: string }> {
+    const parsed = parseImageDataUri(dataUri);
+    if (!parsed) {
+      throw new BadRequestException("La imagen debe ser un data URI base64 valido.");
+    }
+
+    const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
+    const upload = await this.cloudinaryService.uploadBuffer(parsed.buffer, "gaby/products", `product-${productId}`);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_gaby_product_images (product_id, image_data, mime_type, source_hash, byte_size, cloudinary_url, cloudinary_public_id)
+       VALUES (?, NULL, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         image_data = NULL,
+         mime_type = VALUES(mime_type),
+         source_hash = VALUES(source_hash),
+         byte_size = VALUES(byte_size),
+         cloudinary_url = VALUES(cloudinary_url),
+         cloudinary_public_id = VALUES(cloudinary_public_id)`,
+      [productId, parsed.mimeType, sourceHash, parsed.buffer.length, upload.url, upload.publicId]
+    );
+
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_gaby_products SET has_image = 1 WHERE id = ?`, [
+      productId
+    ]);
+
+    return { url: upload.url };
+  }
+
+  private mapProduct(row: GabyProductRow): GabyProduct {
+    return {
+      id: row.id,
+      name: row.name,
+      barcode: row.barcode,
+      price: Number(row.price),
+      stock: Number(row.stock),
+      hasImage: Boolean(row.has_image),
+      status: row.status,
+      createdAt: this.toIsoString(row.created_at),
+      updatedAt: this.toIsoString(row.updated_at)
+    };
+  }
+
+  private toIsoString(value: string | Date) {
+    return value instanceof Date ? value.toISOString() : value;
+  }
+
+  // "Panel de control" -- Modo Pro (24/09/2026, pedido explicito): ventas
+  // del dia, ganancia (30% de esas ventas) y el detalle de cada venta
+  // ("Movimientos": Venta #1, articulos, etc). Sin parametro `date`, es
+  // el dia de hoy (Montevideo). Solo lee, no escribe nada.
+  async getSalesSummary(dateLabel?: string): Promise<GabySalesSummary> {
+    const date = dateLabel || getTodayDateLabel();
+    const { startIso, endIso } = buildDayRangeUtc(date);
+
+    const saleRows = await this.databaseService.query<
+      Array<
+        RowDataPacket & {
+          id: number;
+          total_amount: string | number;
+          payment_method: GabyPaymentMethod;
+          created_at: string;
+        }
+      >
+    >(
+      `SELECT id, total_amount, payment_method, DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
+       FROM saas_gaby_sales
+       WHERE status = 'confirmed' AND created_at >= ? AND created_at < ?
+       ORDER BY created_at ASC`,
+      [startIso, endIso]
+    );
+
+    const itemsBySaleId = new Map<number, GabySaleMovementItem[]>();
+    if (saleRows.length) {
+      const saleIds = saleRows.map((row) => Number(row.id));
+      const placeholders = saleIds.map(() => "?").join(", ");
+      const itemRows = await this.databaseService.query<
+        Array<
+          RowDataPacket & {
+            sale_id: number;
+            product_name: string;
+            quantity: number;
+            unit_price: string | number;
+            line_total: string | number;
+          }
+        >
+      >(
+        `SELECT sale_id, product_name, quantity, unit_price, line_total FROM saas_gaby_sale_items WHERE sale_id IN (${placeholders}) ORDER BY id ASC`,
+        saleIds
+      );
+
+      for (const row of itemRows) {
+        const list = itemsBySaleId.get(row.sale_id) ?? [];
+        list.push({
+          name: row.product_name,
+          quantity: Number(row.quantity),
+          unitPrice: Number(row.unit_price),
+          lineTotal: Number(row.line_total)
+        });
+        itemsBySaleId.set(row.sale_id, list);
+      }
+    }
+
+    const sales: GabySaleMovement[] = saleRows.map((row, index) => ({
+      id: Number(row.id),
+      displayNumber: index + 1,
+      createdAt: `${row.created_at}Z`,
+      totalAmount: Number(row.total_amount),
+      paymentMethod: row.payment_method,
+      items: itemsBySaleId.get(Number(row.id)) ?? []
+    }));
+
+    const totalAmount = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+
+    return {
+      date,
+      salesCount: sales.length,
+      totalAmount,
+      profitAmount: Math.round(totalAmount * GABY_PROFIT_MARGIN_RATIO * 100) / 100,
+      profitMarginRatio: GABY_PROFIT_MARGIN_RATIO,
+      sales
+    };
+  }
+}
