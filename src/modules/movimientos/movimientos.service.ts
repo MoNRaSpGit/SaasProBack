@@ -75,11 +75,24 @@ type AuditRow = RowDataPacket & {
 // todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
 // scripts/inspect-*-audit.js, que son la fuente de verdad de cada esquema.
 const SQL_AUDIT_TABLES: Record<
-  "piloto" | "distribuidora" | "qq" | "juez",
+  "piloto" | "gaby" | "distribuidora" | "qq" | "juez",
   { table: string; timeCol: string; columns: string; actionLabels?: Record<string, string>; buildDetail: (row: AuditRow, service: MovimientosService) => string }
 > = {
   piloto: {
     table: "saas_piloto_audit_log",
+    timeCol: "occurred_at",
+    columns: "action, entity_type, entity_id, entity_label, details",
+    actionLabels: {
+      create: "Alta",
+      update: "Edición",
+      sale: "Venta"
+    },
+    buildDetail: (row, service) =>
+      row.entity_label || service.summarizeJsonDetails(row.details) || `${row.entity_type || ""} #${row.entity_id ?? ""}`
+  },
+  // Gaby Almacen (07/11/2026): misma tabla de auditoria que Piloto.
+  gaby: {
+    table: "saas_gaby_audit_log",
     timeCol: "occurred_at",
     columns: "action, entity_type, entity_id, entity_label, details",
     actionLabels: {
@@ -166,8 +179,9 @@ export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getSummary(): Promise<MovimientosAppSummary[]> {
-    const [piloto, gym, agro, distribuidora, qq, juez, gps] = await Promise.all([
+    const [piloto, gaby, gym, agro, distribuidora, qq, juez, gps] = await Promise.all([
       this.countSqlAudit("piloto"),
+      this.countSqlAudit("gaby"),
       this.countGymByClient(),
       this.countAgro(),
       this.countSqlAudit("distribuidora"),
@@ -179,6 +193,7 @@ export class MovimientosService {
     return [
       { key: "gym", label: "Gym", count: gym.reduce((total, client) => total + client.count, 0), clients: gym },
       { key: "piloto", label: "Piloto", count: piloto },
+      { key: "gaby", label: "Gaby", count: gaby },
       { key: "agro", label: "Agro", count: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
       { key: "qq", label: "QQ", count: qq },
@@ -196,6 +211,7 @@ export class MovimientosService {
       case "gps":
         return this.detailGps(dayLabel);
       case "piloto":
+      case "gaby":
       case "distribuidora":
       case "qq":
       case "juez":
