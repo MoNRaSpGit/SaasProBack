@@ -23,6 +23,7 @@ import { OriolModule } from "./modules/oriol/oriol.module";
 import { PeluqueriaModule } from "./modules/peluqueria/peluqueria.module";
 import { PilotoModule } from "./modules/piloto/piloto.module";
 import { GabyModule } from "./modules/gaby/gaby.module";
+import { SantiModule } from "./modules/santi/santi.module";
 import { PlanillaModule } from "./modules/planilla/planilla.module";
 import { TamboModule } from "./modules/tambo/tambo.module";
 import { QqModule } from "./modules/qq/qq.module";
@@ -60,6 +61,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     JuezModule,
     PilotoModule,
     GabyModule,
+    SantiModule,
     QqModule,
     JokerModule,
     OriolModule,
