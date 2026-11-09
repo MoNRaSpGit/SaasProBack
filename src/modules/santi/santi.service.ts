@@ -16,7 +16,8 @@ type SeedClient = {
   menu: { name: string; items: string[]; note: string };
   weeklyMenu?: number;
   history: string[];
-  payments: Array<{ date: string; amount: number; method: string }>;
+  // ago = hace cuantos dias se pago (asi el panel siempre tiene datos de esta semana y este mes).
+  payments: Array<{ ago: number; amount: number; method: string }>;
 };
 
 const SEED_MENUS: Array<{ name: string; items: string[]; inWeek: boolean }> = [
@@ -35,10 +36,7 @@ const SEED_CLIENTS: SeedClient[] = [
     menu: { name: "Milanesa completa", items: ["Milanesa de carne con huevo", "Papas fritas", "Ensalada mixta", "Flan casero"], note: "Sin cebolla" },
     weeklyMenu: 1,
     history: ["Pollo al horno con papas", "Asado con ensalada", "Ravioles con salsa fileto", "Milanesa con puré", "Pizza de muzzarella"],
-    payments: [
-      { date: "2026-10-28", amount: 1800, method: "Efectivo" },
-      { date: "2026-10-21", amount: 1500, method: "Transferencia" }
-    ]
+    payments: [{ ago: 2, amount: 1800, method: "Efectivo" }, { ago: 5, amount: 1500, method: "Transferencia" }, { ago: 9, amount: 1500, method: "Transferencia" }, { ago: 16, amount: 1800, method: "Efectivo" }]
   },
   {
     name: "María",
@@ -46,10 +44,7 @@ const SEED_CLIENTS: SeedClient[] = [
     owes: 2300,
     menu: { name: "Menú vegetariano", items: ["Tarta de zapallitos", "Arroz con verduras", "Ensalada de rúcula", "Fruta de estación"], note: "Entregado 12:15" },
     history: ["Tarta de zapallitos", "Arroz con verduras", "Ensalada de rúcula y queso", "Ñoquis de calabaza", "Tortilla de espinaca"],
-    payments: [
-      { date: "2026-10-30", amount: 2300, method: "Transferencia" },
-      { date: "2026-10-23", amount: 2300, method: "Transferencia" }
-    ]
+    payments: [{ ago: 0, amount: 2300, method: "Transferencia" }, { ago: 4, amount: 2300, method: "Transferencia" }, { ago: 11, amount: 2300, method: "Transferencia" }, { ago: 18, amount: 2300, method: "Transferencia" }]
   },
   {
     name: "Ana",
@@ -57,7 +52,7 @@ const SEED_CLIENTS: SeedClient[] = [
     owes: 1500,
     menu: { name: "Pasta del día", items: ["Ñoquis con salsa fileto", "Pan de campo", "Ensalada de tomate", "Budín de pan"], note: "Salsa aparte" },
     history: ["Ñoquis con fileto", "Ravioles de ricota", "Milanesa de pollo", "Tallarines con crema", "Pescado al horno"],
-    payments: [{ date: "2026-10-29", amount: 1500, method: "Efectivo" }]
+    payments: [{ ago: 1, amount: 1500, method: "Efectivo" }, { ago: 3, amount: 1500, method: "Efectivo" }, { ago: 10, amount: 1500, method: "Efectivo" }, { ago: 17, amount: 1500, method: "Efectivo" }]
   },
   {
     name: "Pedro",
@@ -65,10 +60,7 @@ const SEED_CLIENTS: SeedClient[] = [
     owes: 800,
     menu: { name: "Menú liviano", items: ["Pollo al horno", "Puré de calabaza", "Gelatina"], note: "Porción chica" },
     history: ["Pollo al horno", "Puré de calabaza con carne", "Sopa de verduras", "Arroz con pollo", "Gelatina y fruta"],
-    payments: [
-      { date: "2026-10-27", amount: 800, method: "Efectivo" },
-      { date: "2026-10-20", amount: 800, method: "Efectivo" }
-    ]
+    payments: [{ ago: 3, amount: 800, method: "Efectivo" }, { ago: 6, amount: 800, method: "Efectivo" }, { ago: 13, amount: 800, method: "Efectivo" }, { ago: 20, amount: 800, method: "Efectivo" }]
   },
   {
     name: "Lucía",
@@ -76,7 +68,7 @@ const SEED_CLIENTS: SeedClient[] = [
     owes: 3200,
     menu: { name: "Parrillada para dos", items: ["Asado y chorizo", "Ensalada rusa", "Boniato al horno", "Dulce de leche con queso"], note: "Entregado 13:00" },
     history: ["Parrillada para dos", "Milanesa napolitana", "Asado y chorizo", "Ravioles con crema", "Hamburguesa casera"],
-    payments: [{ date: "2026-10-31", amount: 3200, method: "Transferencia" }]
+    payments: [{ ago: 4, amount: 3200, method: "Transferencia" }, { ago: 12, amount: 3200, method: "Transferencia" }, { ago: 19, amount: 3200, method: "Transferencia" }]
   }
 ];
 
@@ -101,6 +93,11 @@ function todayMontevideo() {
     month: "2-digit",
     day: "2-digit"
   }).format(new Date());
+}
+
+function daysAgoMontevideo(days: number) {
+  const base = new Date(`${todayMontevideo()}T12:00:00Z`);
+  return new Date(base.getTime() - days * 86400000).toISOString().slice(0, 10);
 }
 
 function nowUtc() {
@@ -285,7 +282,7 @@ export class SantiService {
       await this.insertHistory(clientId, client.history);
       if (client.payments.length) {
         const placeholders = client.payments.map(() => "(?, ?, ?, ?, ?)").join(", ");
-        const values = client.payments.flatMap((payment) => [clientId, payment.amount, payment.method, payment.date, nowUtc()]);
+        const values = client.payments.flatMap((payment) => [clientId, payment.amount, payment.method, daysAgoMontevideo(payment.ago), nowUtc()]);
         await this.db.execute(
           `INSERT INTO saas_santi_payments (client_id, amount, method, paid_on, created_at) VALUES ${placeholders}`,
           values
