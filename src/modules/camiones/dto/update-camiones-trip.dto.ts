@@ -14,8 +14,8 @@ export class UpdateCamionesTripDto {
   placeName?: string;
 
   @IsOptional()
-  @IsIn(["mercedes", "honda"])
-  truck?: "mercedes" | "honda";
+  @IsIn(["mercedes", "volkswagen"])
+  truck?: "mercedes" | "volkswagen";
 
   @IsDateString()
   tripDate!: string;

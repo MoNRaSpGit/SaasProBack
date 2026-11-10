@@ -33,7 +33,7 @@ type CamionesTripRow = RowDataPacket & {
   user_id: number;
   trip_date: string;
   place: string;
-  truck: "mercedes" | "honda" | null;
+  truck: "mercedes" | "volkswagen" | null;
   kilometers: string;
   status: "confirmed" | "pending" | "paid" | "cancelled";
   collected_amount: string | null;

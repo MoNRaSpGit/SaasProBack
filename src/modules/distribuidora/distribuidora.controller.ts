@@ -101,8 +101,8 @@ export class DistribuidoraController {
     @Headers("x-device-id") deviceId?: string,
     @Headers("user-agent") userAgent?: string
   ) {
-    const user = await this.distribuidoraAuthService.requireUser(authorization);
-    this.distribuidoraAuthService.requireAdmin(user);
+    // 10/11/2026: la vendedora tambien puede AGREGAR clientes (no editarlos).
+    await this.distribuidoraAuthService.requireUser(authorization);
     return this.distribuidoraService.createClient(dto, auditContext(deviceId, userAgent));
   }
 
