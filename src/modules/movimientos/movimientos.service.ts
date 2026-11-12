@@ -75,7 +75,7 @@ type AuditRow = RowDataPacket & {
 // todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
 // scripts/inspect-*-audit.js, que son la fuente de verdad de cada esquema.
 const SQL_AUDIT_TABLES: Record<
-  "piloto" | "gaby" | "distribuidora" | "qq" | "juez",
+  "piloto" | "gaby" | "eme" | "distribuidora" | "qq" | "juez",
   { table: string; timeCol: string; columns: string; actionLabels?: Record<string, string>; buildDetail: (row: AuditRow, service: MovimientosService) => string }
 > = {
   piloto: {
@@ -102,6 +102,21 @@ const SQL_AUDIT_TABLES: Record<
     },
     buildDetail: (row, service) =>
       row.entity_label || service.summarizeJsonDetails(row.details) || `${row.entity_type || ""} #${row.entity_id ?? ""}`
+  },
+  // Eme (12/11/2026): demo de pizzeria, sin login. Cada fila es algo que hizo
+  // un navegador (visitor_id); los "yo-" son dispositivos NUESTROS.
+  eme: {
+    table: "saas_eme_activity_log",
+    timeCol: "occurred_at",
+    columns: "event AS action, detail AS summary, visitor_id AS actor",
+    actionLabels: {
+      entrada: "Entró a la app",
+      login: "Ingreso",
+      logout: "Salió",
+      seccion: "Abrió pestaña",
+      accion: "Acción"
+    },
+    buildDetail: (row) => `${String(row.actor || "").startsWith("yo-") ? "[Nosotros] " : ""}${row.summary || ""}`.trim()
   },
   distribuidora: {
     table: "saas_distribuidora_audit_log",
@@ -179,9 +194,10 @@ export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getSummary(): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, gym, agro, distribuidora, qq, juez, gps] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, gps] = await Promise.all([
       this.countSqlAudit("piloto"),
       this.countSqlAudit("gaby"),
+      this.countSqlAudit("eme"),
       this.countGymByClient(),
       this.countAgro(),
       this.countSqlAudit("distribuidora"),
@@ -194,6 +210,7 @@ export class MovimientosService {
       { key: "gym", label: "Gym", count: gym.reduce((total, client) => total + client.count, 0), clients: gym },
       { key: "piloto", label: "Piloto", count: piloto },
       { key: "gaby", label: "Gaby", count: gaby },
+      { key: "eme", label: "Eme", count: eme },
       { key: "agro", label: "Agro", count: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
       { key: "qq", label: "QQ", count: qq },
@@ -212,6 +229,7 @@ export class MovimientosService {
         return this.detailGps(dayLabel);
       case "piloto":
       case "gaby":
+      case "eme":
       case "distribuidora":
       case "qq":
       case "juez":

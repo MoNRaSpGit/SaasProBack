@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 
 // Demo de "Eme" (pedidos para restaurantes): UNA sola sesion compartida por
 // todos los dispositivos. El backend solo guarda el estado completo de la
@@ -42,6 +43,15 @@ export class EmeService {
   private async readRow(): Promise<StateRow> {
     const rows = await this.databaseService.query<StateRow[]>(`SELECT version, state FROM saas_eme_demo_state WHERE id = 1`);
     return rows[0];
+  }
+
+  // Registro interno de uso (para Movimientos): quien entro y que hizo.
+  async trackActivity(dto: TrackEmeActivityDto, userAgent?: string): Promise<void> {
+    await this.databaseService.execute(
+      `INSERT INTO saas_eme_activity_log (visitor_id, event, detail, user_agent, occurred_at)
+       VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
+      [dto.visitorId, dto.event, dto.detail?.trim() || null, userAgent?.slice(0, 255) || null]
+    );
   }
 
   async getState(since: number | null): Promise<EmeStateResponse> {

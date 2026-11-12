@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Put, Query } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, Post, Put, Query } from "@nestjs/common";
+import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 import { EmeService } from "./eme.service";
 
 // Demo sin login: sesion unica compartida entre dispositivos.
@@ -10,6 +11,13 @@ export class EmeController {
   getState(@Query("since") since?: string) {
     const parsed = since !== undefined && since !== "" ? Number(since) : null;
     return this.emeService.getState(parsed !== null && Number.isInteger(parsed) ? parsed : null);
+  }
+
+  // Registro interno de uso (se ve en la app de Movimientos).
+  @Post("activity")
+  async trackActivity(@Body() dto: TrackEmeActivityDto, @Headers("user-agent") userAgent?: string) {
+    await this.emeService.trackActivity(dto, userAgent);
+    return { ok: true };
   }
 
   @Put("state")
