@@ -1,8 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateGabyAccountEntryDto } from "./dto/create-gaby-account-entry.dto";
 import { CreateGabyClientDto } from "./dto/create-gaby-client.dto";
+import { UpdateGabyClientDto } from "./dto/update-gaby-client.dto";
 import { GabyAccountEntry, GabyClient } from "./gaby.types";
 
 type GabyClientRow = RowDataPacket & {
@@ -75,6 +76,19 @@ export class GabyClientsService {
       `SELECT * FROM saas_gaby_clients WHERE id = ?`,
       [result.insertId]
     );
+    return mapClient(rows[0]);
+  }
+
+  async updateClient(clientId: number, dto: UpdateGabyClientDto): Promise<GabyClient> {
+    const existing = await this.databaseService.query<GabyClientRow[]>(`SELECT * FROM saas_gaby_clients WHERE id = ?`, [clientId]);
+    if (!existing[0]) throw new NotFoundException("No existe ese cliente.");
+    await this.databaseService.execute(`UPDATE saas_gaby_clients SET name = ?, phone = ?, address = ? WHERE id = ?`, [
+      dto.name.trim(),
+      dto.phone?.trim() || null,
+      dto.address?.trim() || null,
+      clientId
+    ]);
+    const rows = await this.databaseService.query<GabyClientRow[]>(`SELECT * FROM saas_gaby_clients WHERE id = ?`, [clientId]);
     return mapClient(rows[0]);
   }
 

@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query,
 import type { Request, Response } from "express";
 import { CreateGabyAccountEntryDto } from "./dto/create-gaby-account-entry.dto";
 import { CreateGabyClientDto } from "./dto/create-gaby-client.dto";
+import { UpdateGabyClientDto } from "./dto/update-gaby-client.dto";
 import { CreateGabyProductDto } from "./dto/create-gaby-product.dto";
 import { CreateGabySaleDto } from "./dto/create-gaby-sale.dto";
 import { SetGabyProductImageDto } from "./dto/set-gaby-product-image.dto";
@@ -179,6 +180,11 @@ export class GabyController {
   @Post("clients")
   createClient(@Body() dto: CreateGabyClientDto) {
     return this.clientsService.createClient(dto);
+  }
+
+  @Patch("clients/:id")
+  updateClient(@Param("id", ParseIntPipe) id: number, @Body() dto: UpdateGabyClientDto) {
+    return this.clientsService.updateClient(id, dto);
   }
 
   @Delete("clients/:id")
