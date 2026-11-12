@@ -9,6 +9,7 @@ import { SetGabyStockDto } from "./dto/set-gaby-stock.dto";
 import { UpdateGabyProductDto } from "./dto/update-gaby-product.dto";
 import { diffFields, GabyAuditService } from "./gaby-audit.service";
 import { GabyClientsService } from "./gaby-clients.service";
+import { GabyReportsService } from "./gaby-reports.service";
 import { GabyService } from "./gaby.service";
 
 const PRODUCT_AUDIT_FIELDS = ["name", "price", "stock"] as const;
@@ -22,7 +23,8 @@ export class GabyController {
   constructor(
     private readonly gabyService: GabyService,
     private readonly auditService: GabyAuditService,
-    private readonly clientsService: GabyClientsService
+    private readonly clientsService: GabyClientsService,
+    private readonly reportsService: GabyReportsService
   ) {}
 
   @Get("products")
@@ -156,6 +158,17 @@ export class GabyController {
   @Get("sales/summary")
   getSalesSummary(@Query("date") date?: string) {
     return this.gabyService.getSalesSummary(date);
+  }
+
+  // Pestana "Mes": resumen por semanas/dias e historico por mes.
+  @Get("sales/month")
+  getMonthSummary(@Query("year", ParseIntPipe) year: number, @Query("month", ParseIntPipe) month: number) {
+    return this.reportsService.getMonthSummary(year, month);
+  }
+
+  @Get("sales/month-history")
+  getMonthHistory(@Query("months") months?: string) {
+    return this.reportsService.getMonthHistory(Number(months) || 6);
   }
 
   @Get("clients")
