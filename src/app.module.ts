@@ -13,6 +13,7 @@ import { DeliveryModule } from "./modules/delivery/delivery.module";
 import { DgiModule } from "./modules/dgi/dgi.module";
 import { DistribuidoraModule } from "./modules/distribuidora/distribuidora.module";
 import { EjemploModule } from "./modules/ejemplo/ejemplo.module";
+import { EmeModule } from "./modules/eme/eme.module";
 import { GpsModule } from "./modules/gps/gps.module";
 import { GymModule } from "./modules/gym/gym.module";
 import { JokerModule } from "./modules/joker/joker.module";
@@ -54,6 +55,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     DeliveryModule,
     DgiModule,
     EjemploModule,
+    EmeModule,
     AgroModule,
     ScrumModule,
     GymModule,
