@@ -241,12 +241,17 @@ export class ScrumService {
 
   async updateTaskDescription(taskId: number, dto: UpdateScrumTaskDescriptionDto) {
     await this.assertTaskExists(taskId);
+    const title = dto.title?.trim();
+    if (dto.title !== undefined && !title) {
+      throw new BadRequestException("El nombre de la tarea no puede quedar vacio.");
+    }
 
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_scrum_tasks
-       SET description = ?
+       SET description = ?,
+           title = COALESCE(?, title)
        WHERE id = ?`,
-      [dto.description.trim() || null, taskId]
+      [dto.description.trim() || null, title ?? null, taskId]
     );
 
     return {
