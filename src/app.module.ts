@@ -38,6 +38,7 @@ import { CloudinaryModule } from "./shared/cloudinary/cloudinary.module";
 import { DatabaseModule } from "./shared/database/database.module";
 import { HealthController } from "./shared/health/health.controller";
 import { AuthRateLimitMiddleware } from "./shared/http/auth-rate-limit.middleware";
+import { LoginFailureLimitMiddleware } from "./shared/http/login-failure-limit.middleware";
 import { RequestLoggingMiddleware } from "./shared/http/request-logging.middleware";
 
 @Module({
@@ -87,5 +88,7 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestLoggingMiddleware).forRoutes("*");
     consumer.apply(AuthRateLimitMiddleware).forRoutes("auth");
+    // Freno de intentos FALLIDOS en cualquier .../login (ver el archivo: muy permisivo a proposito).
+    consumer.apply(LoginFailureLimitMiddleware).forRoutes("*");
   }
 }
