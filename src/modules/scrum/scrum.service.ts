@@ -7,6 +7,8 @@ import { CreateScrumDebtChargeDto } from "./dto/create-scrum-debt-charge.dto";
 import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
+import { RegisterScrumClientEquipmentPaymentDto } from "./dto/register-scrum-client-equipment-payment.dto";
+import { SetScrumClientEquipmentDto } from "./dto/set-scrum-client-equipment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
 import { UpdateScrumTaskDescriptionDto } from "./dto/update-scrum-task-description.dto";
@@ -41,6 +43,19 @@ type ScrumClientRow = RowDataPacket & {
   created_at: Date | string;
   created_at_raw: string;
   updated_at: Date | string;
+};
+
+type ScrumClientEquipmentRow = RowDataPacket & {
+  client_id: number;
+  installment_amount: string | number;
+  months: number;
+};
+
+type ScrumClientEquipmentPaymentRow = RowDataPacket & {
+  id: number;
+  client_id: number;
+  amount: string | number;
+  paid_at: Date | string;
 };
 
 type ScrumClientDebtPaymentRow = RowDataPacket & {
@@ -632,9 +647,12 @@ export class ScrumService {
       amountChangesByClientId.set(clientId, list);
     }
 
-    return rows.map((row) =>
-      this.mapClient(row, paymentsByClientId.get(Number(row.id)) ?? [], amountChangesByClientId.get(Number(row.id)) ?? [])
-    );
+    const equipmentByClientId = await this.loadEquipment();
+
+    return rows.map((row) => ({
+      ...this.mapClient(row, paymentsByClientId.get(Number(row.id)) ?? [], amountChangesByClientId.get(Number(row.id)) ?? []),
+      equipment: equipmentByClientId.get(Number(row.id)) ?? null
+    }));
   }
 
   private async getTaskById(taskId: number) {
@@ -720,7 +738,100 @@ export class ScrumService {
       [clientId]
     );
 
-    return this.mapClient(row, paymentRows, amountChangeRows);
+    const equipment = (await this.loadEquipment(clientId)).get(clientId) ?? null;
+    return { ...this.mapClient(row, paymentRows, amountChangeRows), equipment };
+  }
+
+  // Materiales / equipo (14/11/2026): plan en cuotas aparte del programa.
+  // NO entra en la ganancia mensual. Total = cuota x meses; lo pagado es la
+  // suma de pagos de monto libre; las cuotas que faltan se estiman con la cuota.
+  private async loadEquipment(clientId?: number) {
+    const where = clientId === undefined ? "" : "WHERE client_id = ?";
+    const params = clientId === undefined ? [] : [clientId];
+    const planRows = await this.databaseService.query<ScrumClientEquipmentRow[]>(
+      `SELECT client_id, installment_amount, months FROM saas_scrum_client_equipment ${where}`,
+      params
+    );
+    const result = new Map<number, ReturnType<ScrumService["buildEquipment"]>>();
+    if (!planRows.length) {
+      return result;
+    }
+    const paymentRows = await this.databaseService.query<ScrumClientEquipmentPaymentRow[]>(
+      `SELECT id, client_id, amount, paid_at FROM saas_scrum_client_equipment_payments ${where} ORDER BY paid_at ASC, id ASC`,
+      params
+    );
+    for (const plan of planRows) {
+      const id = Number(plan.client_id);
+      result.set(
+        id,
+        this.buildEquipment(
+          plan,
+          paymentRows.filter((payment) => Number(payment.client_id) === id)
+        )
+      );
+    }
+    return result;
+  }
+
+  private buildEquipment(plan: ScrumClientEquipmentRow, paymentRows: ScrumClientEquipmentPaymentRow[]) {
+    const installmentAmount = Number(plan.installment_amount);
+    const months = Number(plan.months);
+    const total = Math.round(installmentAmount * months * 100) / 100;
+    const payments = paymentRows.map((payment) => ({
+      id: Number(payment.id),
+      amount: Number(payment.amount),
+      paidAt: new Date(payment.paid_at).toISOString()
+    }));
+    const paid = Math.round(payments.reduce((sum, payment) => sum + payment.amount, 0) * 100) / 100;
+    const remaining = Math.max(0, Math.round((total - paid) * 100) / 100);
+    return {
+      installmentAmount,
+      months,
+      total,
+      paid,
+      remaining,
+      installmentsLeft: remaining > 0 ? Math.ceil(remaining / installmentAmount) : 0,
+      payments
+    };
+  }
+
+  async setClientEquipment(clientId: number, dto: SetScrumClientEquipmentDto) {
+    await this.assertClientExists(clientId);
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_scrum_client_equipment (client_id, installment_amount, months)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE installment_amount = VALUES(installment_amount), months = VALUES(months)`,
+      [clientId, Math.round(dto.installmentAmount * 100) / 100, dto.months]
+    );
+    return { ok: true, item: await this.getClientById(clientId) };
+  }
+
+  async deleteClientEquipment(clientId: number) {
+    await this.assertClientExists(clientId);
+    await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_client_equipment_payments WHERE client_id = ?`, [clientId]);
+    await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_client_equipment WHERE client_id = ?`, [clientId]);
+    return { ok: true, item: await this.getClientById(clientId) };
+  }
+
+  async registerClientEquipmentPayment(clientId: number, dto: RegisterScrumClientEquipmentPaymentDto) {
+    const client = await this.getClientById(clientId);
+    if (!client.equipment) {
+      throw new BadRequestException("Este cliente no tiene materiales cargados.");
+    }
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_scrum_client_equipment_payments (client_id, amount) VALUES (?, ?)`,
+      [clientId, Math.round(dto.amount * 100) / 100]
+    );
+    return { ok: true, item: await this.getClientById(clientId) };
+  }
+
+  async deleteClientEquipmentPayment(clientId: number, paymentId: number) {
+    await this.assertClientExists(clientId);
+    await this.databaseService.execute<ResultSetHeader>(
+      `DELETE FROM saas_scrum_client_equipment_payments WHERE id = ? AND client_id = ?`,
+      [paymentId, clientId]
+    );
+    return { ok: true, item: await this.getClientById(clientId) };
   }
 
   private mapClient(row: ScrumClientRow, paymentRows: ScrumClientDebtPaymentRow[], amountChangeRows: ScrumClientAmountChangeRow[]) {

@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put } from "@nestjs/common";
 import { CreateScrumClientDto } from "./dto/create-scrum-client.dto";
 import { CreateScrumDebtDto } from "./dto/create-scrum-debt.dto";
 import { CreateScrumDebtChargeDto } from "./dto/create-scrum-debt-charge.dto";
 import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
+import { RegisterScrumClientEquipmentPaymentDto } from "./dto/register-scrum-client-equipment-payment.dto";
+import { SetScrumClientEquipmentDto } from "./dto/set-scrum-client-equipment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
 import { UpdateScrumTaskDescriptionDto } from "./dto/update-scrum-task-description.dto";
@@ -70,6 +72,27 @@ export class ScrumController {
   @Patch("clients/:id/debt-payment")
   registerClientDebtPayment(@Param("id", ParseIntPipe) clientId: number, @Body() dto: RegisterScrumClientDebtPaymentDto) {
     return this.scrumService.registerClientDebtPayment(clientId, dto);
+  }
+
+  // Materiales / equipo del cliente (14/11/2026).
+  @Put("clients/:id/equipment")
+  setClientEquipment(@Param("id", ParseIntPipe) clientId: number, @Body() dto: SetScrumClientEquipmentDto) {
+    return this.scrumService.setClientEquipment(clientId, dto);
+  }
+
+  @Delete("clients/:id/equipment")
+  deleteClientEquipment(@Param("id", ParseIntPipe) clientId: number) {
+    return this.scrumService.deleteClientEquipment(clientId);
+  }
+
+  @Post("clients/:id/equipment/payments")
+  registerClientEquipmentPayment(@Param("id", ParseIntPipe) clientId: number, @Body() dto: RegisterScrumClientEquipmentPaymentDto) {
+    return this.scrumService.registerClientEquipmentPayment(clientId, dto);
+  }
+
+  @Delete("clients/:id/equipment/payments/:paymentId")
+  deleteClientEquipmentPayment(@Param("id", ParseIntPipe) clientId: number, @Param("paymentId", ParseIntPipe) paymentId: number) {
+    return this.scrumService.deleteClientEquipmentPayment(clientId, paymentId);
   }
 
   @Delete("clients/:id")
