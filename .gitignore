@@ -9,3 +9,6 @@ docs/
 
 # Datos personales de clientes reales: se cargan a la base, no van al repo.
 scripts/data/distribuidora-clients.json
+
+# Interno: documentacion y respaldos, no se suben (13/11/2026)
+scratch_backups/
