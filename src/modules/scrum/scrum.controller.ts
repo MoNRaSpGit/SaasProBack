@@ -6,6 +6,7 @@ import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { RegisterScrumClientEquipmentPaymentDto } from "./dto/register-scrum-client-equipment-payment.dto";
+import { SetScrumClientCommissionDto } from "./dto/set-scrum-client-commission.dto";
 import { SetScrumClientEquipmentDto } from "./dto/set-scrum-client-equipment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
@@ -72,6 +73,11 @@ export class ScrumController {
   @Patch("clients/:id/debt-payment")
   registerClientDebtPayment(@Param("id", ParseIntPipe) clientId: number, @Body() dto: RegisterScrumClientDebtPaymentDto) {
     return this.scrumService.registerClientDebtPayment(clientId, dto);
+  }
+
+  @Put("clients/:id/commission")
+  setClientCommission(@Param("id", ParseIntPipe) clientId: number, @Body() dto: SetScrumClientCommissionDto) {
+    return this.scrumService.setClientCommission(clientId, dto);
   }
 
   // Materiales / equipo del cliente (14/11/2026).

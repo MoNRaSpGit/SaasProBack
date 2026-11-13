@@ -8,6 +8,7 @@ import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { RegisterScrumClientEquipmentPaymentDto } from "./dto/register-scrum-client-equipment-payment.dto";
+import { SetScrumClientCommissionDto } from "./dto/set-scrum-client-commission.dto";
 import { SetScrumClientEquipmentDto } from "./dto/set-scrum-client-equipment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
@@ -40,6 +41,7 @@ type ScrumClientRow = RowDataPacket & {
   frequency: "monthly" | "semiannual";
   next_payment_at: Date | string;
   debt_amount: string | number | null;
+  commission_percent: string | number | null;
   created_at: Date | string;
   created_at_raw: string;
   updated_at: Date | string;
@@ -376,6 +378,16 @@ export class ScrumService {
     };
   }
 
+  // Comision (14/11/2026): % del monto que se le da a quien vendio el proyecto.
+  async setClientCommission(clientId: number, dto: SetScrumClientCommissionDto) {
+    await this.assertClientExists(clientId);
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_scrum_clients SET commission_percent = ? WHERE id = ?`, [
+      Math.round(dto.percent * 100) / 100,
+      clientId
+    ]);
+    return { ok: true, item: await this.getClientById(clientId) };
+  }
+
   async deleteClient(clientId: number) {
     await this.assertClientExists(clientId);
 
@@ -608,6 +620,7 @@ export class ScrumService {
          frequency,
          next_payment_at,
          debt_amount,
+         commission_percent,
          created_at,
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at_raw,
          updated_at
@@ -708,6 +721,7 @@ export class ScrumService {
          frequency,
          next_payment_at,
          debt_amount,
+         commission_percent,
          created_at,
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at_raw,
          updated_at
@@ -865,6 +879,7 @@ export class ScrumService {
       nextPaymentAt: toDateOnly(row.next_payment_at),
       createdAt: `${row.created_at_raw}Z`,
       debtAmount,
+      commissionPercent: Number(row.commission_percent ?? 0),
       debtPaidAmount,
       debtRemaining,
       debtPayments,
