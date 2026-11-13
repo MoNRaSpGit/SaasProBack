@@ -6,7 +6,7 @@ import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from ".
 // clients: sub-tarjetas por cliente (hoy solo Gym, 23/10/2026: "entro a
 // Gym y me sale Ale Gym y Pablo M").
 export type MovimientosClientSummary = { key: string; label: string; count: number };
-export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[] };
+export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number };
 export type MovimientosDetailItem = { time: string; label: string; detail: string };
 
 // Gym: cada workspace es un cliente (gimnasio). Los de demo y el
@@ -194,7 +194,7 @@ export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getSummary(): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, gps] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, gps, qqVisits] = await Promise.all([
       this.countSqlAudit("piloto"),
       this.countSqlAudit("gaby"),
       this.countSqlAudit("eme"),
@@ -203,7 +203,8 @@ export class MovimientosService {
       this.countSqlAudit("distribuidora"),
       this.countSqlAudit("qq"),
       this.countSqlAudit("juez"),
-      this.countGps()
+      this.countGps(),
+      this.countQqVisits()
     ]);
 
     return [
@@ -213,7 +214,7 @@ export class MovimientosService {
       { key: "eme", label: "Eme", count: eme },
       { key: "agro", label: "Agro", count: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
-      { key: "qq", label: "QQ", count: qq },
+      { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits },
       { key: "juez", label: "Juez", count: juez },
       { key: "gps", label: "GPS", count: gps }
     ];
@@ -237,6 +238,18 @@ export class MovimientosService {
       default:
         return [];
     }
+  }
+
+  // Visitas de hoy al catalogo de QQ (13/11/2026, pedido explicito: "hoy
+  // hubo 20 visitas"). Cada entrada al catalogo guarda un "visit" con un id
+  // al azar que no se guarda en el telefono, asi que cada visita = un visitante.
+  private async countQqVisits() {
+    const { start, end } = dayRangeUtc();
+    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
+      `SELECT COUNT(*) AS total FROM saas_qq_audit_log WHERE action = 'visit' AND occurred_at >= ? AND occurred_at < ?`,
+      [start, end]
+    );
+    return Number(rows[0]?.total ?? 0);
   }
 
   // ---------------- GPS: logins (sesiones), altas de cliente y rutas
