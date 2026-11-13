@@ -7,6 +7,7 @@ import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
+import { UpdateScrumTaskDescriptionDto } from "./dto/update-scrum-task-description.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
@@ -39,6 +40,11 @@ export class ScrumController {
   @Patch("tasks/:id/difficulty")
   updateTaskDifficulty(@Param("id", ParseIntPipe) taskId: number, @Body() dto: UpdateScrumTaskDifficultyDto) {
     return this.scrumService.updateTaskDifficulty(taskId, dto);
+  }
+
+  @Patch("tasks/:id/description")
+  updateTaskDescription(@Param("id", ParseIntPipe) taskId: number, @Body() dto: UpdateScrumTaskDescriptionDto) {
+    return this.scrumService.updateTaskDescription(taskId, dto);
   }
 
   @Delete("tasks/:id")

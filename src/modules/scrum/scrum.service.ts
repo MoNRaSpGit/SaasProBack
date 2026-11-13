@@ -9,6 +9,7 @@ import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
 import { UpdateScrumDebtDto } from "./dto/update-scrum-debt.dto";
+import { UpdateScrumTaskDescriptionDto } from "./dto/update-scrum-task-description.dto";
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
@@ -230,6 +231,22 @@ export class ScrumService {
        SET difficulty = ?
        WHERE id = ?`,
       [dto.difficulty, taskId]
+    );
+
+    return {
+      ok: true,
+      item: await this.getTaskById(taskId)
+    };
+  }
+
+  async updateTaskDescription(taskId: number, dto: UpdateScrumTaskDescriptionDto) {
+    await this.assertTaskExists(taskId);
+
+    await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_scrum_tasks
+       SET description = ?
+       WHERE id = ?`,
+      [dto.description.trim() || null, taskId]
     );
 
     return {
