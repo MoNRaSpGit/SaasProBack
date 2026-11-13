@@ -6,6 +6,7 @@ import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { RegisterScrumClientEquipmentPaymentDto } from "./dto/register-scrum-client-equipment-payment.dto";
+import { SaveScrumExpenseDto } from "./dto/save-scrum-expense.dto";
 import { SetScrumClientCommissionDto } from "./dto/set-scrum-client-commission.dto";
 import { SetScrumClientEquipmentDto } from "./dto/set-scrum-client-equipment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
@@ -73,6 +74,27 @@ export class ScrumController {
   @Patch("clients/:id/debt-payment")
   registerClientDebtPayment(@Param("id", ParseIntPipe) clientId: number, @Body() dto: RegisterScrumClientDebtPaymentDto) {
     return this.scrumService.registerClientDebtPayment(clientId, dto);
+  }
+
+  // Gastos mensuales (14/11/2026).
+  @Get("expenses")
+  listExpenses() {
+    return this.scrumService.listExpenses().then((items) => ({ ok: true, items }));
+  }
+
+  @Post("expenses")
+  createExpense(@Body() dto: SaveScrumExpenseDto) {
+    return this.scrumService.createExpense(dto);
+  }
+
+  @Patch("expenses/:id")
+  updateExpense(@Param("id", ParseIntPipe) expenseId: number, @Body() dto: SaveScrumExpenseDto) {
+    return this.scrumService.updateExpense(expenseId, dto);
+  }
+
+  @Delete("expenses/:id")
+  deleteExpense(@Param("id", ParseIntPipe) expenseId: number) {
+    return this.scrumService.deleteExpense(expenseId);
   }
 
   @Put("clients/:id/commission")

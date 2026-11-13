@@ -8,6 +8,7 @@ import { CreateScrumDebtPaymentDto } from "./dto/create-scrum-debt-payment.dto";
 import { CreateScrumTaskDto } from "./dto/create-scrum-task.dto";
 import { RegisterScrumClientDebtPaymentDto } from "./dto/register-scrum-client-debt-payment.dto";
 import { RegisterScrumClientEquipmentPaymentDto } from "./dto/register-scrum-client-equipment-payment.dto";
+import { SaveScrumExpenseDto } from "./dto/save-scrum-expense.dto";
 import { SetScrumClientCommissionDto } from "./dto/set-scrum-client-commission.dto";
 import { SetScrumClientEquipmentDto } from "./dto/set-scrum-client-equipment.dto";
 import { UpdateScrumClientDto } from "./dto/update-scrum-client.dto";
@@ -386,6 +387,44 @@ export class ScrumService {
       clientId
     ]);
     return { ok: true, item: await this.getClientById(clientId) };
+  }
+
+  // Gastos mensuales (14/11/2026): se descuentan de la ganancia mensual.
+  async listExpenses() {
+    const rows = await this.databaseService.query<RowDataPacket[]>(
+      `SELECT id, description, amount FROM saas_scrum_expenses ORDER BY id ASC`
+    );
+    return rows.map((row) => ({ id: Number(row.id), description: String(row.description), amount: Number(row.amount) }));
+  }
+
+  async createExpense(dto: SaveScrumExpenseDto) {
+    const description = dto.description.trim();
+    if (!description) {
+      throw new BadRequestException("Poné una descripcion del gasto.");
+    }
+    await this.databaseService.execute<ResultSetHeader>(`INSERT INTO saas_scrum_expenses (description, amount) VALUES (?, ?)`, [
+      description,
+      Math.round(dto.amount * 100) / 100
+    ]);
+    return { ok: true, items: await this.listExpenses() };
+  }
+
+  async updateExpense(expenseId: number, dto: SaveScrumExpenseDto) {
+    const description = dto.description.trim();
+    if (!description) {
+      throw new BadRequestException("Poné una descripcion del gasto.");
+    }
+    await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_scrum_expenses SET description = ?, amount = ? WHERE id = ?`, [
+      description,
+      Math.round(dto.amount * 100) / 100,
+      expenseId
+    ]);
+    return { ok: true, items: await this.listExpenses() };
+  }
+
+  async deleteExpense(expenseId: number) {
+    await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_scrum_expenses WHERE id = ?`, [expenseId]);
+    return { ok: true, items: await this.listExpenses() };
   }
 
   async deleteClient(clientId: number) {
