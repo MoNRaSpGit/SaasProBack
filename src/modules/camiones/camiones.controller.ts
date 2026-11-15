@@ -7,6 +7,7 @@ import { CamionesRequestUser } from "./camiones.types";
 import { CurrentCamionesUser } from "./current-camiones-user.decorator";
 import { CreateCamionesClientDto } from "./dto/create-camiones-client.dto";
 import { CreateCamionesPlaceDto } from "./dto/create-camiones-place.dto";
+import { SubmitCamionesTripDto } from "./dto/submit-camiones-trip.dto";
 import { CreateCamionesTripDto } from "./dto/create-camiones-trip.dto";
 import { ListCamionesClientsDto } from "./dto/list-camiones-clients.dto";
 import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
@@ -89,6 +90,22 @@ export class CamionesController {
   @Get("trips")
   listTrips(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Query() query: ListCamionesTripsDto) {
     return this.camionesService.listTrips(currentUser, query);
+  }
+
+  // Camioneros: cargan el viaje (camion, zorra, cliente, origen y destino) sin
+  // km ni valor; el administrador lo valora despues.
+  @RequireCapability("camiones.trips.submit")
+  @UseGuards(CapabilityGuard)
+  @Post("trips/submit")
+  submitTrip(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Body() dto: SubmitCamionesTripDto) {
+    return this.camionesService.submitDriverTrip(currentUser, dto);
+  }
+
+  @RequireCapability("camiones.trips.submit")
+  @UseGuards(CapabilityGuard)
+  @Get("trips/mine")
+  listMyTrips(@CurrentCamionesUser() currentUser: CamionesRequestUser) {
+    return this.camionesService.listMyTrips(currentUser);
   }
 
   @RequireCapability("camiones.trips.write")

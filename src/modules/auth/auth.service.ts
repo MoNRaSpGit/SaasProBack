@@ -34,7 +34,7 @@ type TenantMembershipRow = RowDataPacket & {
   tenant_name: string;
   tenant_slug: string;
   tenant_status: "active" | "suspended" | "archived";
-  membership_role: "owner" | "admin" | "operario" | "staff";
+  membership_role: "owner" | "admin" | "operario" | "staff" | "camionero";
   membership_status: "active" | "invited" | "suspended";
   membership_is_default: number;
   billing_status: "active" | "grace_period" | "pending_manual_block" | "blocked";

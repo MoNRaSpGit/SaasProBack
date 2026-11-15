@@ -60,6 +60,13 @@ describe("backend smoke", () => {
     expect(hasCapability("operario", "camiones.places.read")).toBe(true);
     expect(hasCapability("operario", "camiones.places.write")).toBe(false);
     expect(hasCapability("operario", "camiones.trips.write")).toBe(true);
+    // Camionero: solo carga viajes y ve clientes/lugares.
+    expect(hasCapability("camionero", "camiones.trips.submit")).toBe(true);
+    expect(hasCapability("camionero", "camiones.clients.read")).toBe(true);
+    expect(hasCapability("camionero", "camiones.trips.read")).toBe(false);
+    expect(hasCapability("camionero", "camiones.trips.write")).toBe(false);
+    expect(hasCapability("camionero", "camiones.trips.pay")).toBe(false);
+    expect(hasCapability("camionero", "camiones.clients.write")).toBe(false);
     expect(getCapabilitiesForRole("unknown")).toEqual([]);
   });
 

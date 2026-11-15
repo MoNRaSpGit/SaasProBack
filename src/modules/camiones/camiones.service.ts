@@ -10,6 +10,7 @@ import { ListCamionesPlacesDto } from "./dto/list-camiones-places.dto";
 import { ListCamionesTripsDto } from "./dto/list-camiones-trips.dto";
 import { UpdateCamionesClientDto } from "./dto/update-camiones-client.dto";
 import { UpdateCamionesPlaceDto } from "./dto/update-camiones-place.dto";
+import { SubmitCamionesTripDto } from "./dto/submit-camiones-trip.dto";
 import { UpdateCamionesTripDto } from "./dto/update-camiones-trip.dto";
 
 type CamionesClientRow = RowDataPacket & {
@@ -43,6 +44,7 @@ type CamionesTripRow = RowDataPacket & {
   updated_at: string;
   client_name?: string;
   place_name?: string;
+  created_by_name?: string | null;
 };
 
 type CamionesPlaceRow = RowDataPacket & {
@@ -497,10 +499,12 @@ export class CamionesService {
          t.created_at,
          t.updated_at,
          c.name AS client_name,
-         p.name AS place_name
+         p.name AS place_name,
+         COALESCE(u.full_name, u.email) AS created_by_name
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
        LEFT JOIN saas_camiones_places p ON p.id = t.place_id
+       LEFT JOIN saasPro_users u ON u.id = t.user_id
        WHERE ${whereParts.join(" AND ")}
        ORDER BY t.trip_date DESC, t.id DESC
        LIMIT ?`,
@@ -515,6 +519,43 @@ export class CamionesService {
         limit
       }
     };
+  }
+
+  // Viaje cargado por un camionero (14/11/2026): sin km ni valor
+  // (kilometers = 0 marca "por valorar"). Mismo formato de notas que usa el
+  // frontend (route-from / trip-description / zorra).
+  async submitDriverTrip(currentUser: CamionesRequestUser, dto: SubmitCamionesTripDto) {
+    const clean = (value: string) => value.replace(/\|\|/g, " ").replace(/\s+/g, " ").trim();
+    const tokens = [`route-from::${clean(dto.fromPlaceName)}`, `zorra::${dto.withTrailer ? "si" : "no"}`];
+    const description = dto.description ? clean(dto.description) : "";
+    if (description) tokens.push(`trip-description::${description}`);
+    return this.createTrip(currentUser, {
+      clientId: dto.clientId,
+      placeId: dto.placeId,
+      placeName: dto.placeName ? clean(dto.placeName) : undefined,
+      truck: dto.truck,
+      tripDate: dto.tripDate,
+      kilometers: 0,
+      notes: tokens.join("||")
+    });
+  }
+
+  // Los viajes que cargo este camionero (para que vea que quedaron enviados).
+  async listMyTrips(currentUser: CamionesRequestUser) {
+    const rows = await this.databaseService.query<CamionesTripRow[]>(
+      `SELECT
+         t.id, t.tenant_id, t.branch_id, t.client_id, t.place_id, t.user_id, t.trip_date, t.place,
+         t.truck, t.kilometers, t.status, t.collected_amount, t.notes, t.paid_at, t.created_at, t.updated_at,
+         c.name AS client_name, p.name AS place_name
+       FROM saas_camiones_trips t
+       INNER JOIN saas_camiones_clients c ON c.id = t.client_id
+       LEFT JOIN saas_camiones_places p ON p.id = t.place_id
+       WHERE t.tenant_id = ? AND t.user_id = ? AND t.status <> 'cancelled'
+       ORDER BY t.trip_date DESC, t.id DESC
+       LIMIT 30`,
+      [currentUser.tenantId, currentUser.userId]
+    );
+    return { items: rows.map((row) => this.mapTrip(row)) };
   }
 
   async createTrip(currentUser: CamionesRequestUser, dto: CreateCamionesTripDto) {
@@ -844,6 +885,7 @@ export class CamionesService {
       placeId: row.place_id,
       clientName: row.client_name,
       userId: row.user_id,
+      createdByName: row.created_by_name ?? null,
       tripDate: row.trip_date,
       place: row.place_name || row.place,
       truck: row.truck ?? null,
