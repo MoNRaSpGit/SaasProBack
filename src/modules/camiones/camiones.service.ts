@@ -45,6 +45,7 @@ type CamionesTripRow = RowDataPacket & {
   client_name?: string;
   place_name?: string;
   created_by_name?: string | null;
+  created_by_is_driver?: number | null;
 };
 
 type CamionesPlaceRow = RowDataPacket & {
@@ -500,7 +501,8 @@ export class CamionesService {
          t.updated_at,
          c.name AS client_name,
          p.name AS place_name,
-         COALESCE(u.full_name, u.email) AS created_by_name
+         COALESCE(u.full_name, u.email) AS created_by_name,
+         EXISTS(SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = t.user_id AND m.tenant_id = t.tenant_id AND m.role = 'camionero') AS created_by_is_driver
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
        LEFT JOIN saas_camiones_places p ON p.id = t.place_id
@@ -886,6 +888,7 @@ export class CamionesService {
       clientName: row.client_name,
       userId: row.user_id,
       createdByName: row.created_by_name ?? null,
+      createdByIsDriver: Boolean(row.created_by_is_driver),
       tripDate: row.trip_date,
       place: row.place_name || row.place,
       truck: row.truck ?? null,
