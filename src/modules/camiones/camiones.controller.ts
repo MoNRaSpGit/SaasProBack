@@ -101,6 +101,13 @@ export class CamionesController {
     return this.camionesService.submitDriverTrip(currentUser, dto);
   }
 
+  @RequireCapability("camiones.trips.write")
+  @UseGuards(CapabilityGuard)
+  @Get("drivers")
+  listDrivers(@CurrentCamionesUser() currentUser: CamionesRequestUser) {
+    return this.camionesService.listDrivers(currentUser);
+  }
+
   @RequireCapability("camiones.trips.submit")
   @UseGuards(CapabilityGuard)
   @Get("trips/mine")

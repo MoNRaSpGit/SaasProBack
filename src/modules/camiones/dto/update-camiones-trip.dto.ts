@@ -39,4 +39,11 @@ export class UpdateCamionesTripDto {
   @IsString()
   @MaxLength(255)
   notes?: string;
+
+  // El administrador puede pasar el viaje a otro camionero (15/11/2026).
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  driverUserId?: number;
 }

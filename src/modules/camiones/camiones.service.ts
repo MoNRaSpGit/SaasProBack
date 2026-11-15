@@ -604,6 +604,19 @@ export class CamionesService {
     return rate !== null ? Number((kilometers * rate).toFixed(2)) : null;
   }
 
+  // Camioneros activos del tenant (para pasarles un viaje).
+  async listDrivers(currentUser: CamionesRequestUser) {
+    const rows = await this.databaseService.query<Array<RowDataPacket & { id: number; name: string }>>(
+      `SELECT u.id, COALESCE(u.full_name, u.email) AS name
+       FROM saas_tenant_memberships m
+       INNER JOIN saasPro_users u ON u.id = m.user_id
+       WHERE m.tenant_id = ? AND m.role = 'camionero' AND m.status = 'active' AND u.is_active = 1
+       ORDER BY name ASC`,
+      [currentUser.tenantId]
+    );
+    return { items: rows.map((row) => ({ id: row.id, name: row.name })) };
+  }
+
   // El camionero avisa que termino el recorrido (solo viajes ya aprobados y propios).
   async finishMyTrip(currentUser: CamionesRequestUser, tripId: number) {
     const result = await this.databaseService.execute<ResultSetHeader>(
@@ -838,6 +851,20 @@ export class CamionesService {
 
     if (result.affectedRows === 0) {
       throw new BadRequestException("Viaje no encontrado para este tenant");
+    }
+
+    // Pasar el viaje a otro camionero: solo a usuarios con rol camionero de este tenant.
+    if (dto.driverUserId) {
+      const reassigned = await this.databaseService.execute<ResultSetHeader>(
+        `UPDATE saas_camiones_trips t
+         SET t.user_id = ?
+         WHERE t.id = ? AND t.tenant_id = ?
+           AND EXISTS (SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = ? AND m.tenant_id = t.tenant_id AND m.role = 'camionero' AND m.status = 'active')`,
+        [dto.driverUserId, tripId, currentUser.tenantId, dto.driverUserId]
+      );
+      if (reassigned.affectedRows === 0) {
+        throw new BadRequestException("Ese usuario no es un camionero de este tenant");
+      }
     }
 
     const rows = await this.databaseService.query<CamionesTripRow[]>(
