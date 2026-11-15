@@ -25,6 +25,9 @@ type CamionesClientRow = RowDataPacket & {
   updated_at: string;
 };
 
+// Porcentaje del camionero sobre lo facturado del viaje (pedido 06/11/2026).
+const DRIVER_PERCENT = 10;
+
 type CamionesTripRow = RowDataPacket & {
   id: number;
   tenant_id: number;
@@ -46,6 +49,7 @@ type CamionesTripRow = RowDataPacket & {
   place_name?: string;
   created_by_name?: string | null;
   created_by_is_driver?: number | null;
+  driver_paid_at?: string | null;
 };
 
 type CamionesPlaceRow = RowDataPacket & {
@@ -497,6 +501,7 @@ export class CamionesService {
          t.collected_amount,
          t.notes,
          t.paid_at,
+         DATE_FORMAT(t.driver_paid_at, '%Y-%m-%d') AS driver_paid_at,
          t.created_at,
          t.updated_at,
          c.name AS client_name,
@@ -547,7 +552,7 @@ export class CamionesService {
     const rows = await this.databaseService.query<CamionesTripRow[]>(
       `SELECT
          t.id, t.tenant_id, t.branch_id, t.client_id, t.place_id, t.user_id, t.trip_date, t.place,
-         t.truck, t.kilometers, t.status, t.collected_amount, t.notes, t.paid_at, t.created_at, t.updated_at,
+         t.truck, t.kilometers, t.status, t.collected_amount, t.notes, t.paid_at, DATE_FORMAT(t.driver_paid_at, '%Y-%m-%d') AS driver_paid_at, t.created_at, t.updated_at,
          c.name AS client_name, p.name AS place_name
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
@@ -557,7 +562,56 @@ export class CamionesService {
        LIMIT 30`,
       [currentUser.tenantId, currentUser.userId]
     );
-    return { items: rows.map((row) => this.mapTrip(row)) };
+    // El camionero NUNCA recibe el valor del viaje ni el porcentaje: solo que
+    // ya esta confirmado y cuanto le corresponde (15/11/2026).
+    return {
+      items: rows.map((row) => {
+        const trip = this.mapTrip(row);
+        const valued = trip.kilometers > 0;
+        const total = valued ? this.tripTotal(trip.notes, trip.kilometers) : null;
+        const token = (prefix: string) => (trip.notes ?? "").split("||").map((t) => t.trim()).find((t) => t.startsWith(prefix))?.slice(prefix.length).trim() ?? "";
+        return {
+          id: trip.id,
+          clientName: trip.clientName,
+          from: token("route-from::"),
+          to: trip.place,
+          tripDate: trip.tripDate,
+          truck: trip.truck,
+          withTrailer: token("zorra::") === "si",
+          confirmed: valued,
+          share: total === null ? null : Number(((total * DRIVER_PERCENT) / 100).toFixed(2)),
+          paid: Boolean(row.driver_paid_at)
+        };
+      })
+    };
+  }
+
+  // Total facturado del viaje: el "trip-total" guardado, o km x tarifa.
+  private tripTotal(notes: string | null, kilometers: number): number | null {
+    const tokens = (notes ?? "").split("||").map((t) => t.trim());
+    const read = (prefix: string) => {
+      const raw = tokens.find((t) => t.startsWith(prefix))?.slice(prefix.length).trim();
+      const n = raw ? Number(raw) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : null;
+    };
+    const total = read("trip-total::");
+    if (total !== null) return total;
+    const rate = read("rate-per-km::");
+    return rate !== null ? Number((kilometers * rate).toFixed(2)) : null;
+  }
+
+  // "Pagar" al camionero: marca como pagados sus viajes ya valorados que
+  // todavia no se le pagaron, asi la cuenta vuelve a empezar de cero.
+  async payoutDriver(currentUser: CamionesRequestUser, driverUserId: number) {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_trips t
+       SET t.driver_paid_at = CURRENT_TIMESTAMP
+       WHERE t.tenant_id = ? AND t.user_id = ? AND t.kilometers > 0 AND t.status <> 'cancelled'
+         AND t.driver_paid_at IS NULL
+         AND EXISTS (SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = t.user_id AND m.tenant_id = t.tenant_id AND m.role = 'camionero')`,
+      [currentUser.tenantId, driverUserId]
+    );
+    return { paidTrips: result.affectedRows };
   }
 
   async createTrip(currentUser: CamionesRequestUser, dto: CreateCamionesTripDto) {
@@ -889,6 +943,7 @@ export class CamionesService {
       userId: row.user_id,
       createdByName: row.created_by_name ?? null,
       createdByIsDriver: Boolean(row.created_by_is_driver),
+      driverPaidAt: row.driver_paid_at ?? null,
       tripDate: row.trip_date,
       place: row.place_name || row.place,
       truck: row.truck ?? null,

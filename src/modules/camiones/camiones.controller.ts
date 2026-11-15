@@ -128,6 +128,13 @@ export class CamionesController {
 
   @RequireCapability("camiones.trips.pay")
   @UseGuards(CapabilityGuard)
+  @Post("drivers/:userId/payout")
+  payoutDriver(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("userId", ParseIntPipe) userId: number) {
+    return this.camionesService.payoutDriver(currentUser, userId);
+  }
+
+  @RequireCapability("camiones.trips.pay")
+  @UseGuards(CapabilityGuard)
   @Patch("trips/:id/pay")
   markTripPaid(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) tripId: number) {
     return this.camionesService.markTripPaid(currentUser, tripId);
