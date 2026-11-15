@@ -544,7 +544,7 @@ export class CamionesService {
       placeName: dto.placeName ? clean(dto.placeName) : undefined,
       truck: dto.truck,
       tripDate: dto.tripDate,
-      kilometers: 0,
+      kilometers: Number(dto.kilometers.toFixed(2)),
       notes: tokens.join("||")
     });
   }
@@ -569,8 +569,9 @@ export class CamionesService {
     return {
       items: rows.map((row) => {
         const trip = this.mapTrip(row);
-        const valued = trip.kilometers > 0;
-        const total = valued ? this.tripTotal(trip.notes, trip.kilometers) : null;
+        // Aprobado = el administrador ya le puso valor al viaje.
+        const total = this.tripTotal(trip.notes, trip.kilometers);
+        const valued = total !== null;
         const token = (prefix: string) => (trip.notes ?? "").split("||").map((t) => t.trim()).find((t) => t.startsWith(prefix))?.slice(prefix.length).trim() ?? "";
         return {
           id: trip.id,
@@ -607,7 +608,7 @@ export class CamionesService {
   async finishMyTrip(currentUser: CamionesRequestUser, tripId: number) {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_camiones_trips SET driver_done_at = COALESCE(driver_done_at, CURRENT_TIMESTAMP)
-       WHERE id = ? AND tenant_id = ? AND user_id = ? AND kilometers > 0 AND status <> 'cancelled'`,
+       WHERE id = ? AND tenant_id = ? AND user_id = ? AND (notes LIKE '%trip-total::%' OR notes LIKE '%rate-per-km::%') AND status <> 'cancelled'`,
       [tripId, currentUser.tenantId, currentUser.userId]
     );
     if (result.affectedRows === 0) {
@@ -620,7 +621,7 @@ export class CamionesService {
   async finishTripAsAdmin(currentUser: CamionesRequestUser, tripId: number) {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_camiones_trips SET driver_done_at = COALESCE(driver_done_at, CURRENT_TIMESTAMP)
-       WHERE id = ? AND tenant_id = ? AND kilometers > 0 AND status <> 'cancelled'`,
+       WHERE id = ? AND tenant_id = ? AND (notes LIKE '%trip-total::%' OR notes LIKE '%rate-per-km::%') AND status <> 'cancelled'`,
       [tripId, currentUser.tenantId]
     );
     if (result.affectedRows === 0) {
@@ -635,7 +636,7 @@ export class CamionesService {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_camiones_trips t
        SET t.driver_paid_at = CURRENT_TIMESTAMP
-       WHERE t.tenant_id = ? AND t.user_id = ? AND t.kilometers > 0 AND t.status <> 'cancelled'
+       WHERE t.tenant_id = ? AND t.user_id = ? AND (t.notes LIKE '%trip-total::%' OR t.notes LIKE '%rate-per-km::%') AND t.status <> 'cancelled'
          AND t.driver_paid_at IS NULL AND t.driver_done_at IS NOT NULL
          AND EXISTS (SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = t.user_id AND m.tenant_id = t.tenant_id AND m.role = 'camionero')`,
       [currentUser.tenantId, driverUserId]

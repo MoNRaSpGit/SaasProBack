@@ -1,8 +1,8 @@
 import { Type } from "class-transformer";
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, MaxLength, Min, MinLength } from "class-validator";
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from "class-validator";
 
-// Lo que carga un camionero: sin kilometros ni valor (eso lo pone el
-// administrador despues).
+// Lo que carga un camionero: con los kilometros que hizo, pero SIN valor
+// (el valor/tarifa lo pone el administrador despues, 15/11/2026).
 export class SubmitCamionesTripDto {
   @Type(() => Number)
   @IsInt()
@@ -15,6 +15,13 @@ export class SubmitCamionesTripDto {
   // true = el camion fue con zorra.
   @IsBoolean()
   withTrailer!: boolean;
+
+  // Kilometros del viaje: los pone el camionero.
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.1)
+  @Max(100000)
+  kilometers!: number;
 
   @IsDateString()
   tripDate!: string;
