@@ -126,6 +126,20 @@ export class CamionesController {
     return this.camionesService.updateTrip(currentUser, tripId, dto);
   }
 
+  @RequireCapability("camiones.trips.submit")
+  @UseGuards(CapabilityGuard)
+  @Post("trips/:id/finish-mine")
+  finishMyTrip(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) tripId: number) {
+    return this.camionesService.finishMyTrip(currentUser, tripId);
+  }
+
+  @RequireCapability("camiones.trips.write")
+  @UseGuards(CapabilityGuard)
+  @Post("trips/:id/finish")
+  finishTrip(@CurrentCamionesUser() currentUser: CamionesRequestUser, @Param("id", ParseIntPipe) tripId: number) {
+    return this.camionesService.finishTripAsAdmin(currentUser, tripId);
+  }
+
   @RequireCapability("camiones.trips.pay")
   @UseGuards(CapabilityGuard)
   @Post("drivers/:userId/payout")

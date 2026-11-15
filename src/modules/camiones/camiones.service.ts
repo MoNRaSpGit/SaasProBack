@@ -50,6 +50,7 @@ type CamionesTripRow = RowDataPacket & {
   created_by_name?: string | null;
   created_by_is_driver?: number | null;
   driver_paid_at?: string | null;
+  driver_done_at?: string | null;
 };
 
 type CamionesPlaceRow = RowDataPacket & {
@@ -502,6 +503,7 @@ export class CamionesService {
          t.notes,
          t.paid_at,
          DATE_FORMAT(t.driver_paid_at, '%Y-%m-%d') AS driver_paid_at,
+         DATE_FORMAT(t.driver_done_at, '%Y-%m-%d') AS driver_done_at,
          t.created_at,
          t.updated_at,
          c.name AS client_name,
@@ -552,7 +554,7 @@ export class CamionesService {
     const rows = await this.databaseService.query<CamionesTripRow[]>(
       `SELECT
          t.id, t.tenant_id, t.branch_id, t.client_id, t.place_id, t.user_id, t.trip_date, t.place,
-         t.truck, t.kilometers, t.status, t.collected_amount, t.notes, t.paid_at, DATE_FORMAT(t.driver_paid_at, '%Y-%m-%d') AS driver_paid_at, t.created_at, t.updated_at,
+         t.truck, t.kilometers, t.status, t.collected_amount, t.notes, t.paid_at, DATE_FORMAT(t.driver_paid_at, '%Y-%m-%d') AS driver_paid_at, t.driver_done_at, t.created_at, t.updated_at,
          c.name AS client_name, p.name AS place_name
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
@@ -580,6 +582,7 @@ export class CamionesService {
           withTrailer: token("zorra::") === "si",
           confirmed: valued,
           share: total === null ? null : Number(((total * DRIVER_PERCENT) / 100).toFixed(2)),
+          done: Boolean(row.driver_done_at),
           paid: Boolean(row.driver_paid_at)
         };
       })
@@ -600,14 +603,40 @@ export class CamionesService {
     return rate !== null ? Number((kilometers * rate).toFixed(2)) : null;
   }
 
-  // "Pagar" al camionero: marca como pagados sus viajes ya valorados que
+  // El camionero avisa que termino el recorrido (solo viajes ya aprobados y propios).
+  async finishMyTrip(currentUser: CamionesRequestUser, tripId: number) {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_trips SET driver_done_at = COALESCE(driver_done_at, CURRENT_TIMESTAMP)
+       WHERE id = ? AND tenant_id = ? AND user_id = ? AND kilometers > 0 AND status <> 'cancelled'`,
+      [tripId, currentUser.tenantId, currentUser.userId]
+    );
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Ese viaje todavía no está aprobado o no es tuyo");
+    }
+    return { ok: true };
+  }
+
+  // El administrador lo marca terminado si el camionero no avisa.
+  async finishTripAsAdmin(currentUser: CamionesRequestUser, tripId: number) {
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_camiones_trips SET driver_done_at = COALESCE(driver_done_at, CURRENT_TIMESTAMP)
+       WHERE id = ? AND tenant_id = ? AND kilometers > 0 AND status <> 'cancelled'`,
+      [tripId, currentUser.tenantId]
+    );
+    if (result.affectedRows === 0) {
+      throw new BadRequestException("Ese viaje todavía no está aprobado");
+    }
+    return { ok: true };
+  }
+
+  // "Pagar" al camionero: marca como pagados sus viajes ya TERMINADOS que
   // todavia no se le pagaron, asi la cuenta vuelve a empezar de cero.
   async payoutDriver(currentUser: CamionesRequestUser, driverUserId: number) {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_camiones_trips t
        SET t.driver_paid_at = CURRENT_TIMESTAMP
        WHERE t.tenant_id = ? AND t.user_id = ? AND t.kilometers > 0 AND t.status <> 'cancelled'
-         AND t.driver_paid_at IS NULL
+         AND t.driver_paid_at IS NULL AND t.driver_done_at IS NOT NULL
          AND EXISTS (SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = t.user_id AND m.tenant_id = t.tenant_id AND m.role = 'camionero')`,
       [currentUser.tenantId, driverUserId]
     );
@@ -944,6 +973,7 @@ export class CamionesService {
       createdByName: row.created_by_name ?? null,
       createdByIsDriver: Boolean(row.created_by_is_driver),
       driverPaidAt: row.driver_paid_at ?? null,
+      driverDoneAt: row.driver_done_at ?? null,
       tripDate: row.trip_date,
       place: row.place_name || row.place,
       truck: row.truck ?? null,
