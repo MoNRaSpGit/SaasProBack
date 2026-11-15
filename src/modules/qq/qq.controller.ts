@@ -49,6 +49,7 @@ const PRODUCT_AUDIT_FIELDS = [
   "accountPrice",
   "profilePrice",
   "currency",
+  "billingType",
   "category",
   "status",
   "imageUrl"

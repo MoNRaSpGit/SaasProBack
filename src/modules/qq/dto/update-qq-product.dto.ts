@@ -32,6 +32,11 @@ export class UpdateQqProductDto {
   @MaxLength(5)
   currency?: string;
 
+  // "monthly" = por mes, "one_time" = precio unico (14/11/2026).
+  @IsOptional()
+  @IsIn(["monthly", "one_time"])
+  billingType?: "monthly" | "one_time";
+
   @IsOptional()
   @IsString()
   @MaxLength(500)

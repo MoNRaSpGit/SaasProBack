@@ -13,6 +13,7 @@ type QqProductRow = RowDataPacket & {
   account_price: string | number | null;
   profile_price: string | number | null;
   currency: string;
+  billing_type: "monthly" | "one_time";
   image_url: string | null;
   has_image: number;
   category: string | null;
@@ -32,7 +33,7 @@ type QqProductImageRow = RowDataPacket & {
 // driver lo reinterprete como UTC con la timezone del proceso de Node --
 // mismo criterio ya usado en delivery.service.ts.
 const PRODUCT_COLUMNS = `
-  id, name, description, account_price, profile_price, currency,
+  id, name, description, account_price, profile_price, currency, billing_type,
   image_url, has_image, category, status, sort_order,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%S') AS created_at
 `;
@@ -81,14 +82,15 @@ export class QqProductsService {
     );
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_qq_products (name, description, account_price, profile_price, currency, image_url, category, status, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO saas_qq_products (name, description, account_price, profile_price, currency, billing_type, image_url, category, status, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dto.name.trim(),
         dto.description?.trim() || null,
         dto.accountPrice ?? null,
         dto.profilePrice ?? null,
         dto.currency ?? "UYU",
+        dto.billingType ?? "monthly",
         dto.imageUrl?.trim() || null,
         dto.category?.trim() || null,
         dto.status ?? "published",
@@ -154,13 +156,14 @@ export class QqProductsService {
     }
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_qq_products SET name = ?, description = ?, account_price = ?, profile_price = ?, currency = ?, image_url = ?, category = ?, status = ? WHERE id = ?`,
+      `UPDATE saas_qq_products SET name = ?, description = ?, account_price = ?, profile_price = ?, currency = ?, billing_type = ?, image_url = ?, category = ?, status = ? WHERE id = ?`,
       [
         dto.name?.trim() ?? existing.name,
         dto.description !== undefined ? dto.description.trim() || null : existing.description,
         nextAccountPrice,
         nextProfilePrice,
         dto.currency ?? existing.currency,
+        dto.billingType ?? existing.billing_type,
         dto.imageUrl !== undefined ? dto.imageUrl.trim() || null : existing.image_url,
         dto.category !== undefined ? dto.category.trim() || null : existing.category,
         dto.status ?? existing.status,
@@ -246,6 +249,7 @@ export class QqProductsService {
       accountPrice: row.account_price === null ? null : Number(row.account_price),
       profilePrice: row.profile_price === null ? null : Number(row.profile_price),
       currency: row.currency,
+      billingType: row.billing_type,
       imageUrl: row.image_url,
       hasImage: Boolean(row.has_image),
       category: row.category,

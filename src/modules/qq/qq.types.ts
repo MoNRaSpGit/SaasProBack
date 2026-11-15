@@ -20,6 +20,7 @@ export type QqProduct = {
   accountPrice: number | null;
   profilePrice: number | null;
   currency: string;
+  billingType: "monthly" | "one_time";
   imageUrl: string | null;
   // true si el admin subio una foto (se sirve por GET
   // /qq/products/:id/image) -- el frontend arma esa URL solo, no viene
