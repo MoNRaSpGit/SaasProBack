@@ -561,7 +561,7 @@ export class CamionesService {
        LEFT JOIN saas_camiones_places p ON p.id = t.place_id
        WHERE t.tenant_id = ? AND t.user_id = ? AND t.status <> 'cancelled'
        ORDER BY t.trip_date DESC, t.id DESC
-       LIMIT 30`,
+       LIMIT 200`,
       [currentUser.tenantId, currentUser.userId]
     );
     // El camionero NUNCA recibe el valor del viaje ni el porcentaje: solo que
