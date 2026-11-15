@@ -22,10 +22,6 @@ const GYM_CLIENT_LABELS: Record<string, string> = { alegym: "Ale Gym", pablom: "
 // Unico cliente real de frontend-agro hoy (ver memoria del proyecto).
 const AGRO_TENANT_ID = 123;
 
-// Mismos nombres que PERSONAS en gps-data.service.ts (las claves
-// martin/ana/juan/pedro son legacy, los nombres mostrados ya cambiaron).
-const GPS_PERSONA_LABELS: Record<string, string> = { martin: "Matías", ana: "Andrés", juan: "Edinson", pedro: "Rodrigo" };
-
 const GYM_ACTION_LABELS: Record<string, string> = {
   login: "Inicio de sesión",
   login_failed: "Intento fallido",
@@ -194,7 +190,7 @@ export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getSummary(): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, gps, qqVisits] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits] = await Promise.all([
       this.countSqlAudit("piloto"),
       this.countSqlAudit("gaby"),
       this.countSqlAudit("eme"),
@@ -203,7 +199,7 @@ export class MovimientosService {
       this.countSqlAudit("distribuidora"),
       this.countSqlAudit("qq"),
       this.countSqlAudit("juez"),
-      this.countGps(),
+      this.countCamiones(),
       this.countQqVisits()
     ]);
 
@@ -216,7 +212,7 @@ export class MovimientosService {
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
       { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits },
       { key: "juez", label: "Juez", count: juez },
-      { key: "gps", label: "GPS", count: gps }
+      { key: "camiones", label: "Camiones", count: camiones }
     ];
   }
 
@@ -226,8 +222,8 @@ export class MovimientosService {
         return this.detailGym(dayLabel, client);
       case "agro":
         return this.detailAgro(dayLabel);
-      case "gps":
-        return this.detailGps(dayLabel);
+      case "camiones":
+        return this.detailCamiones(dayLabel);
       case "piloto":
       case "gaby":
       case "eme":
@@ -252,101 +248,77 @@ export class MovimientosService {
     return Number(rows[0]?.total ?? 0);
   }
 
-  // ---------------- GPS: logins (sesiones), altas de cliente y rutas
-  // finales generadas -- no tiene una tabla de auditoria propia como
-  // piloto/distribuidora/qq/juez, asi que se arma a mano con las 3
-  // tablas que ya tienen su fecha real. ----
+  // ---------------- Camiones (15/11/2026, pedido explicito: reemplaza a GPS):
+  // no tiene tabla de auditoria propia, se arma con las fechas reales de cada
+  // viaje: ingresado (created_at), finalizado por el camionero
+  // (driver_done_at), pagado al camionero (driver_paid_at) y cobrado al
+  // cliente (paid_at). ----
 
-  private async countGps() {
+  private async countCamiones() {
     const { start, end } = dayRangeUtc();
-    const [loginRows, clientRows, assignRows, routeRows] = await Promise.all([
-      this.databaseService.query<(RowDataPacket & { total: number })[]>(
-        `SELECT COUNT(*) AS total FROM saas_gps_sessions WHERE created_at >= ? AND created_at < ?`,
-        [start, end]
-      ),
-      this.databaseService.query<(RowDataPacket & { total: number })[]>(
-        `SELECT COUNT(*) AS total FROM saas_gps_clients WHERE created_at >= ? AND created_at < ?`,
-        [start, end]
-      ),
-      this.databaseService.query<(RowDataPacket & { total: number })[]>(
-        `SELECT COUNT(*) AS total FROM saas_gps_clients WHERE assigned_at >= ? AND assigned_at < ?`,
-        [start, end]
-      ),
-      this.databaseService.query<(RowDataPacket & { total: number })[]>(
-        `SELECT COUNT(*) AS total FROM saas_gps_final_routes WHERE created_at >= ? AND created_at < ?`,
-        [start, end]
-      )
-    ]);
-    return (
-      Number(loginRows[0]?.total ?? 0) +
-      Number(clientRows[0]?.total ?? 0) +
-      Number(assignRows[0]?.total ?? 0) +
-      Number(routeRows[0]?.total ?? 0)
+    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
+      `SELECT
+         (SELECT COUNT(*) FROM saas_camiones_trips WHERE created_at >= ? AND created_at < ?) +
+         (SELECT COUNT(*) FROM saas_camiones_trips WHERE driver_done_at >= ? AND driver_done_at < ?) +
+         (SELECT COUNT(*) FROM saas_camiones_trips WHERE driver_paid_at >= ? AND driver_paid_at < ?) +
+         (SELECT COUNT(*) FROM saas_camiones_trips WHERE paid_at >= ? AND paid_at < ?) AS total`,
+      [start, end, start, end, start, end, start, end]
     );
+    return Number(rows[0]?.total ?? 0);
   }
 
-  private async detailGps(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+  private async detailCamiones(dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const { start, end } = dayRangeUtc(dayLabel);
-    const [logins, clients, assignments, routes] = await Promise.all([
-      this.databaseService.query<(RowDataPacket & { when_raw: string; username: string; full_name: string | null; role: string })[]>(
-        `SELECT DATE_FORMAT(s.created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, u.username, u.full_name, u.role
-         FROM saas_gps_sessions s
-         JOIN saas_gps_users u ON u.id = s.user_id
-         WHERE s.created_at >= ? AND s.created_at < ?
-         ORDER BY s.created_at DESC`,
+    type TripEventRow = RowDataPacket & {
+      when_raw: string;
+      client_name: string;
+      place: string;
+      notes: string | null;
+      kilometers: string;
+      by_name: string | null;
+      driver_name: string | null;
+    };
+    const fetchEvents = (column: string) =>
+      this.databaseService.query<TripEventRow[]>(
+        `SELECT DATE_FORMAT(t.${column}, '%Y-%m-%dT%H:%i:%s') AS when_raw, c.name AS client_name, t.place, t.notes, t.kilometers,
+                COALESCE(u.full_name, u.email) AS by_name, COALESCE(u.full_name, u.email) AS driver_name
+         FROM saas_camiones_trips t
+         INNER JOIN saas_camiones_clients c ON c.id = t.client_id
+         LEFT JOIN saasPro_users u ON u.id = t.user_id
+         WHERE t.${column} >= ? AND t.${column} < ?
+         ORDER BY t.${column} DESC`,
         [start, end]
-      ),
-      this.databaseService.query<(RowDataPacket & { when_raw: string; name: string; address: string })[]>(
-        `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, name, address
-         FROM saas_gps_clients
-         WHERE created_at >= ? AND created_at < ?
-         ORDER BY created_at DESC`,
-        [start, end]
-      ),
-      this.databaseService.query<(RowDataPacket & { when_raw: string; name: string; assigned_username: string | null })[]>(
-        `SELECT DATE_FORMAT(assigned_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, name, assigned_username
-         FROM saas_gps_clients
-         WHERE assigned_at >= ? AND assigned_at < ?
-         ORDER BY assigned_at DESC`,
-        [start, end]
-      ),
-      this.databaseService.query<(RowDataPacket & { when_raw: string; day_label: string })[]>(
-        `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, day_label
-         FROM saas_gps_final_routes
-         WHERE created_at >= ? AND created_at < ?
-         ORDER BY created_at DESC`,
-        [start, end]
-      )
+      );
+
+    const [created, done, driverPaid, clientPaid] = await Promise.all([
+      fetchEvents("created_at"),
+      fetchEvents("driver_done_at"),
+      fetchEvents("driver_paid_at"),
+      fetchEvents("paid_at")
     ]);
 
+    const noteValue = (notes: string | null, prefix: string) =>
+      (notes ?? "").split("||").map((token) => token.trim()).find((token) => token.startsWith(prefix))?.slice(prefix.length).trim() ?? "";
+    const route = (row: TripEventRow) => `${noteValue(row.notes, "route-from::") || "?"} → ${row.place}`;
+    const money = (value: number) => `$${Math.round(value)}`;
     const items: Array<MovimientosDetailItem & { t: string }> = [];
 
-    for (const row of logins) {
-      const roleLabel = row.role === "admin" ? "Administrador" : "Repartidor";
-      items.push({
-        time: formatMontevideoTime(row.when_raw),
-        label: "Inicio de sesión",
-        detail: `${roleLabel} · ${row.full_name || row.username}`,
-        t: row.when_raw
-      });
+    for (const row of created) {
+      items.push({ time: formatMontevideoTime(row.when_raw), label: "Viaje ingresado", detail: `${row.by_name || "?"} · ${row.client_name} · ${route(row)}`, t: row.when_raw });
     }
-    for (const row of clients) {
-      items.push({ time: formatMontevideoTime(row.when_raw), label: "Alta de cliente", detail: `${row.name} · ${row.address}`, t: row.when_raw });
+    for (const row of done) {
+      items.push({ time: formatMontevideoTime(row.when_raw), label: "Viaje finalizado", detail: `${row.driver_name || "?"} · ${row.client_name} · ${route(row)}`, t: row.when_raw });
     }
-    for (const row of assignments) {
-      const personaLabel = row.assigned_username ? GPS_PERSONA_LABELS[row.assigned_username] || row.assigned_username : "Sin asignar";
-      items.push({
-        time: formatMontevideoTime(row.when_raw),
-        label: row.assigned_username ? "Asignación de cliente" : "Cliente desasignado",
-        detail: `${row.name} → ${personaLabel}`,
-        t: row.when_raw
-      });
+    for (const row of driverPaid) {
+      const total = Number(noteValue(row.notes, "trip-total::"));
+      const share = Number.isFinite(total) && total > 0 ? ` · le tocaron ${money(total * 0.1)}` : "";
+      items.push({ time: formatMontevideoTime(row.when_raw), label: "Viaje pagado al camionero", detail: `${row.driver_name || "?"} · ${row.client_name} · ${route(row)}${share}`, t: row.when_raw });
     }
-    for (const row of routes) {
-      items.push({ time: formatMontevideoTime(row.when_raw), label: "Ruta final generada", detail: `Día ${row.day_label}`, t: row.when_raw });
+    for (const row of clientPaid) {
+      items.push({ time: formatMontevideoTime(row.when_raw), label: "Viaje cobrado al cliente", detail: `${row.client_name} · ${route(row)}`, t: row.when_raw });
     }
 
-    return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ time, label, detail }) => ({ time, label, detail }));
+    return items.sort((x, y) => y.t.localeCompare(x.t)).map(({ time, label, detail }) => ({ time, label, detail }));
   }
 
   // ---------------- Piloto / Distribuidora / QQ / Juez: misma tabla de
