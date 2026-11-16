@@ -508,12 +508,12 @@ export class CamionesService {
          t.updated_at,
          c.name AS client_name,
          p.name AS place_name,
-         COALESCE(u.full_name, u.email) AS created_by_name,
-         EXISTS(SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = t.user_id AND m.tenant_id = t.tenant_id AND m.role = 'camionero') AS created_by_is_driver
+         COALESCE(u.full_name, u.username) AS created_by_name,
+         (u.role = 'camionero') AS created_by_is_driver
        FROM saas_camiones_trips t
        INNER JOIN saas_camiones_clients c ON c.id = t.client_id
        LEFT JOIN saas_camiones_places p ON p.id = t.place_id
-       LEFT JOIN saasPro_users u ON u.id = t.user_id
+       LEFT JOIN saas_camiones_users u ON u.id = t.user_id AND u.tenant_id = t.tenant_id
        WHERE ${whereParts.join(" AND ")}
        ORDER BY t.trip_date DESC, t.id DESC
        LIMIT ?`,
@@ -607,10 +607,9 @@ export class CamionesService {
   // Camioneros activos del tenant (para pasarles un viaje).
   async listDrivers(currentUser: CamionesRequestUser) {
     const rows = await this.databaseService.query<Array<RowDataPacket & { id: number; name: string }>>(
-      `SELECT u.id, COALESCE(u.full_name, u.email) AS name
-       FROM saas_tenant_memberships m
-       INNER JOIN saasPro_users u ON u.id = m.user_id
-       WHERE m.tenant_id = ? AND m.role = 'camionero' AND m.status = 'active' AND u.is_active = 1
+      `SELECT u.id, COALESCE(u.full_name, u.username) AS name
+       FROM saas_camiones_users u
+       WHERE u.tenant_id = ? AND u.role = 'camionero' AND u.is_active = 1
        ORDER BY name ASC`,
       [currentUser.tenantId]
     );
@@ -651,7 +650,7 @@ export class CamionesService {
        SET t.driver_paid_at = CURRENT_TIMESTAMP
        WHERE t.tenant_id = ? AND t.user_id = ? AND (t.notes LIKE '%trip-total::%' OR t.notes LIKE '%rate-per-km::%') AND t.status <> 'cancelled'
          AND t.driver_paid_at IS NULL AND t.driver_done_at IS NOT NULL
-         AND EXISTS (SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = t.user_id AND m.tenant_id = t.tenant_id AND m.role = 'camionero')`,
+         AND EXISTS (SELECT 1 FROM saas_camiones_users cu WHERE cu.id = t.user_id AND cu.tenant_id = t.tenant_id AND cu.role = 'camionero')`,
       [currentUser.tenantId, driverUserId]
     );
     return { paidTrips: result.affectedRows };
@@ -859,7 +858,7 @@ export class CamionesService {
         `UPDATE saas_camiones_trips t
          SET t.user_id = ?
          WHERE t.id = ? AND t.tenant_id = ?
-           AND EXISTS (SELECT 1 FROM saas_tenant_memberships m WHERE m.user_id = ? AND m.tenant_id = t.tenant_id AND m.role = 'camionero' AND m.status = 'active')`,
+           AND EXISTS (SELECT 1 FROM saas_camiones_users cu WHERE cu.id = ? AND cu.tenant_id = t.tenant_id AND cu.role = 'camionero' AND cu.is_active = 1)`,
         [dto.driverUserId, tripId, currentUser.tenantId, dto.driverUserId]
       );
       if (reassigned.affectedRows === 0) {

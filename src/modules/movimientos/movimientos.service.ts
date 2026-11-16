@@ -282,10 +282,10 @@ export class MovimientosService {
     const fetchEvents = (column: string) =>
       this.databaseService.query<TripEventRow[]>(
         `SELECT DATE_FORMAT(t.${column}, '%Y-%m-%dT%H:%i:%s') AS when_raw, c.name AS client_name, t.place, t.notes, t.kilometers,
-                COALESCE(u.full_name, u.email) AS by_name, COALESCE(u.full_name, u.email) AS driver_name
+                COALESCE(u.full_name, u.username) AS by_name, COALESCE(u.full_name, u.username) AS driver_name
          FROM saas_camiones_trips t
          INNER JOIN saas_camiones_clients c ON c.id = t.client_id
-         LEFT JOIN saasPro_users u ON u.id = t.user_id
+         LEFT JOIN saas_camiones_users u ON u.id = t.user_id
          WHERE t.${column} >= ? AND t.${column} < ?
          ORDER BY t.${column} DESC`,
         [start, end]
