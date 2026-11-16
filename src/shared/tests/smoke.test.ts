@@ -197,9 +197,14 @@ describe("backend smoke", () => {
     expect(productionOrigins).toEqual([
       "https://monraspgit.github.io",
       "https://qqdigital.net",
-      "https://www.qqdigital.net"
+      "https://www.qqdigital.net",
+      "https://www.armiicreacionesalexa.com",
+      "https://armiicreacionesalexa.com",
+      "http://www.armiicreacionesalexa.com",
+      "http://armiicreacionesalexa.com"
     ]);
     expect(isCorsOriginAllowed("https://monraspgit.github.io", productionOrigins)).toBe(true);
+    expect(isCorsOriginAllowed("https://www.armiicreacionesalexa.com", productionOrigins)).toBe(true);
     expect(isCorsOriginAllowed("https://qqdigital.net", productionOrigins)).toBe(true);
     expect(isCorsOriginAllowed("https://www.qqdigital.net", productionOrigins)).toBe(true);
     expect(isCorsOriginAllowed("https://otro-dominio.com", productionOrigins)).toBe(false);
