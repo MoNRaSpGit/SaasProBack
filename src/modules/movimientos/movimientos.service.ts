@@ -71,7 +71,7 @@ type AuditRow = RowDataPacket & {
 // todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
 // scripts/inspect-*-audit.js, que son la fuente de verdad de cada esquema.
 const SQL_AUDIT_TABLES: Record<
-  "piloto" | "gaby" | "eme" | "distribuidora" | "qq" | "juez",
+  "piloto" | "gaby" | "eme" | "distribuidora" | "qq" | "ropa" | "juez",
   { table: string; timeCol: string; columns: string; actionLabels?: Record<string, string>; buildDetail: (row: AuditRow, service: MovimientosService) => string }
 > = {
   piloto: {
@@ -165,6 +165,37 @@ const SQL_AUDIT_TABLES: Record<
       );
     }
   },
+  // Ropa (16/11/2026): clon de QQ, misma tabla de auditoria y mismas acciones.
+  ropa: {
+    table: "saas_ropa_audit_log",
+    timeCol: "occurred_at",
+    columns: "action, entity_type, entity_id, entity_label, actor_email, actor_role, details",
+    actionLabels: {
+      create: "Alta",
+      update: "Edición",
+      delete: "Borrado",
+      reorder: "Reorden",
+      upload_image: "Foto subida",
+      register: "Registro de cliente",
+      login: "Inicio de sesión",
+      login_failed: "Intento fallido",
+      checkout_whatsapp: "Compra por WhatsApp",
+      visit: "Visitante · entró",
+      view_product: "Visitante · abrió un producto",
+      add_to_cart: "Visitante · agregó al carrito",
+      open_cart: "Visitante · abrió el carrito",
+      whatsapp_click: "Visitante · fue a WhatsApp"
+    },
+    buildDetail: (row, service) => {
+      if (row.entity_type === "visitor") return row.entity_label || "";
+      return (
+        row.entity_label ||
+        service.summarizeJsonDetails(row.details) ||
+        row.actor_email ||
+        `${row.entity_type || ""} #${row.entity_id ?? ""}`
+      );
+    }
+  },
   juez: {
     table: "saas_juez_audit_log",
     timeCol: "created_at",
@@ -191,7 +222,7 @@ export class MovimientosService {
 
   // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
   async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits] = await Promise.all([
       this.countSqlAudit("piloto", dayLabel),
       this.countSqlAudit("gaby", dayLabel),
       this.countSqlAudit("eme", dayLabel),
@@ -201,7 +232,9 @@ export class MovimientosService {
       this.countSqlAudit("qq", dayLabel),
       this.countSqlAudit("juez", dayLabel),
       this.countCamiones(dayLabel),
-      this.countQqVisits(dayLabel)
+      this.countVisits("saas_qq_audit_log", dayLabel),
+      this.countSqlAudit("ropa", dayLabel),
+      this.countVisits("saas_ropa_audit_log", dayLabel)
     ]);
 
     return [
@@ -212,6 +245,7 @@ export class MovimientosService {
       { key: "agro", label: "Agro", count: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
       { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits },
+      { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits },
       { key: "juez", label: "Juez", count: juez },
       { key: "camiones", label: "Camiones", count: camiones }
     ];
@@ -230,6 +264,7 @@ export class MovimientosService {
       case "eme":
       case "distribuidora":
       case "qq":
+      case "ropa":
       case "juez":
         return this.detailSqlAudit(appKey, dayLabel);
       default:
@@ -240,10 +275,12 @@ export class MovimientosService {
   // Visitas de hoy al catalogo de QQ (13/11/2026, pedido explicito: "hoy
   // hubo 20 visitas"). Cada entrada al catalogo guarda un "visit" con un id
   // al azar que no se guarda en el telefono, asi que cada visita = un visitante.
-  private async countQqVisits(dayLabel?: string) {
+  // (16/11/2026) Generalizado para QQ y Ropa; la tabla viene SIEMPRE de este
+  // archivo (nunca del request).
+  private async countVisits(table: "saas_qq_audit_log" | "saas_ropa_audit_log", dayLabel?: string) {
     const { start, end } = dayRangeUtc(dayLabel);
     const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
-      `SELECT COUNT(*) AS total FROM saas_qq_audit_log WHERE action = 'visit' AND occurred_at >= ? AND occurred_at < ?`,
+      `SELECT COUNT(*) AS total FROM ${table} WHERE action = 'visit' AND occurred_at >= ? AND occurred_at < ?`,
       [start, end]
     );
     return Number(rows[0]?.total ?? 0);

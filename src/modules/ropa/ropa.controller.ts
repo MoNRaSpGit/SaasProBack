@@ -1,0 +1,498 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException
+} from "@nestjs/common";
+import type { Request, Response } from "express";
+import { CreateRopaClientDto } from "./dto/create-ropa-client.dto";
+import { CreateRopaProductDto } from "./dto/create-ropa-product.dto";
+import { ReorderRopaProductDto } from "./dto/reorder-ropa-product.dto";
+import { UploadRopaCarouselImageDto } from "./dto/upload-ropa-carousel-image.dto";
+import { UploadRopaProductImageDto } from "./dto/upload-ropa-product-image.dto";
+import { UpdateRopaClientDto } from "./dto/update-ropa-client.dto";
+import { UpdateRopaDiscountConfigDto } from "./dto/update-ropa-discount-config.dto";
+import { UpdateRopaProductDto } from "./dto/update-ropa-product.dto";
+import { WhatsAppCheckoutDto } from "./dto/whatsapp-checkout-ropa.dto";
+import { TrackRopaEventDto } from "./dto/track-ropa-event.dto";
+import { diffFields, RopaAuditService } from "./ropa-audit.service";
+import { RopaAuthService } from "./ropa-auth.service";
+import { RopaCarouselService } from "./ropa-carousel.service";
+import { RopaClientsService } from "./ropa-clients.service";
+import { RopaDiscountService } from "./ropa-discount.service";
+import { RopaProductsService } from "./ropa-products.service";
+import { RopaUser } from "./ropa.types";
+
+function extractBearerToken(authorization: string | undefined): string | undefined {
+  if (!authorization?.startsWith("Bearer ")) return undefined;
+  return authorization.slice("Bearer ".length).trim() || undefined;
+}
+
+// Campos que se comparan para el registro de auditoria al editar (ver
+// ropa-audit.service.ts). No incluye id/createdAt/position (position se
+// audita aparte, con la accion "reorder").
+const PRODUCT_AUDIT_FIELDS = [
+  "name",
+  "description",
+  "price",
+  "sizes",
+  "currency",
+  "category",
+  "status",
+  "imageUrl"
+] as const;
+const CLIENT_AUDIT_FIELDS = ["name", "email", "phone", "dueDate"] as const;
+const DISCOUNT_CONFIG_AUDIT_FIELDS = ["code", "percentage", "enabled"] as const;
+
+// Limite del punto de entrada publico de "Comprar por WhatsApp" (ver
+// reportWhatsAppCheckout): como cualquiera puede llamarlo, se topea por IP
+// para que nadie pueda llenar el registro. En memoria (se reinicia con el
+// servidor) -- alcanza para frenar abuso, no es un dato que importe.
+const CHECKOUT_REPORT_LIMIT = 15;
+const CHECKOUT_REPORT_WINDOW_MS = 60 * 60 * 1000;
+const checkoutReportsByIp = new Map<string, number[]>();
+
+function isCheckoutReportAllowed(ip: string): boolean {
+  const now = Date.now();
+  const recent = (checkoutReportsByIp.get(ip) ?? []).filter((timestamp) => now - timestamp < CHECKOUT_REPORT_WINDOW_MS);
+  if (recent.length >= CHECKOUT_REPORT_LIMIT) {
+    checkoutReportsByIp.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  checkoutReportsByIp.set(ip, recent);
+
+  if (checkoutReportsByIp.size > 2000) {
+    for (const [key, timestamps] of checkoutReportsByIp) {
+      if (timestamps.every((timestamp) => now - timestamp >= CHECKOUT_REPORT_WINDOW_MS)) {
+        checkoutReportsByIp.delete(key);
+      }
+    }
+  }
+  return true;
+}
+
+// Tope aparte para los eventos de visitantes (visita, tarjeta abierta,
+// carrito...): son muchos mas por persona que los de "Comprar por WhatsApp".
+const TRACK_LIMIT = 300;
+const TRACK_WINDOW_MS = 60 * 60 * 1000;
+const trackEventsByIp = new Map<string, number[]>();
+
+function isTrackAllowed(ip: string): boolean {
+  const now = Date.now();
+  const recent = (trackEventsByIp.get(ip) ?? []).filter((timestamp) => now - timestamp < TRACK_WINDOW_MS);
+  if (recent.length >= TRACK_LIMIT) {
+    trackEventsByIp.set(ip, recent);
+    return false;
+  }
+  recent.push(now);
+  trackEventsByIp.set(ip, recent);
+  if (trackEventsByIp.size > 2000) {
+    for (const [key, timestamps] of trackEventsByIp) {
+      if (timestamps.every((timestamp) => now - timestamp >= TRACK_WINDOW_MS)) trackEventsByIp.delete(key);
+    }
+  }
+  return true;
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return first || req.ip || "desconocida";
+}
+
+@Controller("ropa")
+export class RopaController {
+  constructor(
+    private readonly productsService: RopaProductsService,
+    private readonly authService: RopaAuthService,
+    private readonly carouselService: RopaCarouselService,
+    private readonly clientsService: RopaClientsService,
+    private readonly auditService: RopaAuditService,
+    private readonly discountService: RopaDiscountService
+  ) {}
+
+  // Ver el catalogo es publico -- solo cargar/editar/borrar productos
+  // requiere estar logueado como administrador (ver requireAdmin).
+  @Get("products")
+  listProducts(@Query("search") search?: string) {
+    return this.productsService.listProducts(search);
+  }
+
+  @Post("products")
+  async createProduct(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateRopaProductDto) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.productsService.createProduct(dto);
+    await this.auditService.record({
+      action: "create",
+      entityType: "product",
+      entityId: result.item.id,
+      entityLabel: result.item.name,
+      actor: admin,
+      details: {
+        category: result.item.category,
+        price: result.item.price,
+        sizes: result.item.sizes,
+        status: result.item.status
+      }
+    });
+    return result;
+  }
+
+  @Patch("products/:id")
+  async updateProduct(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateRopaProductDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.productsService.getProductOrThrow(id);
+    const result = await this.productsService.updateProduct(id, dto);
+    const changes = diffFields(before.item, result.item, PRODUCT_AUDIT_FIELDS);
+    if (changes) {
+      await this.auditService.record({
+        action: "update",
+        entityType: "product",
+        entityId: id,
+        entityLabel: result.item.name,
+        actor: admin,
+        details: { changes }
+      });
+    }
+    return result;
+  }
+
+  @Delete("products/:id")
+  async deleteProduct(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.productsService.getProductOrThrow(id);
+    const result = await this.productsService.deleteProduct(id);
+    await this.auditService.record({
+      action: "delete",
+      entityType: "product",
+      entityId: id,
+      entityLabel: before.item.name,
+      actor: admin,
+      details: {
+        category: before.item.category,
+        price: before.item.price,
+        sizes: before.item.sizes,
+        status: before.item.status
+      }
+    });
+    return result;
+  }
+
+  // Orden manual del catalogo (16/09/2026): mover un producto a un
+  // puesto swapea con el que ya estaba ahi (ver
+  // ropa-products.service.ts#reorderProduct).
+  @Patch("products/:id/position")
+  async reorderProduct(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: ReorderRopaProductDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.productsService.getProductOrThrow(id);
+    const result = await this.productsService.reorderProduct(id, dto.position);
+    if (before.item.position !== result.item.position) {
+      await this.auditService.record({
+        action: "reorder",
+        entityType: "product",
+        entityId: id,
+        entityLabel: result.item.name,
+        actor: admin,
+        details: { position: [before.item.position, result.item.position] }
+      });
+    }
+    return result;
+  }
+
+  // Sirve la imagen en binario (no en el JSON del producto) con cache
+  // fuerte via ETag -- mismo criterio que frontend-piloto.
+  @Get("products/:id/image")
+  async getProductImage(@Param("id", ParseIntPipe) productId: number, @Req() req: Request, @Res() res: Response) {
+    const image = await this.productsService.getProductImage(productId);
+    if (!image) {
+      res.status(404).end();
+      return;
+    }
+
+    const etag = `"${image.sourceHash}"`;
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    res.set({
+      "Content-Type": image.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      ETag: etag
+    });
+    res.send(image.buffer);
+  }
+
+  @Post("products/:id/image")
+  async uploadProductImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UploadRopaProductImageDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.productsService.getProductOrThrow(id);
+    const result = await this.productsService.setProductImage(id, dto.dataUri);
+    // Solo el tamaño aproximado, nunca el binario ni el data URI.
+    await this.auditService.record({
+      action: "upload_image",
+      entityType: "product_image",
+      entityId: id,
+      entityLabel: result.item.name,
+      actor: admin,
+      details: { replacedExistingImage: before.item.hasImage, approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
+    });
+    return result;
+  }
+
+  // Carrusel de fondos (15/09/2026): el admin carga fotos desde una
+  // pestaña propia y el sitio va rotando entre ellas + la foto original
+  // fija (esa vive en public/, no aca) como fondo de toda la pagina.
+  // Ver el listado/las imagenes es publico, cargar/borrar exige admin.
+  @Get("carousel")
+  listCarouselImages() {
+    return this.carouselService.listImages();
+  }
+
+  @Post("carousel")
+  async addCarouselImage(@Headers("authorization") authorization: string | undefined, @Body() dto: UploadRopaCarouselImageDto) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.carouselService.addImage(dto.dataUri);
+    await this.auditService.record({
+      action: "create",
+      entityType: "carousel_image",
+      entityId: result.item.id,
+      entityLabel: `Imagen del carrusel #${result.item.id}`,
+      actor: admin,
+      details: { approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
+    });
+    return result;
+  }
+
+  // Version PC (16/11/2026): pone o reemplaza la imagen de PC de un slide.
+  @Put("carousel/:id/desktop")
+  async setCarouselDesktopImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UploadRopaCarouselImageDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.carouselService.setDesktopImage(id, dto.dataUri);
+    await this.auditService.record({
+      action: "update",
+      entityType: "carousel_image",
+      entityId: id,
+      entityLabel: `Imagen del carrusel #${id} (version PC)`,
+      actor: admin,
+      details: { approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
+    });
+    return result;
+  }
+
+  @Delete("carousel/:id")
+  async deleteCarouselImage(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.carouselService.deleteImage(id);
+    await this.auditService.record({
+      action: "delete",
+      entityType: "carousel_image",
+      entityId: id,
+      entityLabel: `Imagen del carrusel #${id}`,
+      actor: admin
+    });
+    return result;
+  }
+
+  @Get("carousel/:id/image")
+  async getCarouselImage(
+    @Param("id", ParseIntPipe) imageId: number,
+    @Query("variant") variant: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const image = await this.carouselService.getCarouselImage(imageId, variant === "desktop" ? "desktop" : "mobile");
+    if (!image) {
+      res.status(404).end();
+      return;
+    }
+
+    const etag = `"${image.sourceHash}"`;
+    if (req.headers["if-none-match"] === etag) {
+      res.status(304).end();
+      return;
+    }
+
+    res.set({
+      "Content-Type": image.mimeType,
+      "Cache-Control": "public, max-age=31536000, immutable",
+      ETag: etag
+    });
+    res.send(image.buffer);
+  }
+
+  // "Comprar por WhatsApp" (19/09/2026, pedido explicito: contabilizar las
+  // ventas cuando detectamos ese click). OJO: ropa no tiene checkout -- el
+  // pedido se cierra por WhatsApp, afuera del sistema -- asi que esto
+  // registra una INTENCION de compra (el cliente toco el boton con este
+  // carrito), no una venta confirmada. Es publico (sin login), por eso se
+  // topea por IP y siempre responde 200 aunque no registre nada: nunca debe
+  // poner trabas ni errores en el camino del cliente hacia WhatsApp.
+  @HttpCode(HttpStatus.OK)
+  @Post("events/whatsapp-checkout")
+  async reportWhatsAppCheckout(@Req() req: Request, @Body() dto: WhatsAppCheckoutDto) {
+    if (isCheckoutReportAllowed(getClientIp(req))) {
+      const itemCount = dto.items.reduce((sum, item) => sum + item.quantity, 0);
+      await this.auditService.record({
+        action: "checkout_whatsapp",
+        entityType: "cart",
+        entityLabel: `${itemCount} suscripcion(es) por $${dto.total}/mes`,
+        details: { total: dto.total, items: dto.items }
+      });
+    }
+    return { ok: true };
+  }
+
+  // Visitantes (30/10/2026, pedido explicito): "contar las visitas... si es
+  // el administrador, ni lo cuentes" (el frontend no manda nada si hay un
+  // admin logueado) + el recorrido de cada visita. Publico y siempre 200,
+  // igual que el de WhatsApp: nunca puede molestar al visitante.
+  @HttpCode(HttpStatus.OK)
+  @Post("events/track")
+  async trackVisitorEvent(@Req() req: Request, @Body() dto: TrackRopaEventDto) {
+    if (isTrackAllowed(getClientIp(req))) {
+      await this.auditService.record({
+        action: dto.event,
+        entityType: "visitor",
+        entityId: dto.visitorId,
+        entityLabel: dto.label ?? null,
+        details: dto.productId ? { productId: dto.productId } : null
+      });
+    }
+    return { ok: true };
+  }
+
+  // Cuenta corriente de clientes (15/09/2026) -- a diferencia de
+  // productos/carrusel, esto es SOLO para el admin (email/telefono de
+  // clientes reales, nada publico aca).
+  @Get("clients")
+  async listClients(@Headers("authorization") authorization: string | undefined) {
+    await this.requireAdmin(authorization);
+    return this.clientsService.listClients();
+  }
+
+  @Post("clients")
+  async createClient(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateRopaClientDto) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.clientsService.createClient(dto);
+    await this.auditService.record({
+      action: "create",
+      entityType: "client",
+      entityId: result.item.id,
+      entityLabel: result.item.name,
+      actor: admin,
+      details: { dueDate: result.item.dueDate }
+    });
+    return result;
+  }
+
+  @Patch("clients/:id")
+  async updateClient(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdateRopaClientDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.clientsService.getClientOrThrow(id);
+    const result = await this.clientsService.updateClient(id, dto);
+    const changes = diffFields(before.item, result.item, CLIENT_AUDIT_FIELDS);
+    if (changes) {
+      await this.auditService.record({
+        action: "update",
+        entityType: "client",
+        entityId: id,
+        entityLabel: result.item.name,
+        actor: admin,
+        details: { changes }
+      });
+    }
+    return result;
+  }
+
+  @Delete("clients/:id")
+  async deleteClient(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.clientsService.getClientOrThrow(id);
+    const result = await this.clientsService.deleteClient(id);
+    await this.auditService.record({
+      action: "delete",
+      entityType: "client",
+      entityId: id,
+      entityLabel: before.item.name,
+      actor: admin,
+      details: { dueDate: before.item.dueDate }
+    });
+    return result;
+  }
+
+  // Codigo de descuento (28/09/2026, pedido explicito): ver es publico
+  // (el carrito necesita saber si mostrar el input), cambiarlo exige
+  // admin -- mismo criterio que carrusel/productos.
+  @Get("discount-config")
+  getDiscountConfig() {
+    return this.discountService.getConfig();
+  }
+
+  @Patch("discount-config")
+  async updateDiscountConfig(
+    @Headers("authorization") authorization: string | undefined,
+    @Body() dto: UpdateRopaDiscountConfigDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const before = await this.discountService.getConfig();
+    const result = await this.discountService.updateConfig(dto);
+    const changes = diffFields(before.item, result.item, DISCOUNT_CONFIG_AUDIT_FIELDS);
+    if (changes) {
+      await this.auditService.record({
+        action: "update",
+        entityType: "discount_config",
+        entityLabel: "Código de descuento",
+        actor: admin,
+        details: { changes }
+      });
+    }
+    return result;
+  }
+
+  private async requireAdmin(authorization: string | undefined): Promise<RopaUser> {
+    const token = extractBearerToken(authorization);
+    const user = await this.authService.getUserForToken(token);
+    if (!user) {
+      throw new UnauthorizedException("Iniciá sesión para hacer esto");
+    }
+    if (user.role !== "administrador") {
+      throw new ForbiddenException("Solo un administrador puede hacer esto");
+    }
+    return user;
+  }
+}

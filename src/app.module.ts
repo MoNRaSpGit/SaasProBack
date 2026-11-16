@@ -28,6 +28,7 @@ import { SantiModule } from "./modules/santi/santi.module";
 import { PlanillaModule } from "./modules/planilla/planilla.module";
 import { TamboModule } from "./modules/tambo/tambo.module";
 import { QqModule } from "./modules/qq/qq.module";
+import { RopaModule } from "./modules/ropa/ropa.module";
 import { RetosModule } from "./modules/retos/retos.module";
 import { ScrumModule } from "./modules/scrum/scrum.module";
 import { SaasAdminModule } from "./modules/saas-admin/saas-admin.module";
@@ -66,6 +67,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     GabyModule,
     SantiModule,
     QqModule,
+    RopaModule,
     JokerModule,
     OriolModule,
     PeluqueriaModule,
