@@ -43,6 +43,7 @@ type ScrumClientRow = RowDataPacket & {
   next_payment_at: Date | string;
   debt_amount: string | number | null;
   commission_percent: string | number | null;
+  whatsapp: string | null;
   created_at: Date | string;
   created_at_raw: string;
   updated_at: Date | string;
@@ -286,6 +287,15 @@ export class ScrumService {
     return { ok: true };
   }
 
+  // WhatsApp (16/11/2026): se guarda solo con digitos y prefijo de pais (Uruguay
+  // 598 si lo escribieron como 099 123 456). Vacio o sin digitos = null.
+  private normalizeWhatsapp(raw: string | undefined): string | null {
+    const digits = (raw ?? "").replace(/\D/g, "");
+    if (digits.length < 7) return null;
+    const withoutLeadingZero = digits.replace(/^0+/, "");
+    return withoutLeadingZero.startsWith("598") ? withoutLeadingZero : `598${withoutLeadingZero}`;
+  }
+
   async createClient(dto: CreateScrumClientDto) {
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_scrum_clients (
@@ -293,14 +303,16 @@ export class ScrumService {
          amount,
          frequency,
          next_payment_at,
-         debt_amount
-       ) VALUES (?, ?, ?, ?, ?)`,
+         debt_amount,
+         whatsapp
+       ) VALUES (?, ?, ?, ?, ?, ?)`,
       [
         dto.name.trim(),
         Math.round(dto.amount),
         dto.frequency,
         dto.nextPaymentAt,
-        dto.debtAmount !== undefined ? Math.round(dto.debtAmount) : null
+        dto.debtAmount !== undefined ? Math.round(dto.debtAmount) : null,
+        this.normalizeWhatsapp(dto.whatsapp)
       ]
     );
 
@@ -323,11 +335,13 @@ export class ScrumService {
       throw new BadRequestException("Agrega una descripcion para el cambio de monto.");
     }
 
+    const nextWhatsapp = dto.whatsapp !== undefined ? this.normalizeWhatsapp(dto.whatsapp) : currentClient.whatsapp;
+
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_scrum_clients
-       SET name = ?, amount = ?, frequency = ?, next_payment_at = ?
+       SET name = ?, amount = ?, frequency = ?, next_payment_at = ?, whatsapp = ?
        WHERE id = ?`,
-      [nextName, Math.round(nextAmount), nextFrequency, nextPaymentAt, clientId]
+      [nextName, Math.round(nextAmount), nextFrequency, nextPaymentAt, nextWhatsapp, clientId]
     );
 
     if (amountChanged) {
@@ -660,6 +674,7 @@ export class ScrumService {
          next_payment_at,
          debt_amount,
          commission_percent,
+         whatsapp,
          created_at,
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at_raw,
          updated_at
@@ -761,6 +776,7 @@ export class ScrumService {
          next_payment_at,
          debt_amount,
          commission_percent,
+         whatsapp,
          created_at,
          DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS created_at_raw,
          updated_at
@@ -919,6 +935,7 @@ export class ScrumService {
       createdAt: `${row.created_at_raw}Z`,
       debtAmount,
       commissionPercent: Number(row.commission_percent ?? 0),
+      whatsapp: row.whatsapp ?? null,
       debtPaidAmount,
       debtRemaining,
       debtPayments,

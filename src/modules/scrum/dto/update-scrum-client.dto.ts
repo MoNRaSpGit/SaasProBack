@@ -19,6 +19,12 @@ export class UpdateScrumClientDto {
   @IsISO8601()
   nextPaymentAt?: string;
 
+  // WhatsApp: texto vacio lo borra; sin el campo no cambia.
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  whatsapp?: string;
+
   // Obligatoria solo cuando "amount" cambia respecto al monto actual (se
   // valida en el service, no aca, porque depende del monto previo).
   @IsOptional()

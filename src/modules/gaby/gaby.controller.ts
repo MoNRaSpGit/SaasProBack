@@ -12,6 +12,7 @@ import { diffFields, GabyAuditService } from "./gaby-audit.service";
 import { GabyClientsService } from "./gaby-clients.service";
 import { GabyReportsService } from "./gaby-reports.service";
 import { GabyService } from "./gaby.service";
+import { APP_WIDE_USER, NoticesService } from "../notices/notices.service";
 
 const PRODUCT_AUDIT_FIELDS = ["name", "price", "stock"] as const;
 
@@ -25,8 +26,21 @@ export class GabyController {
     private readonly gabyService: GabyService,
     private readonly auditService: GabyAuditService,
     private readonly clientsService: GabyClientsService,
-    private readonly reportsService: GabyReportsService
+    private readonly reportsService: GabyReportsService,
+    private readonly noticesService: NoticesService
   ) {}
+
+  // Aviso de demora activado desde Scrum (aplica a toda la app: no hay login).
+  @Get("notice")
+  async getNotice() {
+    return { active: await this.noticesService.isActiveFor("gaby", APP_WIDE_USER) };
+  }
+
+  @Post("notice/seen")
+  async noticeSeen() {
+    await this.noticesService.markSeen("gaby", APP_WIDE_USER);
+    return { ok: true };
+  }
 
   @Get("products")
   listProducts(@Query("search") search?: string, @Query("ids") ids?: string) {

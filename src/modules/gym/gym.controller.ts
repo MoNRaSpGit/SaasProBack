@@ -20,14 +20,14 @@ export class GymController {
   @Get("notice")
   async getNotice(@Headers("authorization") authorization: string | undefined) {
     const user = await this.gymAuthService.requireUser(authorization);
-    return { active: await this.noticesService.isActiveFor("gym", user.username) };
+    return { active: await this.noticesService.isActiveFor("gym", user.workspaceKey) };
   }
 
   @HttpCode(HttpStatus.OK)
   @Post("notice/seen")
   async noticeSeen(@Headers("authorization") authorization: string | undefined) {
     const user = await this.gymAuthService.requireUser(authorization);
-    await this.noticesService.markSeen("gym", user.username);
+    await this.noticesService.markSeen("gym", user.workspaceKey);
     return { ok: true };
   }
 

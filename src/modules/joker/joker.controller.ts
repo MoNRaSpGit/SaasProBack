@@ -34,6 +34,7 @@ import { JokerPrintingService } from "./joker-printing.service";
 import { JokerProductsService } from "./joker-products.service";
 import { JokerReportingService } from "./joker-reporting.service";
 import { JokerStockService } from "./joker-stock.service";
+import { APP_WIDE_USER, NoticesService } from "../notices/notices.service";
 
 @Controller("joker")
 export class JokerController {
@@ -47,8 +48,22 @@ export class JokerController {
     private readonly reportingService: JokerReportingService,
     private readonly printingService: JokerPrintingService,
     private readonly authService: JokerAuthService,
-    private readonly paymentAccountsService: JokerPaymentAccountsService
+    private readonly paymentAccountsService: JokerPaymentAccountsService,
+    private readonly noticesService: NoticesService
   ) {}
+
+  // Aviso de demora activado desde Scrum. Joker no tiene sesion: la app solo
+  // lo pregunta (y lo muestra) cuando quien entro es el administrador.
+  @Get("notice")
+  async getNotice() {
+    return { active: await this.noticesService.isActiveFor("joker", APP_WIDE_USER) };
+  }
+
+  @Post("notice/seen")
+  async noticeSeen() {
+    await this.noticesService.markSeen("joker", APP_WIDE_USER);
+    return { ok: true };
+  }
 
   @Post("auth/login")
   login(@Body() dto: LoginJokerDto) {

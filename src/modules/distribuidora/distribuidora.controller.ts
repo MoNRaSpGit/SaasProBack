@@ -40,12 +40,30 @@ function auditContext(deviceId?: string, userAgent?: string): DistribuidoraAudit
 // de alta/editar/eliminar productos y clientes, son solo para admin
 // (Matias); un vendedor (Valentina) puede armar y mandar pedidos, ver
 // pendientes/ventas y el catalogo, pero no facturar ni tocar el catalogo.
+import { APP_WIDE_USER, NoticesService } from "../notices/notices.service";
+
 @Controller("distribuidora")
 export class DistribuidoraController {
   constructor(
     private readonly distribuidoraService: DistribuidoraService,
-    private readonly distribuidoraAuthService: DistribuidoraAuthService
+    private readonly distribuidoraAuthService: DistribuidoraAuthService,
+    private readonly noticesService: NoticesService
   ) {}
+
+  // Aviso de demora activado desde Scrum para este usuario.
+  @Get("notice")
+  async getNotice(@Headers("authorization") authorization: string | undefined) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    return { active: user.role === "admin" && (await this.noticesService.isActiveFor("distribuidora", APP_WIDE_USER)) };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("notice/seen")
+  async noticeSeen(@Headers("authorization") authorization: string | undefined) {
+    const user = await this.distribuidoraAuthService.requireUser(authorization);
+    if (user.role === "admin") await this.noticesService.markSeen("distribuidora", APP_WIDE_USER);
+    return { ok: true };
+  }
 
   @HttpCode(HttpStatus.OK)
   @Post("auth/login")

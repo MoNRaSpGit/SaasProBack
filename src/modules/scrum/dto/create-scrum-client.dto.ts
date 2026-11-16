@@ -19,4 +19,10 @@ export class CreateScrumClientDto {
   @IsNumber()
   @Min(0)
   debtAmount?: number;
+
+  // WhatsApp opcional (solo digitos, con prefijo de pais). Vacio = sin botones.
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  whatsapp?: string;
 }

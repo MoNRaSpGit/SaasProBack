@@ -7,8 +7,16 @@ import { DatabaseService } from "../../shared/database/database.service";
 // la app de ese cliente; la app lo muestra al iniciar sesion mientras este
 // activo. Un cliente de Scrum se vincula a una app (hoy solo "gym") y a un
 // usuario de esa app. Se desactiva a mano desde Scrum cuando paga.
-export const NOTICE_APPS = ["gym"] as const;
+// 16/11/2026: se suman distribuidora, eme, gaby y joker.
+// - gym: el aviso va a un GIMNASIO (workspace) y lo ven todos sus usuarios.
+// - distribuidora: toda la app, pero solo lo ve el administrador.
+// - eme y gaby: no tienen login, le sale a toda la app.
+// - joker: toda la app, pero solo lo ve el administrador.
+// En las apps "de toda la app" el usuario guardado es el fijo APP_WIDE_USER.
+export const NOTICE_APPS = ["gym", "distribuidora", "eme", "gaby", "joker"] as const;
 export type NoticeAppKey = (typeof NOTICE_APPS)[number];
+export const APP_WIDE_USER = "_app";
+const APP_WIDE_APPS: NoticeAppKey[] = ["distribuidora", "eme", "gaby", "joker"];
 
 type NoticeRow = RowDataPacket & {
   scrum_client_id: number;
@@ -89,18 +97,29 @@ export class NoticesService {
 
   // Usuarios de cada app a los que se les puede vincular un cliente.
   async listTargets(): Promise<{ appKey: NoticeAppKey; username: string; fullName: string | null }[]> {
-    const rows = await this.databaseService.query<(RowDataPacket & { username: string; full_name: string | null })[]>(
-      `SELECT username, full_name FROM saas_gym_users ORDER BY username ASC`
+    // Gimnasios (workspaces) reales: se muestran con el nombre del primer usuario.
+    const gymRows = await this.databaseService.query<(RowDataPacket & { workspace_key: string; full_name: string | null })[]>(
+      `SELECT workspace_key, MIN(full_name) AS full_name FROM saas_gym_users GROUP BY workspace_key ORDER BY workspace_key ASC`
     );
-    return rows.map((row) => ({ appKey: "gym" as const, username: row.username, fullName: row.full_name }));
+    const targets: { appKey: NoticeAppKey; username: string; fullName: string | null }[] = [
+      ...gymRows.map((row) => ({ appKey: "gym" as const, username: row.workspace_key, fullName: row.full_name })),
+      ...APP_WIDE_APPS.map((appKey) => ({ appKey, username: APP_WIDE_USER, fullName: "Toda la app" }))
+    ];
+    return targets;
+  }
+
+  // Que el destino elegido exista en la app elegida.
+  private async userExists(appKey: NoticeAppKey, username: string): Promise<boolean> {
+    if (APP_WIDE_APPS.includes(appKey)) return username === APP_WIDE_USER;
+    const rows = await this.databaseService.query<RowDataPacket[]>(`SELECT id FROM saas_gym_users WHERE workspace_key = ? LIMIT 1`, [username]);
+    return rows.length > 0;
   }
 
   async setForClient(clientId: number, appKey: NoticeAppKey, appUsername: string, active: boolean): Promise<ClientNotice> {
     await this.ensureTable();
     const clients = await this.databaseService.query<RowDataPacket[]>(`SELECT id FROM saas_scrum_clients WHERE id = ?`, [clientId]);
     if (!clients[0]) throw new NotFoundException("No existe ese cliente.");
-    const users = await this.databaseService.query<RowDataPacket[]>(`SELECT id FROM saas_gym_users WHERE username = ? LIMIT 1`, [appUsername]);
-    if (!users[0]) throw new NotFoundException("No existe ese usuario en la app.");
+    if (!(await this.userExists(appKey, appUsername))) throw new NotFoundException("No existe ese usuario en la app.");
 
     const existing = await this.databaseService.query<NoticeRow[]>(
       `SELECT scrum_client_id, app_key, app_username, active, activated_at, last_seen_at FROM saas_service_notices WHERE scrum_client_id = ?`,

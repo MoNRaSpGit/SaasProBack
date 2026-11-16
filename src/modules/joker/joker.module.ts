@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { DatabaseModule } from "../../shared/database/database.module";
+import { NoticesModule } from "../notices/notices.module";
 import { JokerController } from "./joker.controller";
 import { JokerAccountService } from "./joker-account.service";
 import { JokerAdminExpensesService } from "./joker-admin-expenses.service";
@@ -13,7 +14,7 @@ import { JokerReportingService } from "./joker-reporting.service";
 import { JokerStockService } from "./joker-stock.service";
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, NoticesModule],
   controllers: [JokerController],
   providers: [
     JokerProductsService,
