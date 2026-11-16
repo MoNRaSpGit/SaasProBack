@@ -4,6 +4,7 @@ import { RopaAuditService } from "./ropa-audit.service";
 import { RopaAuthController } from "./ropa-auth.controller";
 import { RopaAuthService } from "./ropa-auth.service";
 import { RopaCarouselService } from "./ropa-carousel.service";
+import { RopaCategoriesService } from "./ropa-categories.service";
 import { RopaClientsService } from "./ropa-clients.service";
 import { RopaController } from "./ropa.controller";
 import { RopaDiscountService } from "./ropa-discount.service";
@@ -12,6 +13,6 @@ import { RopaProductsService } from "./ropa-products.service";
 @Module({
   imports: [DatabaseModule],
   controllers: [RopaController, RopaAuthController],
-  providers: [RopaProductsService, RopaAuthService, RopaCarouselService, RopaClientsService, RopaAuditService, RopaDiscountService]
+  providers: [RopaProductsService, RopaAuthService, RopaCarouselService, RopaClientsService, RopaAuditService, RopaDiscountService, RopaCategoriesService]
 })
 export class RopaModule {}

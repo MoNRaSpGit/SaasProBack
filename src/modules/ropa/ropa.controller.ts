@@ -18,6 +18,7 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { CreateRopaCategoryDto, MoveRopaCategoryDto, RenameRopaCategoryDto } from "./dto/ropa-category.dto";
 import { CreateRopaClientDto } from "./dto/create-ropa-client.dto";
 import { CreateRopaProductDto } from "./dto/create-ropa-product.dto";
 import { ReorderRopaProductDto } from "./dto/reorder-ropa-product.dto";
@@ -31,6 +32,7 @@ import { TrackRopaEventDto } from "./dto/track-ropa-event.dto";
 import { diffFields, RopaAuditService } from "./ropa-audit.service";
 import { RopaAuthService } from "./ropa-auth.service";
 import { RopaCarouselService } from "./ropa-carousel.service";
+import { RopaCategoriesService } from "./ropa-categories.service";
 import { RopaClientsService } from "./ropa-clients.service";
 import { RopaDiscountService } from "./ropa-discount.service";
 import { RopaProductsService } from "./ropa-products.service";
@@ -122,7 +124,8 @@ export class RopaController {
     private readonly carouselService: RopaCarouselService,
     private readonly clientsService: RopaClientsService,
     private readonly auditService: RopaAuditService,
-    private readonly discountService: RopaDiscountService
+    private readonly discountService: RopaDiscountService,
+    private readonly categoriesService: RopaCategoriesService
   ) {}
 
   // Ver el catalogo es publico -- solo cargar/editar/borrar productos
@@ -264,6 +267,68 @@ export class RopaController {
       details: { replacedExistingImage: before.item.hasImage, approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
     });
     return result;
+  }
+
+  // Categorias y subcategorias (16/11/2026): el listado es publico (lo usa el
+  // catalogo); crear, renombrar, ordenar y borrar exige administrador.
+  @Get("categories")
+  listCategories() {
+    return this.categoriesService.list();
+  }
+
+  @Post("categories")
+  async createCategory(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateRopaCategoryDto) {
+    const admin = await this.requireAdmin(authorization);
+    const created = await this.categoriesService.create(dto.label, dto.parentId);
+    await this.auditService.record({
+      action: "create",
+      entityType: "category",
+      entityId: created.id,
+      entityLabel: created.label,
+      actor: admin,
+      details: { key: created.key, parentId: dto.parentId ?? null }
+    });
+    return created;
+  }
+
+  @Patch("categories/:id")
+  async renameCategory(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: RenameRopaCategoryDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const change = await this.categoriesService.rename(id, dto.label);
+    await this.auditService.record({
+      action: "update",
+      entityType: "category",
+      entityId: id,
+      entityLabel: change.after,
+      actor: admin,
+      details: { label: [change.before, change.after] }
+    });
+    return { ok: true };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("categories/:id/move")
+  async moveCategory(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: MoveRopaCategoryDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.categoriesService.move(id, dto.direction);
+    await this.auditService.record({ action: "reorder", entityType: "category", entityId: id, actor: admin, details: { direction: dto.direction } });
+    return result;
+  }
+
+  @Delete("categories/:id")
+  async deleteCategory(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.categoriesService.remove(id);
+    await this.auditService.record({ action: "delete", entityType: "category", entityId: id, entityLabel: result.label, actor: admin });
+    return { ok: true };
   }
 
   // Carrusel de fondos (15/09/2026): el admin carga fotos desde una

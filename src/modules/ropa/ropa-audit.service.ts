@@ -19,7 +19,7 @@ export type RopaAuditAction =
   | "open_cart"
   | "whatsapp_click";
 
-export type RopaAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config" | "visitor";
+export type RopaAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config" | "visitor" | "category";
 
 export type RopaAuditEvent = {
   action: RopaAuditAction;
