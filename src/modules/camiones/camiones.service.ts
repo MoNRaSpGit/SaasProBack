@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { CamionesAuditService, type TripSnapshot } from "./camiones-audit.service";
 import { CamionesRequestUser } from "./camiones.types";
 import { CreateCamionesClientDto } from "./dto/create-camiones-client.dto";
 import { CreateCamionesPlaceDto } from "./dto/create-camiones-place.dto";
@@ -66,7 +67,52 @@ type CamionesPlaceRow = RowDataPacket & {
 
 @Injectable()
 export class CamionesService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly auditService: CamionesAuditService
+  ) {}
+
+  // Auditoria de un viaje editado (16/11/2026): compara antes/despues y deja
+  // registrado si se aprobo (se le puso valor), se cambio el valor, se paso a
+  // otro camionero u otros datos. Nunca rompe la operacion real.
+  private async auditTripChanges(currentUser: CamionesRequestUser, before: TripSnapshot, after: TripSnapshot) {
+    const money = (value: number) => "$" + Math.round(value);
+    const totalBefore = this.tripTotal(before.notes, before.kilometers);
+    const totalAfter = this.tripTotal(after.notes, after.kilometers);
+
+    if (totalBefore === null && totalAfter !== null) {
+      await this.auditService.record(currentUser, "trip_approved", after, `Viaje aprobado por ${money(totalAfter)}`, { total: totalAfter });
+    } else if (totalBefore !== null && totalAfter !== totalBefore) {
+      await this.auditService.record(
+        currentUser,
+        "trip_value_changed",
+        after,
+        totalAfter === null ? "Se quitó el valor del viaje" : `Valor cambiado de ${money(totalBefore)} a ${money(totalAfter)}`,
+        { before: totalBefore, after: totalAfter }
+      );
+    }
+
+    if (before.userId !== after.userId) {
+      await this.auditService.record(currentUser, "trip_reassigned", after, `Viaje pasado de ${before.driverName ?? "?"} a ${after.driverName ?? "?"}`, {
+        before: before.userId,
+        after: after.userId
+      });
+    }
+
+    // Otros datos (sin contar el valor, que ya se registro arriba).
+    const stripValue = (notes: string | null) =>
+      (notes ?? "").split("||").map((t) => t.trim()).filter((t) => t && !t.startsWith("trip-total::") && !t.startsWith("rate-per-km::") && !t.startsWith("collected-amount::")).join("||");
+    const changes: string[] = [];
+    if (before.tripDate !== after.tripDate) changes.push(`fecha ${before.tripDate} → ${after.tripDate}`);
+    if (before.place !== after.place) changes.push(`destino ${before.place} → ${after.place}`);
+    if ((before.truck ?? "") !== (after.truck ?? "")) changes.push(`camión ${before.truck ?? "-"} → ${after.truck ?? "-"}`);
+    if (before.kilometers !== after.kilometers) changes.push(`km ${before.kilometers} → ${after.kilometers}`);
+    if ((before.collectedAmount ?? 0) !== (after.collectedAmount ?? 0)) changes.push(`cobrado ${before.collectedAmount ?? 0} → ${after.collectedAmount ?? 0}`);
+    if (stripValue(before.notes) !== stripValue(after.notes)) changes.push("notas del viaje");
+    if (changes.length > 0) {
+      await this.auditService.record(currentUser, "trip_edited", after, `Viaje editado (${changes.join(", ")})`, { changes });
+    }
+  }
 
   private normalizeEntityName(value: string) {
     return value.trim().replace(/\s+/g, " ").toLowerCase();
@@ -780,6 +826,7 @@ export class CamionesService {
   }
 
   async updateTrip(currentUser: CamionesRequestUser, tripId: number, dto: UpdateCamionesTripDto) {
+    const beforeSnapshot = await this.auditService.snapshot(currentUser.tenantId, tripId);
     let resolvedPlaceId: number | null = null;
     let resolvedPlaceName = dto.placeName?.trim() || "";
 
@@ -895,6 +942,11 @@ export class CamionesService {
       [tripId, currentUser.tenantId]
     );
 
+    if (beforeSnapshot) {
+      const afterSnapshot = await this.auditService.snapshot(currentUser.tenantId, tripId);
+      if (afterSnapshot) await this.auditTripChanges(currentUser, beforeSnapshot, afterSnapshot);
+    }
+
     return {
       trip: this.mapTrip(rows[0])
     };
@@ -951,6 +1003,7 @@ export class CamionesService {
   }
 
   async deleteTrip(currentUser: CamionesRequestUser, tripId: number) {
+    const beforeDelete = await this.auditService.snapshot(currentUser.tenantId, tripId);
     const result = await this.databaseService.execute<ResultSetHeader>(
       `DELETE FROM saas_camiones_trips
        WHERE id = ?
@@ -961,6 +1014,11 @@ export class CamionesService {
 
     if (result.affectedRows === 0) {
       throw new BadRequestException("Solo se pueden eliminar viajes pagos de este tenant");
+    }
+
+    if (beforeDelete) {
+      const total = this.tripTotal(beforeDelete.notes, beforeDelete.kilometers);
+      await this.auditService.record(currentUser, "trip_deleted", beforeDelete, "Viaje eliminado", { total, tripDate: beforeDelete.tripDate });
     }
 
     return { ok: true };

@@ -297,6 +297,12 @@ export class MovimientosService {
 
   private async countCamiones(dayLabel?: string) {
     const { start, end } = dayRangeUtc(dayLabel);
+    // La tabla de auditoria de camiones se crea sola al primer uso: si todavia no
+    // existe, esa parte cuenta 0 y no rompe el resumen.
+    const auditCount = await this.databaseService
+      .query<(RowDataPacket & { total: number })[]>(`SELECT COUNT(*) AS total FROM saas_camiones_audit_log WHERE created_at >= ? AND created_at < ?`, [start, end])
+      .then((rows) => Number(rows[0]?.total ?? 0))
+      .catch(() => 0);
     const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
       `SELECT
          (SELECT COUNT(*) FROM saas_camiones_trips WHERE created_at >= ? AND created_at < ?) +
@@ -305,7 +311,7 @@ export class MovimientosService {
          (SELECT COUNT(*) FROM saas_camiones_trips WHERE paid_at >= ? AND paid_at < ?) AS total`,
       [start, end, start, end, start, end, start, end]
     );
-    return Number(rows[0]?.total ?? 0);
+    return Number(rows[0]?.total ?? 0) + auditCount;
   }
 
   private async detailCamiones(dayLabel?: string): Promise<MovimientosDetailItem[]> {
@@ -357,6 +363,31 @@ export class MovimientosService {
     }
     for (const row of clientPaid) {
       items.push({ time: formatMontevideoTime(row.when_raw), label: "Viaje cobrado al cliente", detail: `${row.client_name} · ${route(row)}`, t: row.when_raw });
+    }
+
+    // Auditoria (16/11/2026): aprobaciones, cambios de valor, reasignaciones,
+    // ediciones y borrados, con quien lo hizo.
+    const AUDIT_LABELS: Record<string, string> = {
+      trip_approved: "Viaje aprobado",
+      trip_value_changed: "Valor de viaje cambiado",
+      trip_reassigned: "Viaje reasignado",
+      trip_edited: "Viaje editado",
+      trip_deleted: "Viaje eliminado"
+    };
+    const auditRows = await this.databaseService
+      .query<(RowDataPacket & { when_raw: string; action: string; actor_name: string | null; summary: string })[]>(
+        `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, action, actor_name, summary
+         FROM saas_camiones_audit_log WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC`,
+        [start, end]
+      )
+      .catch(() => []);
+    for (const row of auditRows) {
+      items.push({
+        time: formatMontevideoTime(row.when_raw),
+        label: AUDIT_LABELS[row.action] ?? row.action,
+        detail: `${row.actor_name || "?"}: ${row.summary}`,
+        t: row.when_raw
+      });
     }
 
     return items.sort((x, y) => y.t.localeCompare(x.t)).map(({ time, label, detail }) => ({ time, label, detail }));
