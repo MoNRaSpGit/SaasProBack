@@ -16,6 +16,7 @@ import { EjemploModule } from "./modules/ejemplo/ejemplo.module";
 import { EmeModule } from "./modules/eme/eme.module";
 import { GpsModule } from "./modules/gps/gps.module";
 import { GymModule } from "./modules/gym/gym.module";
+import { GymBookingModule } from "./modules/gym-booking/gym-booking.module";
 import { JokerModule } from "./modules/joker/joker.module";
 import { JuezModule } from "./modules/juez/juez.module";
 import { LogiclabModule } from "./modules/logiclab/logiclab.module";
@@ -61,6 +62,7 @@ import { RequestLoggingMiddleware } from "./shared/http/request-logging.middlewa
     AgroModule,
     ScrumModule,
     GymModule,
+    GymBookingModule,
     CarnetModule,
     JuezModule,
     PilotoModule,
