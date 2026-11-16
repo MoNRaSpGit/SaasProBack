@@ -2,6 +2,7 @@ import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Put, Unauth
 import { LoginGymUserDto } from "./dto/login-gym-user.dto";
 import { SaveGymWorkspaceDto } from "./dto/save-gym-workspace.dto";
 import { extractBearerToken, GymAuthService } from "./gym-auth.service";
+import { NoticesService } from "../notices/notices.service";
 import { GymService } from "./gym.service";
 
 // Login real desde 30/09/2026 (antes "pasaba directo" en fase de pruebas):
@@ -10,8 +11,25 @@ import { GymService } from "./gym.service";
 export class GymController {
   constructor(
     private readonly gymService: GymService,
-    private readonly gymAuthService: GymAuthService
+    private readonly gymAuthService: GymAuthService,
+    private readonly noticesService: NoticesService
   ) {}
+
+  // Aviso de demora activado desde Scrum: la app lo pregunta al iniciar
+  // sesion y avisa cuando el cliente lo vio.
+  @Get("notice")
+  async getNotice(@Headers("authorization") authorization: string | undefined) {
+    const user = await this.gymAuthService.requireUser(authorization);
+    return { active: await this.noticesService.isActiveFor("gym", user.username) };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("notice/seen")
+  async noticeSeen(@Headers("authorization") authorization: string | undefined) {
+    const user = await this.gymAuthService.requireUser(authorization);
+    await this.noticesService.markSeen("gym", user.username);
+    return { ok: true };
+  }
 
   @Get("workspace")
   async getWorkspace(@Headers("authorization") authorization: string | undefined) {

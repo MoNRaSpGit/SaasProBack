@@ -15,11 +15,29 @@ import { UpdateScrumTaskDescriptionDto } from "./dto/update-scrum-task-descripti
 import { UpdateScrumTaskDifficultyDto } from "./dto/update-scrum-task-difficulty.dto";
 import { UpdateScrumTaskStatusDto } from "./dto/update-scrum-task-status.dto";
 import { UpdateScrumTaskDurationDto } from "./dto/update-scrum-task-duration.dto";
+import { NoticesService } from "../notices/notices.service";
+import { SetScrumClientNoticeDto } from "./dto/set-scrum-client-notice.dto";
 import { ScrumService } from "./scrum.service";
 
 @Controller("scrum")
 export class ScrumController {
-  constructor(private readonly scrumService: ScrumService) {}
+  constructor(
+    private readonly scrumService: ScrumService,
+    private readonly noticesService: NoticesService
+  ) {}
+
+  // Avisos de demora (11/11/2026): cartel "servicio vencido" en la app del
+  // cliente, activado a mano desde Clientes.
+  @Get("notices")
+  async getNotices() {
+    const [notices, targets] = await Promise.all([this.noticesService.listForScrum(), this.noticesService.listTargets()]);
+    return { notices, targets };
+  }
+
+  @Put("clients/:id/notice")
+  setClientNotice(@Param("id", ParseIntPipe) clientId: number, @Body() dto: SetScrumClientNoticeDto) {
+    return this.noticesService.setForClient(clientId, dto.appKey, dto.appUsername, dto.active);
+  }
 
   @Get("workspace")
   getWorkspace() {
@@ -124,8 +142,10 @@ export class ScrumController {
   }
 
   @Delete("clients/:id")
-  deleteClient(@Param("id", ParseIntPipe) clientId: number) {
-    return this.scrumService.deleteClient(clientId);
+  async deleteClient(@Param("id", ParseIntPipe) clientId: number) {
+    const result = await this.scrumService.deleteClient(clientId);
+    await this.noticesService.removeForClient(clientId);
+    return result;
   }
 
   @Post("debts")
