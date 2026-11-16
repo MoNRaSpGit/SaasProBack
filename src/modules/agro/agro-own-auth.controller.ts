@@ -1,4 +1,5 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Post, UnauthorizedException } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { AgroAuthGuard } from "./agro-auth.guard";
 import { IsString, MaxLength } from "class-validator";
 import { AgroOwnAuthService } from "./agro-own-auth.service";
 
@@ -49,6 +50,14 @@ export class AgroOwnAuthController {
   @Post("logout")
   async logout(@Body() dto: AgroRefreshDto) {
     await this.authService.logout(dto.refreshToken);
+    return { ok: true };
+  }
+
+  // Chequeo liviano (17/11/2026): la app pregunta cada tanto si su sesion sigue
+  // siendo la valida; si otro dispositivo entro con la misma cuenta, da 401.
+  @UseGuards(AgroAuthGuard)
+  @Get("check")
+  check() {
     return { ok: true };
   }
 
