@@ -7,6 +7,7 @@ type QqCarouselImageRow = RowDataPacket & {
   id: number;
   mime_type: string;
   source_hash: string;
+  desktop_source_hash: string | null;
   created_at: string;
 };
 
@@ -21,26 +22,37 @@ type QqCarouselImageBinaryRow = RowDataPacket & {
 // "Cache-Control: immutable" por un anio: si se reemplaza el contenido de una
 // imagen (mismo id), sin esto los navegadores que ya la tenian seguian
 // mostrando la vieja (solo se veia bien en incognito).
+// desktopVersion: null = no tiene version PC (la PC usa la de celular).
 export type QqCarouselImage = {
   id: number;
   createdAt: string;
   version: string;
+  desktopVersion: string | null;
 };
 
+export type QqCarouselVariant = "mobile" | "desktop";
+
 function toCarouselImage(row: QqCarouselImageRow): QqCarouselImage {
-  return { id: row.id, createdAt: row.created_at, version: row.source_hash.slice(0, 12) };
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    version: row.source_hash.slice(0, 12),
+    desktopVersion: row.desktop_source_hash ? row.desktop_source_hash.slice(0, 12) : null
+  };
 }
 
 // data:<mime>;base64,<payload> -- mismo criterio que qq-products.service.ts
 // (la imagen ya llega redimensionada/comprimida del lado del cliente).
 function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } | null {
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(value.trim());
+  // Solo imagenes raster: se sirven con este mismo Content-Type, asi que un
+  // "text/html" o "image/svg+xml" seria HTML/JS ejecutable en el dominio de la API.
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s.exec(value.trim());
   if (!match) return null;
   return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
 }
 
 const CAROUSEL_COLUMNS = `
-  id, mime_type, source_hash,
+  id, mime_type, source_hash, desktop_source_hash,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%S') AS created_at
 `;
 
@@ -57,11 +69,17 @@ export class QqCarouselService {
     return { items: rows.map(toCarouselImage) };
   }
 
-  async getCarouselImage(imageId: number): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
-    const rows = await this.databaseService.query<QqCarouselImageBinaryRow[]>(
-      `SELECT image_data, mime_type, source_hash FROM saas_qq_carousel_images WHERE id = ? LIMIT 1`,
-      [imageId]
-    );
+  async getCarouselImage(
+    imageId: number,
+    variant: QqCarouselVariant = "mobile"
+  ): Promise<{ buffer: Buffer; mimeType: string; sourceHash: string } | null> {
+    // Columnas fijas segun variante (nunca texto del request en el SQL).
+    const sql =
+      variant === "desktop"
+        ? `SELECT desktop_image_data AS image_data, desktop_mime_type AS mime_type, desktop_source_hash AS source_hash
+           FROM saas_qq_carousel_images WHERE id = ? AND desktop_image_data IS NOT NULL LIMIT 1`
+        : `SELECT image_data, mime_type, source_hash FROM saas_qq_carousel_images WHERE id = ? LIMIT 1`;
+    const rows = await this.databaseService.query<QqCarouselImageBinaryRow[]>(sql, [imageId]);
     if (!rows[0]) return null;
     return { buffer: rows[0].image_data, mimeType: rows[0].mime_type, sourceHash: rows[0].source_hash };
   }
@@ -86,6 +104,29 @@ export class QqCarouselService {
     const rows = await this.databaseService.query<QqCarouselImageRow[]>(
       `SELECT ${CAROUSEL_COLUMNS} FROM saas_qq_carousel_images WHERE id = ? LIMIT 1`,
       [result.insertId]
+    );
+    return { item: toCarouselImage(rows[0]) };
+  }
+
+  // Pone o reemplaza la version PC de una imagen ya cargada.
+  async setDesktopImage(imageId: number, dataUri: string): Promise<{ item: QqCarouselImage }> {
+    const parsed = parseImageDataUri(dataUri);
+    if (!parsed) {
+      throw new BadRequestException("La imagen debe ser un data URI base64 válido.");
+    }
+    const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
+    const result = await this.databaseService.execute<ResultSetHeader>(
+      `UPDATE saas_qq_carousel_images
+       SET desktop_image_data = ?, desktop_mime_type = ?, desktop_source_hash = ?
+       WHERE id = ?`,
+      [parsed.buffer, parsed.mimeType, sourceHash, imageId]
+    );
+    if (result.affectedRows === 0) {
+      throw new NotFoundException("Imagen no encontrada");
+    }
+    const rows = await this.databaseService.query<QqCarouselImageRow[]>(
+      `SELECT ${CAROUSEL_COLUMNS} FROM saas_qq_carousel_images WHERE id = ? LIMIT 1`,
+      [imageId]
     );
     return { item: toCarouselImage(rows[0]) };
   }

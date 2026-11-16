@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -355,6 +356,26 @@ export class QqController {
     return result;
   }
 
+  // Version PC (16/11/2026): pone o reemplaza la imagen de PC de un slide.
+  @Put("carousel/:id/desktop")
+  async setCarouselDesktopImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UploadQqCarouselImageDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.carouselService.setDesktopImage(id, dto.dataUri);
+    await this.auditService.record({
+      action: "update",
+      entityType: "carousel_image",
+      entityId: id,
+      entityLabel: `Imagen del carrusel #${id} (version PC)`,
+      actor: admin,
+      details: { approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
+    });
+    return result;
+  }
+
   @Delete("carousel/:id")
   async deleteCarouselImage(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
     const admin = await this.requireAdmin(authorization);
@@ -370,8 +391,13 @@ export class QqController {
   }
 
   @Get("carousel/:id/image")
-  async getCarouselImage(@Param("id", ParseIntPipe) imageId: number, @Req() req: Request, @Res() res: Response) {
-    const image = await this.carouselService.getCarouselImage(imageId);
+  async getCarouselImage(
+    @Param("id", ParseIntPipe) imageId: number,
+    @Query("variant") variant: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response
+  ) {
+    const image = await this.carouselService.getCarouselImage(imageId, variant === "desktop" ? "desktop" : "mobile");
     if (!image) {
       res.status(404).end();
       return;
