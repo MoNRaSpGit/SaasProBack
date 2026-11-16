@@ -7,8 +7,11 @@ export class MovimientosController {
   constructor(private readonly movimientosService: MovimientosService) {}
 
   @Get("summary")
-  getSummary() {
-    return this.movimientosService.getSummary();
+  getSummary(@Query("date") date?: string) {
+    if (date && !isValidDayLabel(date)) {
+      throw new BadRequestException("Fecha invalida, se espera YYYY-MM-DD.");
+    }
+    return this.movimientosService.getSummary(date);
   }
 
   @Get(":appKey/detail")

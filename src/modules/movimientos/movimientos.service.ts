@@ -189,18 +189,19 @@ const SQL_AUDIT_TABLES: Record<
 export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async getSummary(): Promise<MovimientosAppSummary[]> {
+  // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
+  async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
     const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits] = await Promise.all([
-      this.countSqlAudit("piloto"),
-      this.countSqlAudit("gaby"),
-      this.countSqlAudit("eme"),
-      this.countGymByClient(),
-      this.countAgro(),
-      this.countSqlAudit("distribuidora"),
-      this.countSqlAudit("qq"),
-      this.countSqlAudit("juez"),
-      this.countCamiones(),
-      this.countQqVisits()
+      this.countSqlAudit("piloto", dayLabel),
+      this.countSqlAudit("gaby", dayLabel),
+      this.countSqlAudit("eme", dayLabel),
+      this.countGymByClient(dayLabel),
+      this.countAgro(dayLabel),
+      this.countSqlAudit("distribuidora", dayLabel),
+      this.countSqlAudit("qq", dayLabel),
+      this.countSqlAudit("juez", dayLabel),
+      this.countCamiones(dayLabel),
+      this.countQqVisits(dayLabel)
     ]);
 
     return [
@@ -239,8 +240,8 @@ export class MovimientosService {
   // Visitas de hoy al catalogo de QQ (13/11/2026, pedido explicito: "hoy
   // hubo 20 visitas"). Cada entrada al catalogo guarda un "visit" con un id
   // al azar que no se guarda en el telefono, asi que cada visita = un visitante.
-  private async countQqVisits() {
-    const { start, end } = dayRangeUtc();
+  private async countQqVisits(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
     const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
       `SELECT COUNT(*) AS total FROM saas_qq_audit_log WHERE action = 'visit' AND occurred_at >= ? AND occurred_at < ?`,
       [start, end]
@@ -254,8 +255,8 @@ export class MovimientosService {
   // (driver_done_at), pagado al camionero (driver_paid_at) y cobrado al
   // cliente (paid_at). ----
 
-  private async countCamiones() {
-    const { start, end } = dayRangeUtc();
+  private async countCamiones(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
     const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
       `SELECT
          (SELECT COUNT(*) FROM saas_camiones_trips WHERE created_at >= ? AND created_at < ?) +
@@ -324,9 +325,9 @@ export class MovimientosService {
   // ---------------- Piloto / Distribuidora / QQ / Juez: misma tabla de
   // auditoria SQL en los 4 casos, mismo rango de "hoy" en Montevideo. ----
 
-  private async countSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES) {
+  private async countSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES, dayLabel?: string) {
     const { table, timeCol } = SQL_AUDIT_TABLES[appKey];
-    const { start, end } = dayRangeUtc();
+    const { start, end } = dayRangeUtc(dayLabel);
     const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
       `SELECT COUNT(*) AS total FROM ${table} WHERE ${timeCol} >= ? AND ${timeCol} < ?`,
       [start, end]
@@ -379,7 +380,7 @@ export class MovimientosService {
 
   // Movimientos de hoy por cliente (workspace): los reales cada uno con su
   // tarjeta, los de demo/pruebas juntos en "Otros" (solo si hay alguno).
-  private async countGymByClient(): Promise<MovimientosClientSummary[]> {
+  private async countGymByClient(dayLabel?: string): Promise<MovimientosClientSummary[]> {
     const [rows, users] = await Promise.all([
       this.loadGymWorkspaces(),
       this.databaseService.query<(RowDataPacket & { workspace_key: string; full_name: string | null })[]>(
@@ -387,7 +388,7 @@ export class MovimientosService {
       )
     ]);
     const nameByWorkspace = new Map(users.map((user) => [user.workspace_key, user.full_name]));
-    const { startMs, endMs } = epochRangeMs();
+    const { startMs, endMs } = epochRangeMs(dayLabel);
     const clients: MovimientosClientSummary[] = [];
     let othersCount = 0;
     let hasOthers = false;
@@ -456,10 +457,10 @@ export class MovimientosService {
     return this.parseJson(rows[0]?.workspace_json);
   }
 
-  private async countAgro() {
+  private async countAgro(dayLabel?: string) {
     const data = await this.loadAgroWorkspace();
     if (!data) return 0;
-    const { startMs, endMs } = epochRangeMs();
+    const { startMs, endMs } = epochRangeMs(dayLabel);
     const movements = Array.isArray(data.animalMovements) ? data.animalMovements : [];
     const altas = movements.filter((m: { id: string }) => {
       const epoch = extractEpoch(m.id);
