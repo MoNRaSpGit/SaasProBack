@@ -45,7 +45,8 @@ function getMovementDirection(movement) {
   return movement.kind === "purchase" ||
     movement.kind === "birth" ||
     movement.kind === "transfer_in" ||
-    movement.kind === "correction_in"
+    movement.kind === "correction_in" ||
+    movement.kind === "category_change_in"
     ? "entry"
     : "exit";
 }
