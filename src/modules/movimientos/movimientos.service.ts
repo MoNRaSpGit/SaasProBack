@@ -539,18 +539,32 @@ export class MovimientosService {
     return events;
   }
 
+  // Ingresos (logins) a Agro del dia, por cuenta (17/11/2026, pedido explicito:
+  // "si Rosendo se loguea que me avise, y si se loguea el contador tambien").
+  private async agroLoginEvents(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const rows = await this.databaseService.query<(RowDataPacket & { when_raw: string; username: string })[]>(
+      `SELECT DATE_FORMAT(s.created_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, u.username
+       FROM saas_agro_sessions s INNER JOIN saas_agro_users u ON u.id = s.user_id
+       WHERE s.created_at >= ? AND s.created_at < ?`,
+      [start, end]
+    );
+    return rows
+      .filter((row) => AGRO_CLIENT_LABELS[row.username])
+      .map((row) => ({ t: Date.parse(`${row.when_raw}Z`), by: row.username, label: "Ingresó a la app", detail: `${AGRO_CLIENT_LABELS[row.username]} inició sesión` }));
+  }
+
   private async countAgroByClient(dayLabel?: string): Promise<MovimientosClientSummary[]> {
-    const data = await this.loadAgroWorkspace();
+    const [data, logins] = await Promise.all([this.loadAgroWorkspace(), this.agroLoginEvents(dayLabel)]);
     const { startMs, endMs } = epochRangeMs(dayLabel);
-    const events = data ? this.collectAgroEvents(data, startMs, endMs) : [];
+    const events = [...(data ? this.collectAgroEvents(data, startMs, endMs) : []), ...logins];
     return Object.entries(AGRO_CLIENT_LABELS).map(([key, label]) => ({ key, label, count: events.filter((e) => e.by === key).length }));
   }
 
   private async detailAgro(dayLabel?: string, client?: string): Promise<MovimientosDetailItem[]> {
-    const data = await this.loadAgroWorkspace();
-    if (!data) return [];
+    const [data, logins] = await Promise.all([this.loadAgroWorkspace(), this.agroLoginEvents(dayLabel)]);
     const { startMs, endMs } = epochRangeMs(dayLabel);
-    return this.collectAgroEvents(data, startMs, endMs)
+    return [...(data ? this.collectAgroEvents(data, startMs, endMs) : []), ...logins]
       .filter((e) => !client || e.by === client)
       .sort((a, b) => b.t - a.t)
       .map((e) => ({
