@@ -5,7 +5,13 @@
 const OFFICIAL_FRONTEND_ORIGINS = [
   "https://monraspgit.github.io",
   "https://qqdigital.net",
-  "https://www.qqdigital.net"
+  "https://www.qqdigital.net",
+  // Dominio propio de la tienda de ropa (16/11/2026). Con y sin www; el http
+  // queda por el rato en que el certificado HTTPS todavia se esta generando.
+  "https://www.armiicreacionesalexa.com",
+  "https://armiicreacionesalexa.com",
+  "http://www.armiicreacionesalexa.com",
+  "http://armiicreacionesalexa.com"
 ] as const;
 const LOCAL_DEV_FRONTEND_ORIGINS = ["http://localhost:5173", "http://localhost:5174"] as const;
 
