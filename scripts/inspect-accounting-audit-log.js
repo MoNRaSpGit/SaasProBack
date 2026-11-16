@@ -6,7 +6,7 @@
 // a proposito; esta es la unica forma de verlo.
 //
 // Uso:
-//   node scripts/inspect-accounting-audit-log.js [tenantId] [--action=edit|delete] [--establishment=<id o nombre>]
+//   node scripts/inspect-accounting-audit-log.js [tenantId] [--action=create|edit|delete] [--source=contabilidad|animales|...] [--establishment=<id o nombre>]
 // Sin tenantId, audita el 123 (Rosendo, unico cliente real hoy).
 const fs = require("fs");
 const path = require("path");
@@ -30,8 +30,8 @@ function extractEpoch(id) {
   return Number(String(id).match(/\d{10,}/)?.[0] || 0);
 }
 
-function formatEntry(entry, establishmentsById) {
-  if (!entry) return "(eliminado)";
+function formatEntry(entry, establishmentsById, emptyLabel = "(eliminado)") {
+  if (!entry) return emptyLabel;
   const establishmentName = establishmentsById.get(entry.establishmentId)?.name || entry.establishmentId;
   const tipo = entry.type === "income" ? "Ingreso" : "Egreso";
   return `${tipo} · ${entry.concept} · establecimiento=${establishmentName} · neto=${entry.netAmount} ${entry.currency} · cobrado=${entry.collectedAmount ?? "-"} · fecha=${entry.date}${entry.notes ? ` · notas="${entry.notes}"` : ""}`;
@@ -40,6 +40,7 @@ function formatEntry(entry, establishmentsById) {
 async function main() {
   const tenantId = Number(process.argv.find((arg) => /^\d+$/.test(arg)) || 123);
   const actionFilter = process.argv.find((arg) => arg.startsWith("--action="))?.split("=")[1];
+  const sourceFilter = process.argv.find((arg) => arg.startsWith("--source="))?.split("=")[1];
   const establishmentFilter = process.argv.find((arg) => arg.startsWith("--establishment="))?.split("=")[1];
 
   const env = loadEnvFile();
@@ -68,10 +69,15 @@ async function main() {
   const auditLog = Array.isArray(workspace.accountingAuditLog) ? workspace.accountingAuditLog : [];
   const establishmentsById = new Map((workspace.establishments || []).map((e) => [e.id, e]));
 
-  let entries = [...auditLog].sort((a, b) => extractEpoch(b.id) - extractEpoch(a.id));
+  // Los registros nuevos (16/11/2026) traen "at" (ISO); los viejos solo el epoch del id.
+  const epochOf = (e) => (e.at ? Date.parse(e.at) : extractEpoch(e.id));
+  let entries = [...auditLog].sort((a, b) => epochOf(b) - epochOf(a));
 
   if (actionFilter) {
     entries = entries.filter((e) => e.action === actionFilter);
+  }
+  if (sourceFilter) {
+    entries = entries.filter((e) => e.source === sourceFilter);
   }
   if (establishmentFilter) {
     const needle = establishmentFilter.toLowerCase();
@@ -90,10 +96,11 @@ async function main() {
   }
 
   for (const entry of entries) {
-    const epoch = extractEpoch(entry.id);
+    const epoch = epochOf(entry);
     const when = epoch ? new Date(epoch).toLocaleString("es-UY", { timeZone: "America/Montevideo" }) : "(sin timestamp)";
-    console.log(`[${when}] ${entry.action.toUpperCase()} -- movimiento contable ${entry.entryId}`);
-    console.log(`  antes:    ${formatEntry(entry.before, establishmentsById)}`);
+    console.log(`[${when}] ${entry.action.toUpperCase()}${entry.by ? ` por ${entry.by}` : ""}${entry.source ? ` (origen: ${entry.source})` : ""} -- movimiento contable ${entry.entryId}`);
+    if (entry.explanation) console.log(`  por que:  ${entry.explanation}`);
+    console.log(`  antes:    ${formatEntry(entry.before, establishmentsById, "(no existia)")}`);
     console.log(`  despues:  ${formatEntry(entry.after, establishmentsById)}`);
     console.log("");
   }

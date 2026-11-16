@@ -19,6 +19,9 @@ function isRealGymWorkspace(workspaceKey: string) {
 // del usuario del gym (o la clave del workspace).
 const GYM_CLIENT_LABELS: Record<string, string> = { alegym: "Ale Gym", pablom: "Pablo M" };
 
+// Cuentas de Agro (usuario del login propio -> nombre en Movimientos).
+const AGRO_CLIENT_LABELS: Record<string, string> = { rosendo: "Rosendo", administrador: "Contador" };
+
 // Unico cliente real de frontend-agro hoy (ver memoria del proyecto).
 const AGRO_TENANT_ID = 123;
 
@@ -227,7 +230,7 @@ export class MovimientosService {
       this.countSqlAudit("gaby", dayLabel),
       this.countSqlAudit("eme", dayLabel),
       this.countGymByClient(dayLabel),
-      this.countAgro(dayLabel),
+      this.countAgroByClient(dayLabel),
       this.countSqlAudit("distribuidora", dayLabel),
       this.countSqlAudit("qq", dayLabel),
       this.countSqlAudit("juez", dayLabel),
@@ -242,7 +245,7 @@ export class MovimientosService {
       { key: "piloto", label: "Piloto", count: piloto },
       { key: "gaby", label: "Gaby", count: gaby },
       { key: "eme", label: "Eme", count: eme },
-      { key: "agro", label: "Agro", count: agro },
+      { key: "agro", label: "Agro", count: agro.reduce((total, client) => total + client.count, 0), clients: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
       { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits },
       { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits },
@@ -256,7 +259,7 @@ export class MovimientosService {
       case "gym":
         return this.detailGym(dayLabel, client);
       case "agro":
-        return this.detailAgro(dayLabel);
+        return this.detailAgro(dayLabel, client);
       case "camiones":
         return this.detailCamiones(dayLabel);
       case "piloto":
@@ -494,68 +497,67 @@ export class MovimientosService {
     return this.parseJson(rows[0]?.workspace_json);
   }
 
-  private async countAgro(dayLabel?: string) {
-    const data = await this.loadAgroWorkspace();
-    if (!data) return 0;
-    const { startMs, endMs } = epochRangeMs(dayLabel);
-    const movements = Array.isArray(data.animalMovements) ? data.animalMovements : [];
-    const altas = movements.filter((m: { id: string }) => {
-      const epoch = extractEpoch(m.id);
-      return epoch >= startMs && epoch < endMs;
-    }).length;
-
-    const auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
-    const edits = auditLog.filter((e: { id: string; action: string }) => {
-      const epoch = extractEpoch(e.id);
-      return (e.action === "edit" || e.action === "delete") && epoch >= startMs && epoch < endMs;
-    }).length;
-
-    return altas + edits;
-  }
-
-  private async detailAgro(dayLabel?: string): Promise<MovimientosDetailItem[]> {
-    const data = await this.loadAgroWorkspace();
-    if (!data) return [];
-    const { startMs, endMs } = epochRangeMs(dayLabel);
-
+  // Agro separado por cuenta (17/11/2026): Rosendo y Contador. Cada alta,
+  // edicion o borrado (animales y contabilidad) trae quien lo hizo; lo cargado
+  // antes de que existiera el autor se cuenta como Rosendo (acordado).
+  private collectAgroEvents(data: any, startMs: number, endMs: number) {
     const fieldsById: Record<string, string> = {};
     (data.fields || []).forEach((f: { id: string; name: string }) => (fieldsById[f.id] = f.name));
     const estById: Record<string, string> = {};
     (data.establishments || []).forEach((e: { id: string; name: string }) => (estById[e.id] = e.name));
+    const who = (value?: string) => (value && AGRO_CLIENT_LABELS[value] ? value : "rosendo");
+    const events: Array<{ t: number; by: string; label: string; detail: string }> = [];
+    const inRange = (t: number) => t >= startMs && t < endMs;
+    const timeOf = (entry: { id: string; at?: string }) => (entry.at ? Date.parse(entry.at) : extractEpoch(entry.id));
 
-    const items: MovimientosDetailItem[] = [];
-    const movements = Array.isArray(data.animalMovements) ? data.animalMovements : [];
-    for (const m of movements as Array<{
-      id: string;
-      kind: string;
-      species: string;
-      quantity: number;
-      establishmentId: string;
-      fieldId: string;
-    }>) {
-      const epoch = extractEpoch(m.id);
-      if (epoch < startMs || epoch >= endMs) continue;
+    for (const m of (Array.isArray(data.animalMovements) ? data.animalMovements : []) as Array<any>) {
+      const t = extractEpoch(m.id);
+      if (!inRange(t)) continue;
       const place = `${estById[m.establishmentId] || "?"} / ${fieldsById[m.fieldId] || "?"}`;
-      items.push({
-        time: new Date(epoch).toLocaleTimeString("es-UY", { timeZone: "America/Montevideo", hour: "2-digit", minute: "2-digit" }),
-        label: AGRO_KIND_LABELS[m.kind] || m.kind,
-        detail: `${place} · ${m.species} · cant. ${m.quantity}`
+      events.push({ t, by: who(m.createdBy), label: AGRO_KIND_LABELS[m.kind] || m.kind, detail: `${place} · ${m.species} · cant. ${m.quantity}` });
+    }
+    for (const e of (Array.isArray(data.auditLog) ? data.auditLog : []) as Array<any>) {
+      const t = timeOf(e);
+      if (!inRange(t) || (e.action !== "edit" && e.action !== "delete")) continue;
+      events.push({ t, by: who(e.by), label: e.action === "edit" ? "Edición (animales)" : "Borrado (animales)", detail: `Movimiento ${e.movementId || ""}` });
+    }
+    for (const entry of (Array.isArray(data.accountingEntries) ? data.accountingEntries : []) as Array<any>) {
+      const t = extractEpoch(entry.id);
+      if (!inRange(t)) continue;
+      events.push({
+        t,
+        by: who(entry.createdBy),
+        label: entry.type === "income" ? "Alta contable (ingreso)" : "Alta contable (egreso)",
+        detail: `${entry.concept} · ${entry.currency} ${Number(entry.netAmount || 0).toFixed(2)}`
       });
     }
-
-    const auditLog = Array.isArray(data.auditLog) ? data.auditLog : [];
-    for (const e of auditLog as Array<{ id: string; action: string; movementId?: string }>) {
-      const epoch = extractEpoch(e.id);
-      if (epoch < startMs || epoch >= endMs) continue;
-      if (e.action !== "edit" && e.action !== "delete") continue;
-      items.push({
-        time: new Date(epoch).toLocaleTimeString("es-UY", { timeZone: "America/Montevideo", hour: "2-digit", minute: "2-digit" }),
-        label: e.action === "edit" ? "Edición" : "Borrado",
-        detail: `Movimiento ${e.movementId || ""}`
-      });
+    for (const e of (Array.isArray(data.accountingAuditLog) ? data.accountingAuditLog : []) as Array<any>) {
+      const t = timeOf(e);
+      if (!inRange(t) || (e.action !== "edit" && e.action !== "delete")) continue;
+      events.push({ t, by: who(e.by), label: e.action === "edit" ? "Edición contable" : "Borrado contable", detail: e.explanation || `Asiento ${e.entryId || ""}` });
     }
+    return events;
+  }
 
-    return items.sort((a, b) => b.time.localeCompare(a.time));
+  private async countAgroByClient(dayLabel?: string): Promise<MovimientosClientSummary[]> {
+    const data = await this.loadAgroWorkspace();
+    const { startMs, endMs } = epochRangeMs(dayLabel);
+    const events = data ? this.collectAgroEvents(data, startMs, endMs) : [];
+    return Object.entries(AGRO_CLIENT_LABELS).map(([key, label]) => ({ key, label, count: events.filter((e) => e.by === key).length }));
+  }
+
+  private async detailAgro(dayLabel?: string, client?: string): Promise<MovimientosDetailItem[]> {
+    const data = await this.loadAgroWorkspace();
+    if (!data) return [];
+    const { startMs, endMs } = epochRangeMs(dayLabel);
+    return this.collectAgroEvents(data, startMs, endMs)
+      .filter((e) => !client || e.by === client)
+      .sort((a, b) => b.t - a.t)
+      .map((e) => ({
+        time: new Date(e.t).toLocaleTimeString("es-UY", { timeZone: "America/Montevideo", hour: "2-digit", minute: "2-digit" }),
+        label: client ? e.label : `${e.label} (${AGRO_CLIENT_LABELS[e.by]})`,
+        detail: e.detail
+      }));
   }
 
   private parseJson(raw: unknown): any {
