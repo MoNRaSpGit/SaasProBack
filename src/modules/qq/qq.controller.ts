@@ -17,6 +17,7 @@ import {
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { CreateQqCategoryDto, MoveQqCategoryDto, RenameQqCategoryDto } from "./dto/qq-category.dto";
 import { CreateQqClientDto } from "./dto/create-qq-client.dto";
 import { CreateQqProductDto } from "./dto/create-qq-product.dto";
 import { ReorderQqProductDto } from "./dto/reorder-qq-product.dto";
@@ -30,6 +31,7 @@ import { TrackQqEventDto } from "./dto/track-qq-event.dto";
 import { diffFields, QqAuditService } from "./qq-audit.service";
 import { QqAuthService } from "./qq-auth.service";
 import { QqCarouselService } from "./qq-carousel.service";
+import { QqCategoriesService } from "./qq-categories.service";
 import { QqClientsService } from "./qq-clients.service";
 import { QqDiscountService } from "./qq-discount.service";
 import { QqProductsService } from "./qq-products.service";
@@ -122,7 +124,8 @@ export class QqController {
     private readonly carouselService: QqCarouselService,
     private readonly clientsService: QqClientsService,
     private readonly auditService: QqAuditService,
-    private readonly discountService: QqDiscountService
+    private readonly discountService: QqDiscountService,
+    private readonly categoriesService: QqCategoriesService
   ) {}
 
   // Ver el catalogo es publico -- solo cargar/editar/borrar productos
@@ -264,6 +267,68 @@ export class QqController {
       details: { replacedExistingImage: before.item.hasImage, approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
     });
     return result;
+  }
+
+  // Categorias y subcategorias (16/11/2026): el listado es publico (lo usa el
+  // catalogo); crear, renombrar, ordenar y borrar exige administrador.
+  @Get("categories")
+  listCategories() {
+    return this.categoriesService.list();
+  }
+
+  @Post("categories")
+  async createCategory(@Headers("authorization") authorization: string | undefined, @Body() dto: CreateQqCategoryDto) {
+    const admin = await this.requireAdmin(authorization);
+    const created = await this.categoriesService.create(dto.label, dto.parentId);
+    await this.auditService.record({
+      action: "create",
+      entityType: "category",
+      entityId: created.id,
+      entityLabel: created.label,
+      actor: admin,
+      details: { key: created.key, parentId: dto.parentId ?? null }
+    });
+    return created;
+  }
+
+  @Patch("categories/:id")
+  async renameCategory(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: RenameQqCategoryDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const change = await this.categoriesService.rename(id, dto.label);
+    await this.auditService.record({
+      action: "update",
+      entityType: "category",
+      entityId: id,
+      entityLabel: change.after,
+      actor: admin,
+      details: { label: [change.before, change.after] }
+    });
+    return { ok: true };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("categories/:id/move")
+  async moveCategory(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: MoveQqCategoryDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.categoriesService.move(id, dto.direction);
+    await this.auditService.record({ action: "reorder", entityType: "category", entityId: id, actor: admin, details: { direction: dto.direction } });
+    return result;
+  }
+
+  @Delete("categories/:id")
+  async deleteCategory(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.categoriesService.remove(id);
+    await this.auditService.record({ action: "delete", entityType: "category", entityId: id, entityLabel: result.label, actor: admin });
+    return { ok: true };
   }
 
   // Carrusel de fondos (15/09/2026): el admin carga fotos desde una

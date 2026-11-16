@@ -19,7 +19,7 @@ export type QqAuditAction =
   | "open_cart"
   | "whatsapp_click";
 
-export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config" | "visitor";
+export type QqAuditEntityType = "product" | "product_image" | "carousel_image" | "client" | "user" | "cart" | "discount_config" | "visitor" | "category";
 
 export type QqAuditEvent = {
   action: QqAuditAction;
