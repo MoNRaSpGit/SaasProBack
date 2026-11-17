@@ -402,6 +402,12 @@ export class RopaController {
       return;
     }
 
+    if ("cloudinaryUrl" in image) {
+      res.set({ "Cache-Control": "public, max-age=31536000, immutable" });
+      res.redirect(302, image.cloudinaryUrl);
+      return;
+    }
+
     const etag = `"${image.sourceHash}"`;
     if (req.headers["if-none-match"] === etag) {
       res.status(304).end();

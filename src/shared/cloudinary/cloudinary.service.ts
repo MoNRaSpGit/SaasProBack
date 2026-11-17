@@ -52,6 +52,12 @@ export class CloudinaryService {
     return { url: result.secure_url, publicId: result.public_id, bytes: result.bytes };
   }
 
+  // f_auto,q_auto: Cloudinary entrega el formato y la calidad mas livianos que
+  // soporte cada navegador, sin tocar la imagen original.
+  optimizedUrl(url: string): string {
+    return url.includes("/upload/f_auto") ? url : url.replace("/upload/", "/upload/f_auto,q_auto/");
+  }
+
   async deleteByPublicId(publicId: string): Promise<void> {
     this.ensureConfigured();
     await cloudinary.uploader.destroy(publicId);

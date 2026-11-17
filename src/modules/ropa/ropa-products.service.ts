@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash } from "node:crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { CloudinaryService } from "../../shared/cloudinary/cloudinary.service";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreateRopaProductDto } from "./dto/create-ropa-product.dto";
 import { UpdateRopaProductDto } from "./dto/update-ropa-product.dto";
@@ -48,7 +49,10 @@ function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } 
 
 @Injectable()
 export class RopaProductsService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly cloudinaryService: CloudinaryService
+  ) {}
 
   // Buscador "estilo Netflix": si no viene texto, trae todo lo publicado;
   // si viene, filtra por nombre (contiene, sin distinguir mayusculas).
@@ -168,6 +172,10 @@ export class RopaProductsService {
     if (result.affectedRows === 0) {
       throw new NotFoundException("Producto no encontrado");
     }
+    // Tambien se borra la foto de Cloudinary (si no estaba, no pasa nada).
+    if (this.cloudinaryService.isConfigured()) {
+      await this.cloudinaryService.deleteByPublicId(`ropa/products/product-${productId}`).catch(() => undefined);
+    }
     return { ok: true };
   }
 
@@ -192,6 +200,18 @@ export class RopaProductsService {
     const parsed = parseImageDataUri(dataUri);
     if (!parsed) {
       throw new BadRequestException("La imagen debe ser un data URI base64 válido.");
+    }
+
+    // 17/11/2026: la foto va a Cloudinary y en la base queda solo el link
+    // (columna image_url). has_image en 0 = el frontend usa el link directo.
+    if (this.cloudinaryService.isConfigured()) {
+      const upload = await this.cloudinaryService.uploadBuffer(parsed.buffer, "ropa/products", `product-${productId}`);
+      await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_ropa_products SET image_url = ?, has_image = 0 WHERE id = ?`, [
+        this.cloudinaryService.optimizedUrl(upload.url),
+        productId
+      ]);
+      await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_ropa_product_images WHERE product_id = ?`, [productId]);
+      return this.getProductOrThrow(productId);
     }
 
     const sourceHash = createHash("sha256").update(parsed.buffer).digest("hex");
