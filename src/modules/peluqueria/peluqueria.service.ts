@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePeluqueriaReservationDto } from "./dto/create-peluqueria-reservation.dto";
+import { PeluqueriaPushService } from "./peluqueria-push.service";
 import { PeluqueriaBusySlot, PeluqueriaReservation } from "./peluqueria.types";
 
 type ReservationRow = RowDataPacket & {
@@ -36,9 +37,21 @@ function mapRow(row: ReservationRow): PeluqueriaReservation {
   };
 }
 
+const WEEKDAYS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+// "2026-11-19" -> "jueves 19/11" para el texto del aviso.
+function formatDateForPush(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const weekday = WEEKDAYS[new Date(year, month - 1, day).getDay()];
+  return `${weekday} ${day}/${month}`;
+}
+
 @Injectable()
 export class PeluqueriaService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly pushService: PeluqueriaPushService
+  ) {}
 
   // Para la vista del cliente: solo que horarios estan ocupados (fecha +
   // hora) de ESE peluquero -- cada uno tiene su propia agenda, el mismo
@@ -84,7 +97,14 @@ export class PeluqueriaService {
         [result.insertId]
       );
 
-      return mapRow(rows[0]);
+      const reservation = mapRow(rows[0]);
+      // Aviso al celular del dueño (sin esperar: no demora ni rompe la reserva).
+      void this.pushService.notifyAll({
+        title: "Nueva reserva ✂️",
+        body: `${reservation.clientName} reservó con ${reservation.peluquero}: ${formatDateForPush(reservation.date)} a las ${reservation.time}`,
+        url: "#admin"
+      });
+      return reservation;
     } catch (error) {
       const mysqlError = error as { code?: string };
       if (mysqlError.code === "ER_DUP_ENTRY") {

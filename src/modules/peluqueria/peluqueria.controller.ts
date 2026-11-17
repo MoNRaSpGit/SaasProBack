@@ -1,4 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { PeluqueriaPushEndpointDto, PeluqueriaPushSubscriptionDto } from "./dto/push-subscription.dto";
+import { PeluqueriaPushService } from "./peluqueria-push.service";
 import { CreatePeluqueriaReservationDto } from "./dto/create-peluqueria-reservation.dto";
 import { PeluqueriaService } from "./peluqueria.service";
 import { PELUQUEROS } from "./peluqueria.types";
@@ -12,7 +14,10 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 // la puede ver, igual que se acepto como solucion temporal en gym.
 @Controller("peluqueria")
 export class PeluqueriaController {
-  constructor(private readonly peluqueriaService: PeluqueriaService) {}
+  constructor(
+    private readonly peluqueriaService: PeluqueriaService,
+    private readonly pushService: PeluqueriaPushService
+  ) {}
 
   @Get("peluqueros")
   listPeluqueros() {
@@ -33,6 +38,34 @@ export class PeluqueriaController {
   @Get("reservations")
   listReservations() {
     return this.peluqueriaService.listReservations();
+  }
+
+  // Avisos push al celular del dueño (17/11/2026, version de demostracion sin
+  // login: cualquier celular puede suscribirse desde el panel).
+  @Get("push/public-key")
+  getPushPublicKey() {
+    return this.pushService.getPublicKey();
+  }
+
+  @Post("push/subscribe")
+  subscribePush(@Body() dto: PeluqueriaPushSubscriptionDto) {
+    return this.pushService.subscribe(dto.endpoint, dto.keys.p256dh, dto.keys.auth);
+  }
+
+  @Post("push/unsubscribe")
+  unsubscribePush(@Body() dto: PeluqueriaPushEndpointDto) {
+    return this.pushService.unsubscribe(dto.endpoint);
+  }
+
+  // Prueba: solo se la manda al celular que la pide.
+  @Post("push/test")
+  async testPush(@Body() dto: PeluqueriaPushEndpointDto) {
+    const ok = await this.pushService.notifyOne(dto.endpoint, {
+      title: "Avisos activados ✅",
+      body: "Así te va a llegar cada reserva nueva.",
+      url: "#admin"
+    });
+    return { ok };
   }
 
   @Post("reservations")
