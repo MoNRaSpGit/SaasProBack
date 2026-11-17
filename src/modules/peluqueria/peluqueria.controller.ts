@@ -1,42 +1,127 @@
-import { BadRequestException, Body, Controller, Get, Post, Query } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpException,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query,
+  Req,
+  UnauthorizedException
+} from "@nestjs/common";
+import type { Request } from "express";
 import { CreatePeluqueriaReservationDto } from "./dto/create-peluqueria-reservation.dto";
+import { LoginPeluqueriaOwnerDto } from "./dto/login-peluqueria-owner.dto";
+import { PeluqueriaAuthService } from "./peluqueria-auth.service";
 import { PeluqueriaService } from "./peluqueria.service";
-import { PELUQUEROS } from "./peluqueria.types";
+import { PeluqueriaOwner } from "./peluqueria.types";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-// Sin login, pedido explicito (01/10/2026): "solo entran, ven las horas
-// disponibles y le hacen click... no se tenga que loguear". /reservations
-// (GET completo) es la unica forma que va a tener el dueno de ver quien
-// reservo mientras no haya un /admin con login -- cualquiera con el link
-// la puede ver, igual que se acepto como solucion temporal en gym.
+function extractBearerToken(authorization: string | undefined): string | undefined {
+  if (!authorization?.startsWith("Bearer ")) return undefined;
+  return authorization.slice("Bearer ".length).trim() || undefined;
+}
+
+// Tope de intentos fallidos de login por IP (en memoria, alcanza para frenar
+// que alguien pruebe contraseñas sin parar).
+const LOGIN_FAIL_LIMIT = 10;
+const LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const loginFailsByIp = new Map<string, number[]>();
+
+function recentFails(ip: string): number[] {
+  const now = Date.now();
+  const recent = (loginFailsByIp.get(ip) ?? []).filter((timestamp) => now - timestamp < LOGIN_FAIL_WINDOW_MS);
+  loginFailsByIp.set(ip, recent);
+  if (loginFailsByIp.size > 2000) {
+    for (const [key, list] of loginFailsByIp) {
+      if (list.every((timestamp) => now - timestamp >= LOGIN_FAIL_WINDOW_MS)) loginFailsByIp.delete(key);
+    }
+  }
+  return recent;
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return first || req.ip || "desconocida";
+}
+
+// Peluqueria multi-local (17/11/2026). Lo publico (ver horarios y reservar) va
+// siempre colgado del link del local (/salons/:slug/...); lo del dueño exige
+// su login y solo muestra las reservas de SU peluqueria.
 @Controller("peluqueria")
 export class PeluqueriaController {
-  constructor(private readonly peluqueriaService: PeluqueriaService) {}
+  constructor(
+    private readonly peluqueriaService: PeluqueriaService,
+    private readonly authService: PeluqueriaAuthService
+  ) {}
 
-  @Get("peluqueros")
-  listPeluqueros() {
-    return PELUQUEROS;
+  @Get("salons/:slug")
+  getSalon(@Param("slug") slug: string) {
+    return this.peluqueriaService.getPublicSalon(slug);
   }
 
-  @Get("busy-slots")
-  getBusySlots(@Query("peluquero") peluquero?: string, @Query("from") from?: string, @Query("to") to?: string) {
-    if (!peluquero || !(PELUQUEROS as readonly string[]).includes(peluquero)) {
-      throw new BadRequestException("peluquero es obligatorio y tiene que ser uno de los habilitados");
-    }
+  @Get("salons/:slug/busy-slots")
+  getBusySlots(
+    @Param("slug") slug: string,
+    @Query("barberId", ParseIntPipe) barberId: number,
+    @Query("from") from?: string,
+    @Query("to") to?: string
+  ) {
     if (!from || !to || !DATE_PATTERN.test(from) || !DATE_PATTERN.test(to)) {
       throw new BadRequestException("from/to son obligatorios, formato YYYY-MM-DD");
     }
-    return this.peluqueriaService.getBusySlots(peluquero, from, to);
+    return this.peluqueriaService.getBusySlots(slug, barberId, from, to);
   }
 
-  @Get("reservations")
-  listReservations() {
-    return this.peluqueriaService.listReservations();
+  @Post("salons/:slug/reservations")
+  createReservation(@Param("slug") slug: string, @Body() dto: CreatePeluqueriaReservationDto) {
+    return this.peluqueriaService.createReservation(slug, dto);
   }
 
-  @Post("reservations")
-  createReservation(@Body() dto: CreatePeluqueriaReservationDto) {
-    return this.peluqueriaService.createReservation(dto);
+  @HttpCode(HttpStatus.OK)
+  @Post("auth/login")
+  async login(@Req() req: Request, @Body() dto: LoginPeluqueriaOwnerDto) {
+    const ip = getClientIp(req);
+    if (recentFails(ip).length >= LOGIN_FAIL_LIMIT) {
+      throw new HttpException("Demasiados intentos. Probá de nuevo en unos minutos.", HttpStatus.TOO_MANY_REQUESTS);
+    }
+    try {
+      return await this.authService.login(dto);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) recentFails(ip).push(Date.now());
+      throw error;
+    }
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post("auth/logout")
+  async logout(@Headers("authorization") authorization: string | undefined) {
+    const token = extractBearerToken(authorization);
+    if (token) await this.authService.logout(token);
+    return { ok: true };
+  }
+
+  @Get("auth/me")
+  async me(@Headers("authorization") authorization: string | undefined) {
+    return { user: await this.requireOwner(authorization) };
+  }
+
+  @Get("admin/reservations")
+  async listReservations(@Headers("authorization") authorization: string | undefined) {
+    const owner = await this.requireOwner(authorization);
+    return this.peluqueriaService.listReservations(owner.salonId);
+  }
+
+  private async requireOwner(authorization: string | undefined): Promise<PeluqueriaOwner> {
+    const owner = await this.authService.getOwnerForToken(extractBearerToken(authorization));
+    if (!owner) throw new UnauthorizedException("Iniciá sesión para entrar al panel");
+    return owner;
   }
 }

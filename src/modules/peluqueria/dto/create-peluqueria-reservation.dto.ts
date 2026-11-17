@@ -1,9 +1,11 @@
-import { IsIn, IsString, Matches, MaxLength, MinLength } from "class-validator";
-import { PELUQUEROS } from "../peluqueria.types";
+import { Type } from "class-transformer";
+import { IsInt, IsString, Matches, MaxLength, Min, MinLength } from "class-validator";
 
 export class CreatePeluqueriaReservationDto {
-  @IsIn(PELUQUEROS)
-  peluquero!: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  barberId!: number;
 
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
