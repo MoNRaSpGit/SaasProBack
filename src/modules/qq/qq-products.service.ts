@@ -81,9 +81,8 @@ export class QqProductsService {
   }
 
   async createProduct(dto: CreateQqProductDto): Promise<{ item: QqProduct }> {
-    if (dto.accountPrice === undefined && dto.profilePrice === undefined) {
-      throw new BadRequestException("Ingresá al menos un precio (de cuenta o de perfil).");
-    }
+    // 17/11/2026: el precio es opcional (hay productos que no llevan precio: se
+    // muestra "Consultar"). Ya no se exige ninguno de los dos.
 
     // Se agrega siempre al final (mismo criterio que el carrusel).
     const [{ nextOrder }] = await this.databaseService.query<Array<RowDataPacket & { nextOrder: number }>>(
@@ -160,9 +159,6 @@ export class QqProductsService {
 
     const nextAccountPrice = dto.accountPrice !== undefined ? dto.accountPrice : existing.account_price;
     const nextProfilePrice = dto.profilePrice !== undefined ? dto.profilePrice : existing.profile_price;
-    if (nextAccountPrice === null && nextProfilePrice === null) {
-      throw new BadRequestException("El producto tiene que tener al menos un precio (de cuenta o de perfil).");
-    }
 
     await this.databaseService.execute<ResultSetHeader>(
       `UPDATE saas_qq_products SET name = ?, description = ?, account_price = ?, profile_price = ?, currency = ?, billing_type = ?, image_url = ?, category = ?, status = ? WHERE id = ?`,
