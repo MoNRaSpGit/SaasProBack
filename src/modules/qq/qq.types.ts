@@ -32,6 +32,9 @@ export type QqProduct = {
   // puesto 1, la que estaba en el 1 pasa al puesto de la que cambie".
   // El publico ve las tarjetas ordenadas por esto, no por fecha.
   position: number;
+  // Fotos extra del producto (otros angulos), en orden. La principal no esta aca:
+  // sigue siendo imageUrl / hasImage. Maximo 5 (17/11/2026).
+  gallery: Array<{ id: number; url: string }>;
   createdAt: string;
 };
 
