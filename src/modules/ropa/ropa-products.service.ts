@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { createHash } from "node:crypto";
+import { createHash , randomBytes } from "node:crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { CloudinaryService } from "../../shared/cloudinary/cloudinary.service";
 import { DatabaseService } from "../../shared/database/database.service";
@@ -47,6 +47,11 @@ function parseImageDataUri(value: string): { mimeType: string; buffer: Buffer } 
   return { mimeType: match[1], buffer: Buffer.from(match[2], "base64") };
 }
 
+type GalleryRow = RowDataPacket & { id: number; product_id: number; image_url: string; public_id: string };
+
+// Fotos extra por producto (17/11/2026): la principal + hasta 5 mas.
+export const MAX_GALLERY_IMAGES = 5;
+
 @Injectable()
 export class RopaProductsService {
   constructor(
@@ -71,7 +76,7 @@ export class RopaProductsService {
           `SELECT ${PRODUCT_COLUMNS} FROM saas_ropa_products WHERE status = 'published' ORDER BY sort_order ASC LIMIT 200`
         );
 
-    return { items: rows.map((row) => this.mapProduct(row)) };
+    return { items: await this.attachGallery(rows.map((row) => this.mapProduct(row))) };
   }
 
   async createProduct(dto: CreateRopaProductDto): Promise<{ item: RopaProduct }> {
@@ -113,7 +118,7 @@ export class RopaProductsService {
     }
 
     if (newPosition === product.sort_order) {
-      return { item: this.mapProduct(product) };
+      return this.getProductOrThrow(productId);
     }
 
     const swapRows = await this.databaseService.query<RopaProductRow[]>(
@@ -171,6 +176,15 @@ export class RopaProductsService {
     ]);
     if (result.affectedRows === 0) {
       throw new NotFoundException("Producto no encontrado");
+    }
+    // Las fotos extra (galeria) tambien se borran, de la base y de Cloudinary.
+    const galleryRows = await this.databaseService.query<GalleryRow[]>(
+      `SELECT id, product_id, image_url, public_id FROM saas_ropa_product_gallery WHERE product_id = ?`,
+      [productId]
+    );
+    await this.databaseService.execute(`DELETE FROM saas_ropa_product_gallery WHERE product_id = ?`, [productId]);
+    if (this.cloudinaryService.isConfigured()) {
+      for (const row of galleryRows) await this.cloudinaryService.deleteByPublicId(row.public_id).catch(() => undefined);
     }
     // Tambien se borra la foto de Cloudinary (si no estaba, no pasa nada).
     if (this.cloudinaryService.isConfigured()) {
@@ -234,6 +248,68 @@ export class RopaProductsService {
     return this.getProductOrThrow(productId);
   }
 
+  // Agrega las fotos extra a cada producto con UNA sola consulta.
+  private async attachGallery(items: RopaProduct[]): Promise<RopaProduct[]> {
+    if (items.length === 0) return items;
+    const rows = await this.databaseService.query<GalleryRow[]>(
+      `SELECT id, product_id, image_url, public_id FROM saas_ropa_product_gallery
+       WHERE product_id IN (${items.map(() => "?").join(",")}) ORDER BY sort_order ASC, id ASC`,
+      items.map((item) => item.id)
+    );
+    const byProduct = new Map<number, Array<{ id: number; url: string }>>();
+    for (const row of rows) {
+      const list = byProduct.get(row.product_id) ?? [];
+      list.push({ id: row.id, url: row.image_url });
+      byProduct.set(row.product_id, list);
+    }
+    return items.map((item) => ({ ...item, gallery: byProduct.get(item.id) ?? [] }));
+  }
+
+  // Suma una foto extra al producto (otro angulo). Va a Cloudinary; en la base
+  // solo queda el link. Tope: MAX_GALLERY_IMAGES.
+  async addGalleryImage(productId: number, dataUri: string): Promise<{ item: RopaProduct }> {
+    await this.getProductOrThrow(productId);
+    const parsed = parseImageDataUri(dataUri);
+    if (!parsed) {
+      throw new BadRequestException("La imagen debe ser un data URI base64 válido.");
+    }
+    if (!/^image\/(jpeg|png|webp)$/.test(parsed.mimeType)) {
+      throw new BadRequestException("Solo se aceptan imágenes JPG, PNG o WEBP.");
+    }
+    if (!this.cloudinaryService.isConfigured()) {
+      throw new BadRequestException("Las fotos extra todavía no están disponibles.");
+    }
+    const [{ total, nextOrder }] = await this.databaseService.query<Array<RowDataPacket & { total: number; nextOrder: number }>>(
+      `SELECT COUNT(*) AS total, COALESCE(MAX(sort_order), -1) + 1 AS nextOrder FROM saas_ropa_product_gallery WHERE product_id = ?`,
+      [productId]
+    );
+    if (Number(total) >= MAX_GALLERY_IMAGES) {
+      throw new BadRequestException(`Cada producto puede tener hasta ${MAX_GALLERY_IMAGES} fotos extra. Borrá alguna para agregar otra.`);
+    }
+
+    const upload = await this.cloudinaryService.uploadBuffer(parsed.buffer, "ropa/gallery", `gallery-${productId}-${randomBytes(5).toString("hex")}`);
+    await this.databaseService.execute<ResultSetHeader>(
+      `INSERT INTO saas_ropa_product_gallery (product_id, image_url, public_id, sort_order) VALUES (?, ?, ?, ?)`,
+      [productId, this.cloudinaryService.optimizedUrl(upload.url), upload.publicId, Number(nextOrder)]
+    );
+    return this.getProductOrThrow(productId);
+  }
+
+  async deleteGalleryImage(productId: number, imageId: number): Promise<{ item: RopaProduct }> {
+    const rows = await this.databaseService.query<GalleryRow[]>(
+      `SELECT id, product_id, image_url, public_id FROM saas_ropa_product_gallery WHERE id = ? AND product_id = ? LIMIT 1`,
+      [imageId, productId]
+    );
+    if (!rows[0]) {
+      throw new NotFoundException("Foto no encontrada");
+    }
+    await this.databaseService.execute(`DELETE FROM saas_ropa_product_gallery WHERE id = ?`, [imageId]);
+    if (this.cloudinaryService.isConfigured()) {
+      await this.cloudinaryService.deleteByPublicId(rows[0].public_id).catch(() => undefined);
+    }
+    return this.getProductOrThrow(productId);
+  }
+
   // Publico (no private) para que el controller pueda tomar el "antes" de
   // una edicion/borrado y dejarlo en el registro de auditoria.
   async getProductOrThrow(productId: number): Promise<{ item: RopaProduct }> {
@@ -245,7 +321,8 @@ export class RopaProductsService {
     if (!row) {
       throw new NotFoundException("Producto no encontrado");
     }
-    return { item: this.mapProduct(row) };
+    const [item] = await this.attachGallery([this.mapProduct(row)]);
+    return { item };
   }
 
   // Talles guardados como texto separado por comas ("S,M,L"); null = sin talles.
@@ -266,6 +343,7 @@ export class RopaProductsService {
       hasImage: Boolean(row.has_image),
       category: row.category,
       status: row.status,
+      gallery: [],
       position: row.sort_order,
       createdAt: row.created_at
     };

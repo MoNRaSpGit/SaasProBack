@@ -269,6 +269,47 @@ export class RopaController {
     return result;
   }
 
+  // Fotos extra del producto (17/11/2026): el admin suma/quita otros angulos que
+  // se pasan dentro del detalle del producto. La lista viaja en el propio
+  // producto (gallery), por eso no hay un GET aparte.
+  @Post("products/:id/gallery")
+  async addProductGalleryImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UploadRopaProductImageDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.productsService.addGalleryImage(id, dto.dataUri);
+    await this.auditService.record({
+      action: "upload_image",
+      entityType: "product_image",
+      entityId: id,
+      entityLabel: `${result.item.name} (foto extra)`,
+      actor: admin,
+      details: { galleryCount: result.item.gallery.length, approxSizeKb: Math.round((dto.dataUri.length * 0.75) / 1024) }
+    });
+    return result;
+  }
+
+  @Delete("products/:id/gallery/:imageId")
+  async deleteProductGalleryImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Param("imageId", ParseIntPipe) imageId: number
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.productsService.deleteGalleryImage(id, imageId);
+    await this.auditService.record({
+      action: "delete",
+      entityType: "product_image",
+      entityId: id,
+      entityLabel: `${result.item.name} (foto extra)`,
+      actor: admin,
+      details: { galleryCount: result.item.gallery.length }
+    });
+    return result;
+  }
+
   // Categorias y subcategorias (16/11/2026): el listado es publico (lo usa el
   // catalogo); crear, renombrar, ordenar y borrar exige administrador.
   @Get("categories")
