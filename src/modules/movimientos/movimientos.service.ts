@@ -223,6 +223,26 @@ const SQL_AUDIT_TABLES: Record<
 export class MovimientosService {
   constructor(private readonly databaseService: DatabaseService) {}
 
+  // Memoria corta (18/11/2026): los workspaces de Agro (~1,1 MB de JSON) y de
+  // Gym se bajaban y parseaban de nuevo en CADA pedido (resumen, Rosendo,
+  // Contador...), y el primero que se abria tardaba segundos. Ahora se guardan
+  // 30 segundos: abrir Rosendo y despues Contador usa la misma copia. Si dos
+  // pedidos llegan juntos, comparten la misma descarga. Movimientos puede
+  // mostrar algo con hasta 30 s de atraso, que para mirar el dia alcanza.
+  private static readonly CACHE_TTL_MS = 30_000;
+  private readonly cache = new Map<string, { at: number; value: Promise<unknown> }>();
+
+  private cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+    const hit = this.cache.get(key);
+    if (hit && Date.now() - hit.at < MovimientosService.CACHE_TTL_MS) return hit.value as Promise<T>;
+    const value = load().catch((error) => {
+      this.cache.delete(key);
+      throw error;
+    });
+    this.cache.set(key, { at: Date.now(), value });
+    return value;
+  }
+
   // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
   async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
     const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits] = await Promise.all([
@@ -444,8 +464,10 @@ export class MovimientosService {
   // ---------------- Gym: todos los workspaces, auditLog embebido en el JSON. ----
 
   private async loadGymWorkspaces() {
-    return this.databaseService.query<(RowDataPacket & { workspace_key: string; workspace_json: unknown })[]>(
-      `SELECT workspace_key, workspace_json FROM saas_gym_workspaces`
+    return this.cached("gym-workspaces", () =>
+      this.databaseService.query<(RowDataPacket & { workspace_key: string; workspace_json: unknown })[]>(
+        `SELECT workspace_key, workspace_json FROM saas_gym_workspaces`
+      )
     );
   }
 
@@ -521,11 +543,13 @@ export class MovimientosService {
   // ---------------- Agro: tenant unico (Rosendo), animalMovements + auditLog. ----
 
   private async loadAgroWorkspace() {
-    const rows = await this.databaseService.query<(RowDataPacket & { workspace_json: unknown })[]>(
-      `SELECT workspace_json FROM saas_agro_workspaces WHERE tenant_id = ? AND workspace_key = 'public'`,
-      [AGRO_TENANT_ID]
-    );
-    return this.parseJson(rows[0]?.workspace_json);
+    return this.cached("agro-workspace", async () => {
+      const rows = await this.databaseService.query<(RowDataPacket & { workspace_json: unknown })[]>(
+        `SELECT workspace_json FROM saas_agro_workspaces WHERE tenant_id = ? AND workspace_key = 'public'`,
+        [AGRO_TENANT_ID]
+      );
+      return this.parseJson(rows[0]?.workspace_json);
+    });
   }
 
   // Agro separado por cuenta (17/11/2026): Rosendo y Contador. Cada alta,
