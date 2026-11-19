@@ -129,6 +129,14 @@ export class SaveEmeProductDto {
   @IsString({ each: true })
   @MaxLength(80, { each: true })
   ingredients?: string[];
+
+  // Costo del producto (precio - ganancia), 19/11/2026. Si no viene, en una
+  // edicion se deja el que estaba.
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1_000_000)
+  cost?: number;
 }
 
 export class CreateEmeClientDto {

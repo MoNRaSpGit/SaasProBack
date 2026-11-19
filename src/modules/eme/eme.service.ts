@@ -308,11 +308,12 @@ export class EmeService {
       const categoryId = await this.categoryId(connection, dto.category);
       const id = `p${Date.now().toString(36)}${randomBytes(2).toString("hex")}`;
       const [position] = await connection.query<(RowDataPacket & { next: number })[]>(`SELECT COALESCE(MAX(position), -1) + 1 AS next FROM saas_eme_products`);
-      await connection.query(`INSERT INTO saas_eme_products (id, category_id, name, price, cost, emoji, position) VALUES (?, ?, ?, ?, 0, '🍽', ?)`, [
+      await connection.query(`INSERT INTO saas_eme_products (id, category_id, name, price, cost, emoji, position) VALUES (?, ?, ?, ?, ?, '🍽', ?)`, [
         id,
         categoryId,
         dto.name.trim(),
         dto.price,
+        Math.min(dto.cost ?? 0, dto.price),
         position[0].next
       ]);
       await this.saveIngredients(connection, id, dto.ingredients);
@@ -326,7 +327,13 @@ export class EmeService {
       const [exists] = await connection.query<RowDataPacket[]>(`SELECT id FROM saas_eme_products WHERE id = ? AND active = 1`, [id]);
       if (!exists[0]) throw new NotFoundException("Producto no encontrado.");
       const categoryId = await this.categoryId(connection, dto.category);
-      await connection.query(`UPDATE saas_eme_products SET category_id = ?, name = ?, price = ? WHERE id = ?`, [categoryId, dto.name.trim(), dto.price, id]);
+      await connection.query(`UPDATE saas_eme_products SET category_id = ?, name = ?, price = ?, cost = COALESCE(?, cost) WHERE id = ?`, [
+        categoryId,
+        dto.name.trim(),
+        dto.price,
+        dto.cost === undefined ? null : Math.min(dto.cost, dto.price),
+        id
+      ]);
       await this.saveIngredients(connection, id, dto.ingredients);
       await this.bump(connection);
     });
