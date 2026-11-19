@@ -97,8 +97,13 @@ export class CreateEmeOrderDto {
 }
 
 export class PatchEmeOrderDto {
-  @IsIn(["accept", "reject", "courier", "delivered"])
-  action!: "accept" | "reject" | "courier" | "delivered";
+  @IsIn(["accept", "reject", "courier", "delivered", "kind"])
+  action!: "accept" | "reject" | "courier" | "delivered" | "kind";
+
+  // action "kind" (19/11/2026): pasar el pedido a mostrador (retiro) o delivery.
+  @IsOptional()
+  @IsIn(["retiro", "delivery"])
+  kind?: "retiro" | "delivery";
 
   @IsOptional()
   @IsInt()

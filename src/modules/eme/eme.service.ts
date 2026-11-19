@@ -240,6 +240,13 @@ export class EmeService {
       result = await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_eme_orders SET status = 'aceptado' WHERE id = ? AND status = 'por_aceptar'`, [id]);
     } else if (dto.action === "reject") {
       result = await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_eme_orders SET status = 'rechazado' WHERE id = ? AND status = 'por_aceptar'`, [id]);
+    } else if (dto.action === "kind") {
+      if (!dto.kind) throw new BadRequestException("Falta mostrador o delivery.");
+      // Solo mientras se prepara; si pasa a mostrador se le saca el repartidor.
+      result = await this.databaseService.execute<ResultSetHeader>(
+        `UPDATE saas_eme_orders SET kind = ?, courier_id = NULL WHERE id = ? AND status = 'aceptado' AND kind <> 'salon'`,
+        [dto.kind, id]
+      );
     } else if (dto.action === "courier") {
       if (!dto.courierId) throw new BadRequestException("Falta el repartidor.");
       const couriers = await this.databaseService.query<(RowDataPacket & { id: number })[]>(`SELECT id FROM saas_eme_couriers WHERE id = ? AND active = 1`, [dto.courierId]);
