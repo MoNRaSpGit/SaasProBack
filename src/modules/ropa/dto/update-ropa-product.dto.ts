@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { ArrayMaxSize, IsArray, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from "class-validator";
 
 export class UpdateRopaProductDto {
   @IsOptional()
@@ -44,4 +44,9 @@ export class UpdateRopaProductDto {
   @IsOptional()
   @IsIn(["published", "draft"])
   status?: "published" | "draft";
+
+  // "Producto destacado" (18/11/2026).
+  @IsOptional()
+  @IsBoolean()
+  featured?: boolean;
 }

@@ -30,6 +30,7 @@ export type RopaProduct = {
   // Numero de posicion en el catalogo (16/09/2026) -- "si la cambio al
   // puesto 1, la que estaba en el 1 pasa al puesto de la que cambie".
   // El publico ve las tarjetas ordenadas por esto, no por fecha.
+  featured: boolean;
   position: number;
   // Fotos extra del producto (otros angulos), en orden. La foto principal no
   // esta aca: sigue siendo imageUrl / hasImage. Maximo 5 (17/11/2026).

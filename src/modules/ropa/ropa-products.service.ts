@@ -18,6 +18,7 @@ type RopaProductRow = RowDataPacket & {
   has_image: number;
   category: string | null;
   status: "published" | "draft";
+  featured: number;
   sort_order: number;
   created_at: string;
 };
@@ -34,7 +35,7 @@ type RopaProductImageRow = RowDataPacket & {
 // mismo criterio ya usado en delivery.service.ts.
 const PRODUCT_COLUMNS = `
   id, name, description, price, sizes, currency,
-  image_url, has_image, category, status, sort_order,
+  image_url, has_image, category, status, featured, sort_order,
   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%S') AS created_at
 `;
 
@@ -86,7 +87,7 @@ export class RopaProductsService {
     );
 
     const result = await this.databaseService.execute<ResultSetHeader>(
-      `INSERT INTO saas_ropa_products (name, description, price, sizes, currency, image_url, category, status, sort_order)
+      `INSERT INTO saas_ropa_products (name, description, price, sizes, currency, image_url, category, status, featured, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dto.name.trim(),
@@ -97,6 +98,7 @@ export class RopaProductsService {
         dto.imageUrl?.trim() || null,
         dto.category?.trim() || null,
         dto.status ?? "published",
+        dto.featured ? 1 : 0,
         nextOrder
       ]
     );
@@ -153,7 +155,7 @@ export class RopaProductsService {
     }
 
     await this.databaseService.execute<ResultSetHeader>(
-      `UPDATE saas_ropa_products SET name = ?, description = ?, price = ?, sizes = ?, currency = ?, image_url = ?, category = ?, status = ? WHERE id = ?`,
+      `UPDATE saas_ropa_products SET name = ?, description = ?, price = ?, sizes = ?, currency = ?, image_url = ?, category = ?, status = ?, featured = ? WHERE id = ?`,
       [
         dto.name?.trim() ?? existing.name,
         dto.description !== undefined ? dto.description.trim() || null : existing.description,
@@ -163,6 +165,7 @@ export class RopaProductsService {
         dto.imageUrl !== undefined ? dto.imageUrl.trim() || null : existing.image_url,
         dto.category !== undefined ? dto.category.trim() || null : existing.category,
         dto.status ?? existing.status,
+        dto.featured !== undefined ? (dto.featured ? 1 : 0) : existing.featured,
         productId
       ]
     );
@@ -344,6 +347,7 @@ export class RopaProductsService {
       category: row.category,
       status: row.status,
       gallery: [],
+      featured: Boolean(row.featured),
       position: row.sort_order,
       createdAt: row.created_at
     };
