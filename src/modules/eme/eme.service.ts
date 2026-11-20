@@ -399,8 +399,8 @@ export class EmeService {
   }
 
   private async registerState() {
-    const sessions = await this.databaseService.query<(RowDataPacket & { id: number; opened_at: string; opening_amount: string })[]>(
-      `SELECT id, ${iso("opened_at")} AS opened_at, opening_amount FROM saas_eme_register_sessions WHERE closed_at IS NULL ORDER BY id DESC LIMIT 1`
+    const sessions = await this.databaseService.query<(RowDataPacket & { id: number; opened_at: string; opening_amount: string; opening_set: number })[]>(
+      `SELECT id, ${iso("opened_at")} AS opened_at, opening_amount, opening_set FROM saas_eme_register_sessions WHERE closed_at IS NULL ORDER BY id DESC LIMIT 1`
     );
     const session = sessions[0];
     if (!session) return null;
@@ -412,13 +412,14 @@ export class EmeService {
       id: session.id,
       openedAt: session.opened_at,
       openingAmount: Number(session.opening_amount),
+      openingSet: Boolean(session.opening_set),
       expenses: expenses.map((row) => ({ id: row.id, description: row.description, amount: Number(row.amount), createdAt: row.created_at }))
     };
   }
 
   async setOpening(amount: number): Promise<EmeStateResponse> {
     const id = await this.currentRegisterId();
-    await this.databaseService.execute(`UPDATE saas_eme_register_sessions SET opening_amount = ? WHERE id = ?`, [amount, id]);
+    await this.databaseService.execute(`UPDATE saas_eme_register_sessions SET opening_amount = ?, opening_set = 1 WHERE id = ?`, [amount, id]);
     await this.bump();
     return this.fresh();
   }
