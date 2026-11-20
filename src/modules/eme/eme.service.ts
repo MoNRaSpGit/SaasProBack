@@ -182,8 +182,8 @@ export class EmeService {
          VALUES (?, ?, (SELECT id FROM saas_eme_products WHERE id = ?), ?, ?, ?, ?)`,
         [orderId, i, line.productId, line.name, line.baseName ?? null, line.price, line.qty]
       );
-      for (const label of line.extras ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, extra, ?)`, [item.insertId, label]);
-      for (const label of line.removed ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, removed, ?)`, [item.insertId, label]);
+      for (const label of line.extras ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, 'extra', ?)`, [item.insertId, label]);
+      for (const label of line.removed ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, 'removed', ?)`, [item.insertId, label]);
     }
   }
 
