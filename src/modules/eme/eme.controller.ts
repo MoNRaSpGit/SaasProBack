@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseIntPipe, Patch, Post, Put, Query } from "@nestjs/common";
 import { APP_WIDE_USER, NoticesService } from "../notices/notices.service";
-import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EmePaymentDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
+import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EmeExpenseDto, EmeOpeningDto, EmePaymentDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
 import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 import { EmeService } from "./eme.service";
 
@@ -76,5 +76,26 @@ export class EmeController {
   @Post("categories")
   addCategory(@Body() dto: AddEmeCategoryDto) {
     return this.emeService.addCategory(dto);
+  }
+
+  // ---------------- Caja (19/11/2026) ----------------
+  @Put("register/opening")
+  setOpening(@Body() dto: EmeOpeningDto) {
+    return this.emeService.setOpening(dto.amount);
+  }
+
+  @Post("register/expenses")
+  addExpense(@Body() dto: EmeExpenseDto) {
+    return this.emeService.addExpense(dto.description, dto.amount);
+  }
+
+  @Delete("register/expenses/:id")
+  deleteExpense(@Param("id", ParseIntPipe) id: number) {
+    return this.emeService.deleteExpense(id);
+  }
+
+  @Post("register/close")
+  closeRegister() {
+    return this.emeService.closeRegister();
   }
 }

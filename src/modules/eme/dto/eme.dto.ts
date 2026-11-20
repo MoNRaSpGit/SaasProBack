@@ -174,3 +174,23 @@ export class AddEmeCategoryDto {
   @MaxLength(60)
   name!: string;
 }
+
+// Caja (19/11/2026)
+export class EmeOpeningDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(10_000_000)
+  amount!: number;
+}
+
+export class EmeExpenseDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  description!: string;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(10_000_000)
+  amount!: number;
+}

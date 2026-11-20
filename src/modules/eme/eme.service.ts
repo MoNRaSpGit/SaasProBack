@@ -43,9 +43,10 @@ export class EmeService {
   // ---------------- Lectura ----------------
 
   async getState(since: number | null): Promise<EmeStateResponse> {
+    await this.ensureRegister();
     const version = await this.getVersion();
     if (since !== null && since === version) return { ok: true, version, unchanged: true, state: null };
-    return { ok: true, version, state: await this.buildState() };
+    return { ok: true, version, state: { ...(await this.buildState()), register: await this.registerState() } };
   }
 
   private async buildState() {
@@ -159,7 +160,7 @@ export class EmeService {
   // Todas las escrituras devuelven el estado fresco (acotado) para que la pantalla se actualice.
   private async fresh(): Promise<EmeStateResponse> {
     const version = await this.getVersion();
-    return { ok: true, version, state: await this.buildState() };
+    return { ok: true, version, state: { ...(await this.buildState()), register: await this.registerState() } };
   }
 
   // ---------------- Pedidos ----------------
@@ -357,6 +358,95 @@ export class EmeService {
   async addCategory(dto: AddEmeCategoryDto): Promise<EmeStateResponse> {
     await this.databaseService.withTransaction(async (connection) => {
       await this.categoryId(connection, dto.name);
+      await this.bump(connection);
+    });
+    return this.fresh();
+  }
+  // ---------------- Caja (19/11/2026) ----------------
+  // Un turno de caja abierto a la vez. Se cierra a mano o solo a las 3 am de
+  // Montevideo (06:00 UTC): el primer pedido de estado despues de esa hora lo
+  // cierra y abre uno nuevo vacio.
+
+  private businessDayStart(now = new Date()): string {
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 6, 0, 0));
+    if (now.getTime() < start.getTime()) start.setUTCDate(start.getUTCDate() - 1);
+    return start.toISOString().slice(0, 19).replace("T", " ");
+  }
+
+  private async ensureRegister(): Promise<void> {
+    const boundary = this.businessDayStart();
+    const check = `SELECT id, opened_at < ? AS stale FROM saas_eme_register_sessions WHERE closed_at IS NULL ORDER BY id DESC LIMIT 1`;
+    const rows = await this.databaseService.query<(RowDataPacket & { id: number; stale: number })[]>(check, [boundary]);
+    if (rows[0] && !Number(rows[0].stale)) return;
+    await this.databaseService.withTransaction(async (connection) => {
+      const [open] = await connection.query<(RowDataPacket & { id: number; stale: number })[]>(check + " FOR UPDATE", [boundary]);
+      if (open[0] && !Number(open[0].stale)) return;
+      if (open[0]) {
+        await connection.query(`UPDATE saas_eme_register_sessions SET closed_at = ?, closed_by = 'auto' WHERE closed_at IS NULL`, [boundary]);
+      }
+      await connection.query(`INSERT INTO saas_eme_register_sessions (opened_at, opening_amount) VALUES (?, 0)`, [boundary]);
+      await this.bump(connection);
+    });
+  }
+
+  private async currentRegisterId(): Promise<number> {
+    await this.ensureRegister();
+    const rows = await this.databaseService.query<(RowDataPacket & { id: number })[]>(
+      `SELECT id FROM saas_eme_register_sessions WHERE closed_at IS NULL ORDER BY id DESC LIMIT 1`
+    );
+    if (!rows[0]) throw new BadRequestException("No hay caja abierta.");
+    return rows[0].id;
+  }
+
+  private async registerState() {
+    const sessions = await this.databaseService.query<(RowDataPacket & { id: number; opened_at: string; opening_amount: string })[]>(
+      `SELECT id, ${iso("opened_at")} AS opened_at, opening_amount FROM saas_eme_register_sessions WHERE closed_at IS NULL ORDER BY id DESC LIMIT 1`
+    );
+    const session = sessions[0];
+    if (!session) return null;
+    const expenses = await this.databaseService.query<(RowDataPacket & { id: number; description: string; amount: string; created_at: string })[]>(
+      `SELECT id, description, amount, ${iso("created_at")} AS created_at FROM saas_eme_register_expenses WHERE session_id = ? ORDER BY id`,
+      [session.id]
+    );
+    return {
+      id: session.id,
+      openedAt: session.opened_at,
+      openingAmount: Number(session.opening_amount),
+      expenses: expenses.map((row) => ({ id: row.id, description: row.description, amount: Number(row.amount), createdAt: row.created_at }))
+    };
+  }
+
+  async setOpening(amount: number): Promise<EmeStateResponse> {
+    const id = await this.currentRegisterId();
+    await this.databaseService.execute(`UPDATE saas_eme_register_sessions SET opening_amount = ? WHERE id = ?`, [amount, id]);
+    await this.bump();
+    return this.fresh();
+  }
+
+  async addExpense(description: string, amount: number): Promise<EmeStateResponse> {
+    const id = await this.currentRegisterId();
+    await this.databaseService.execute(
+      `INSERT INTO saas_eme_register_expenses (session_id, description, amount, created_at) VALUES (?, ?, ?, UTC_TIMESTAMP())`,
+      [id, description.trim(), amount]
+    );
+    await this.bump();
+    return this.fresh();
+  }
+
+  async deleteExpense(expenseId: number): Promise<EmeStateResponse> {
+    const id = await this.currentRegisterId();
+    const result = await this.databaseService.execute<ResultSetHeader>(`DELETE FROM saas_eme_register_expenses WHERE id = ? AND session_id = ?`, [expenseId, id]);
+    if (result.affectedRows === 0) throw new NotFoundException("Gasto no encontrado.");
+    await this.bump();
+    return this.fresh();
+  }
+
+  // Cierre manual: cierra el turno y abre uno nuevo vacio desde ahora.
+  async closeRegister(): Promise<EmeStateResponse> {
+    await this.ensureRegister();
+    await this.databaseService.withTransaction(async (connection) => {
+      await connection.query(`UPDATE saas_eme_register_sessions SET closed_at = UTC_TIMESTAMP(), closed_by = 'manual' WHERE closed_at IS NULL`);
+      await connection.query(`INSERT INTO saas_eme_register_sessions (opened_at, opening_amount) VALUES (UTC_TIMESTAMP(), 0)`);
       await this.bump(connection);
     });
     return this.fresh();
