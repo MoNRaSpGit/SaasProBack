@@ -3,7 +3,7 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional,
 
 export const EME_CHANNELS = ["mesa", "mostrador", "whatsapp"] as const;
 export const EME_KINDS = ["salon", "delivery", "retiro"] as const;
-export const EME_PAYMENTS = ["efectivo", "tarjeta", "cuenta"] as const;
+export const EME_PAYMENTS = ["efectivo", "tarjeta", "cuenta", "transferencia"] as const; // "tarjeta" se muestra como POS
 
 export class EmeOrderLineDto {
   @IsString()
