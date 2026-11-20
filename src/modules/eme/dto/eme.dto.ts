@@ -31,6 +31,13 @@ export class EmeOrderLineDto {
   @Max(999)
   qty!: number;
 
+  // Costo de los agregados de pizza de UNA unidad (20/11/2026), para la ganancia.
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100_000)
+  extraCost?: number;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)

@@ -175,7 +175,7 @@ export class EmeService {
       let cost = 0;
       for (const line of dto.lines) {
         const [rows] = await connection.query<(RowDataPacket & { cost: string })[]>(`SELECT cost FROM saas_eme_products WHERE id = ?`, [line.productId]);
-        cost += Number(rows[0]?.cost ?? 0) * line.qty;
+        cost += (Number(rows[0]?.cost ?? 0) + (line.extraCost ?? 0)) * line.qty;
       }
 
       // Cuenta corriente: el cliente elegido, o el que coincide por nombre; si no existe, se crea.
