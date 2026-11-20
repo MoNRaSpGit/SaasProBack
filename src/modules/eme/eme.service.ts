@@ -75,8 +75,8 @@ export class EmeService {
                 ${iso("created_at")} AS created_at, ${iso("delivered_at")} AS delivered_at
          FROM saas_eme_orders WHERE created_at >= ${ORDER_WINDOW} ORDER BY created_at, number`
       ),
-      this.databaseService.query<(RowDataPacket & { id: number; order_id: string; product_id: string | null; name: string; base_name: string | null; price: string; qty: number })[]>(
-        `SELECT i.id, i.order_id, i.product_id, i.name, i.base_name, i.price, i.qty
+      this.databaseService.query<(RowDataPacket & { id: number; order_id: string; product_id: string | null; name: string; base_name: string | null; price: string; qty: number; note: string | null })[]>(
+        `SELECT i.id, i.order_id, i.product_id, i.name, i.base_name, i.price, i.qty, i.note
          FROM saas_eme_order_items i JOIN saas_eme_orders o ON o.id = i.order_id
          WHERE o.created_at >= ${ORDER_WINDOW} ORDER BY i.order_id, i.position, i.id`
       ),
@@ -106,6 +106,7 @@ export class EmeService {
           productId: row.product_id ?? "",
           name: row.name,
           baseName: row.base_name ?? undefined,
+          note: row.note ?? undefined,
           price: Number(row.price),
           qty: row.qty,
           extras: entry?.extras ?? [],
@@ -178,9 +179,9 @@ export class EmeService {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const [item] = await connection.query<ResultSetHeader>(
-        `INSERT INTO saas_eme_order_items (order_id, position, product_id, name, base_name, price, qty)
-         VALUES (?, ?, (SELECT id FROM saas_eme_products WHERE id = ?), ?, ?, ?, ?)`,
-        [orderId, i, line.productId, line.name, line.baseName ?? null, line.price, line.qty]
+        `INSERT INTO saas_eme_order_items (order_id, position, product_id, name, base_name, price, qty, note)
+         VALUES (?, ?, (SELECT id FROM saas_eme_products WHERE id = ?), ?, ?, ?, ?, ?)`,
+        [orderId, i, line.productId, line.name, line.baseName ?? null, line.price, line.qty, line.note?.trim() || null]
       );
       for (const label of line.extras ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, 'extra', ?)`, [item.insertId, label]);
       for (const label of line.removed ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, 'removed', ?)`, [item.insertId, label]);

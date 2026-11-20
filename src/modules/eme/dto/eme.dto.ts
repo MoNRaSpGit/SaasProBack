@@ -31,6 +31,12 @@ export class EmeOrderLineDto {
   @Max(999)
   qty!: number;
 
+  // Nota de este producto (20/11/2026): "bien cocida", "que no se derrita la muzza".
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  note?: string;
+
   // Costo de los agregados de pizza de UNA unidad (20/11/2026), para la ganancia.
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
@@ -210,4 +216,17 @@ export class EditEmeOrderDto {
   @ValidateNested({ each: true })
   @Type(() => EmeOrderLineDto)
   lines!: EmeOrderLineDto[];
+}
+
+// Login (20/11/2026)
+export class EmeLoginDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(40)
+  username!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(72)
+  password!: string;
 }
