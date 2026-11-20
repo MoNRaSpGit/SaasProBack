@@ -394,12 +394,13 @@ export class EmeService {
     return this.fresh();
   }
   // ---------------- Caja (19/11/2026) ----------------
-  // Un turno de caja abierto a la vez. Se cierra a mano o solo a las 3 am de
-  // Montevideo (06:00 UTC): el primer pedido de estado despues de esa hora lo
+  // Un turno de caja abierto a la vez. Se cierra a mano o solo a las 5 am de
+  // Montevideo (08:00 UTC): el primer pedido de estado despues de esa hora lo
   // cierra y abre uno nuevo vacio.
 
   private businessDayStart(now = new Date()): string {
-    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 6, 0, 0));
+    // 20/11/2026: corte pasado de las 3 a las 5 am de Montevideo (08:00 UTC).
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 8, 0, 0));
     if (now.getTime() < start.getTime()) start.setUTCDate(start.getUTCDate() - 1);
     return start.toISOString().slice(0, 19).replace("T", " ");
   }
