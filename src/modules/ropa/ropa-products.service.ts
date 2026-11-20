@@ -88,7 +88,7 @@ export class RopaProductsService {
 
     const result = await this.databaseService.execute<ResultSetHeader>(
       `INSERT INTO saas_ropa_products (name, description, price, sizes, currency, image_url, category, status, featured, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dto.name.trim(),
         dto.description?.trim() || null,
