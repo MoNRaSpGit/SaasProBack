@@ -3,7 +3,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import type { PoolConnection } from "mysql2/promise";
 import { randomBytes } from "node:crypto";
 import { DatabaseService } from "../../shared/database/database.service";
-import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
+import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EditEmeOrderDto, EmeOrderLineDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
 import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 
 // EME (restaurante) con tablas propias (18/11/2026). Cada cambio sube la version
@@ -165,6 +165,46 @@ export class EmeService {
 
   // ---------------- Pedidos ----------------
 
+  private async linesCost(connection: PoolConnection, lines: EmeOrderLineDto[]): Promise<number> {
+    let cost = 0;
+    for (const line of lines) {
+      const [rows] = await connection.query<(RowDataPacket & { cost: string })[]>(`SELECT cost FROM saas_eme_products WHERE id = ?`, [line.productId]);
+      cost += (Number(rows[0]?.cost ?? 0) + (line.extraCost ?? 0)) * line.qty;
+    }
+    return cost;
+  }
+
+  private async insertLines(connection: PoolConnection, orderId: string, lines: EmeOrderLineDto[]) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const [item] = await connection.query<ResultSetHeader>(
+        `INSERT INTO saas_eme_order_items (order_id, position, product_id, name, base_name, price, qty)
+         VALUES (?, ?, (SELECT id FROM saas_eme_products WHERE id = ?), ?, ?, ?, ?)`,
+        [orderId, i, line.productId, line.name, line.baseName ?? null, line.price, line.qty]
+      );
+      for (const label of line.extras ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, extra, ?)`, [item.insertId, label]);
+      for (const label of line.removed ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, removed, ?)`, [item.insertId, label]);
+    }
+  }
+
+  // Editar pedido (20/11/2026): reemplaza los productos y recalcula total y costo.
+  // No se puede editar un pedido rechazado/anulado.
+  async editOrder(id: string, dto: EditEmeOrderDto): Promise<EmeStateResponse> {
+    await this.databaseService.withTransaction(async (connection) => {
+      const [rows] = await connection.query<(RowDataPacket & { status: string })[]>(`SELECT status FROM saas_eme_orders WHERE id = ? FOR UPDATE`, [id]);
+      if (!rows[0]) throw new NotFoundException("Pedido no encontrado.");
+      if (rows[0].status === "rechazado") throw new BadRequestException("Ese pedido está anulado.");
+      const total = dto.lines.reduce((sum, line) => sum + line.price * line.qty, 0);
+      const cost = await this.linesCost(connection, dto.lines);
+      await connection.query(`DELETE m FROM saas_eme_order_item_mods m JOIN saas_eme_order_items i ON i.id = m.item_id WHERE i.order_id = ?`, [id]);
+      await connection.query(`DELETE FROM saas_eme_order_items WHERE order_id = ?`, [id]);
+      await this.insertLines(connection, id, dto.lines);
+      await connection.query(`UPDATE saas_eme_orders SET total = ?, cost = ? WHERE id = ?`, [total, cost, id]);
+      await this.bump(connection);
+    });
+    return this.fresh();
+  }
+
   async createOrder(dto: CreateEmeOrderDto): Promise<EmeStateResponse & { orderNumber: number }> {
     const orderNumber = await this.databaseService.withTransaction(async (connection) => {
       const [numberRows] = await connection.query<(RowDataPacket & { next: number })[]>(`SELECT COALESCE(MAX(number), 0) + 1 AS next FROM saas_eme_orders FOR UPDATE`);
@@ -172,11 +212,7 @@ export class EmeService {
       const total = dto.lines.reduce((sum, line) => sum + line.price * line.qty, 0);
 
       // Costo: el de cada producto en el menu (los renglones de un producto borrado cuentan 0).
-      let cost = 0;
-      for (const line of dto.lines) {
-        const [rows] = await connection.query<(RowDataPacket & { cost: string })[]>(`SELECT cost FROM saas_eme_products WHERE id = ?`, [line.productId]);
-        cost += (Number(rows[0]?.cost ?? 0) + (line.extraCost ?? 0)) * line.qty;
-      }
+      const cost = await this.linesCost(connection, dto.lines);
 
       // Cuenta corriente: el cliente elegido, o el que coincide por nombre; si no existe, se crea.
       let clientId: number | null = null;
@@ -219,16 +255,7 @@ export class EmeService {
           cost
         ]
       );
-      for (let i = 0; i < dto.lines.length; i++) {
-        const line = dto.lines[i];
-        const [item] = await connection.query<ResultSetHeader>(
-          `INSERT INTO saas_eme_order_items (order_id, position, product_id, name, base_name, price, qty)
-           VALUES (?, ?, (SELECT id FROM saas_eme_products WHERE id = ?), ?, ?, ?, ?)`,
-          [id, i, line.productId, line.name, line.baseName ?? null, line.price, line.qty]
-        );
-        for (const label of line.extras ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, 'extra', ?)`, [item.insertId, label]);
-        for (const label of line.removed ?? []) await connection.query(`INSERT INTO saas_eme_order_item_mods (item_id, kind, label) VALUES (?, 'removed', ?)`, [item.insertId, label]);
-      }
+      await this.insertLines(connection, id, dto.lines);
       await this.bump(connection);
       return number;
     });
@@ -241,6 +268,9 @@ export class EmeService {
       result = await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_eme_orders SET status = 'aceptado' WHERE id = ? AND status = 'por_aceptar'`, [id]);
     } else if (dto.action === "reject") {
       result = await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_eme_orders SET status = 'rechazado' WHERE id = ? AND status = 'por_aceptar'`, [id]);
+    } else if (dto.action === "cancel") {
+      // Anular (20/11/2026): cualquier pedido no anulado pasa a rechazado (deja de sumar).
+      result = await this.databaseService.execute<ResultSetHeader>(`UPDATE saas_eme_orders SET status = 'rechazado' WHERE id = ? AND status <> 'rechazado'`, [id]);
     } else if (dto.action === "kind") {
       if (!dto.kind) throw new BadRequestException("Falta mostrador o delivery.");
       // Solo mientras se prepara; si pasa a mostrador se le saca el repartidor.

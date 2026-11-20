@@ -104,8 +104,8 @@ export class CreateEmeOrderDto {
 }
 
 export class PatchEmeOrderDto {
-  @IsIn(["accept", "reject", "courier", "delivered", "kind"])
-  action!: "accept" | "reject" | "courier" | "delivered" | "kind";
+  @IsIn(["accept", "reject", "courier", "delivered", "kind", "cancel"])
+  action!: "accept" | "reject" | "courier" | "delivered" | "kind" | "cancel";
 
   // action "kind" (19/11/2026): pasar el pedido a mostrador (retiro) o delivery.
   @IsOptional()
@@ -200,4 +200,14 @@ export class EmeExpenseDto {
   @Min(0.01)
   @Max(10_000_000)
   amount!: number;
+}
+
+// Editar los productos de un pedido ya ingresado (20/11/2026).
+export class EditEmeOrderDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(80)
+  @ValidateNested({ each: true })
+  @Type(() => EmeOrderLineDto)
+  lines!: EmeOrderLineDto[];
 }

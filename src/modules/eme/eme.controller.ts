@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Headers, Param, ParseIntPipe, Patch, Post, Put, Query } from "@nestjs/common";
 import { APP_WIDE_USER, NoticesService } from "../notices/notices.service";
-import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EmeExpenseDto, EmeOpeningDto, EmePaymentDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
+import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EditEmeOrderDto, EmeExpenseDto, EmeOpeningDto, EmePaymentDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
 import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 import { EmeService } from "./eme.service";
 
@@ -97,5 +97,11 @@ export class EmeController {
   @Post("register/close")
   closeRegister() {
     return this.emeService.closeRegister();
+  }
+
+  // Editar los productos de un pedido (20/11/2026).
+  @Put("orders/:id")
+  editOrder(@Param("id") id: string, @Body() dto: EditEmeOrderDto) {
+    return this.emeService.editOrder(id, dto);
   }
 }
