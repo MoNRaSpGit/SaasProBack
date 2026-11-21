@@ -1,3 +1,4 @@
+import { visitsSummary, type VisitsSummary } from "../../shared/visits/visits-summary";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../shared/database/database.service";
 import { QqUser } from "./qq.types";
@@ -62,6 +63,12 @@ export class QqAuditService {
   private readonly logger = new Logger(QqAuditService.name);
 
   constructor(private readonly databaseService: DatabaseService) {}
+
+  // Visitas para el admin de la tienda (21/11/2026): totales agrupados, ver
+  // shared/visits/visits-summary.ts.
+  visits(days: number): Promise<VisitsSummary> {
+    return visitsSummary(this.databaseService, "saas_qq_audit_log", days);
+  }
 
   async record(event: QqAuditEvent): Promise<void> {
     try {

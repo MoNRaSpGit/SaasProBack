@@ -1,3 +1,4 @@
+import { visitsSummary, type VisitsSummary } from "../../shared/visits/visits-summary";
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../shared/database/database.service";
 import { RopaUser } from "./ropa.types";
@@ -63,6 +64,12 @@ export class RopaAuditService {
   private readonly logger = new Logger(RopaAuditService.name);
 
   constructor(private readonly databaseService: DatabaseService) {}
+
+  // Visitas para el admin de la tienda (21/11/2026): totales agrupados, ver
+  // shared/visits/visits-summary.ts.
+  visits(days: number): Promise<VisitsSummary> {
+    return visitsSummary(this.databaseService, "saas_ropa_audit_log", days);
+  }
 
   async record(event: RopaAuditEvent): Promise<void> {
     try {

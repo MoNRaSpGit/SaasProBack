@@ -507,6 +507,13 @@ export class RopaController {
   // Cuenta corriente de clientes (15/09/2026) -- a diferencia de
   // productos/carrusel, esto es SOLO para el admin (email/telefono de
   // clientes reales, nada publico aca).
+  // Visitas de la tienda (21/11/2026): solo el admin. ?days=1|7|30.
+  @Get("admin/visits")
+  async visits(@Headers("authorization") authorization: string | undefined, @Query("days") days?: string) {
+    await this.requireAdmin(authorization);
+    return this.auditService.visits(Number(days) || 7);
+  }
+
   @Get("clients")
   async listClients(@Headers("authorization") authorization: string | undefined) {
     await this.requireAdmin(authorization);
