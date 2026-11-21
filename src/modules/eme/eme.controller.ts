@@ -1,23 +1,48 @@
-import { Body, Controller, Delete, Get, Headers, Param, ParseIntPipe, Patch, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Param, ParseIntPipe, Patch, Post, Put, Query, Req, UseGuards } from "@nestjs/common";
+import type { Request } from "express";
+import { bearerToken, EmeAuthGuard, EmeAuthService, EmePublic, type EmeUser } from "./eme-auth.service";
 import { APP_WIDE_USER, NoticesService } from "../notices/notices.service";
-import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EditEmeOrderDto, EmeExpenseDto, EmeOpeningDto, EmePaymentDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
+import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EditEmeOrderDto, EmeLoginDto, EmeExpenseDto, EmeOpeningDto, EmePaymentDto, PatchEmeOrderDto, SaveEmeProductDto } from "./dto/eme.dto";
 import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 import { EmeService } from "./eme.service";
 
 // EME (restaurante). Sin login por ahora: la app se usa desde el local.
+// 20/11/2026: con login. Todo pide sesion salvo lo marcado @EmePublic().
+@UseGuards(EmeAuthGuard)
 @Controller("eme")
 export class EmeController {
   constructor(
     private readonly emeService: EmeService,
-    private readonly noticesService: NoticesService
+    private readonly noticesService: NoticesService,
+    private readonly authService: EmeAuthService
   ) {}
 
+  // ---------------- Login (20/11/2026) ----------------
+  @EmePublic()
+  @Post("auth/login")
+  login(@Body() dto: EmeLoginDto) {
+    return this.authService.login(dto.username, dto.password);
+  }
+
+  @Get("auth/me")
+  me(@Req() request: Request & { emeUser?: EmeUser }) {
+    return { user: request.emeUser };
+  }
+
+  @Post("auth/logout")
+  async logout(@Req() request: Request) {
+    await this.authService.logout(bearerToken(request));
+    return { ok: true };
+  }
+
   // Aviso de demora activado desde Scrum (aplica a toda la app: no hay login).
+  @EmePublic()
   @Get("notice")
   async getNotice() {
     return { active: await this.noticesService.isActiveFor("eme", APP_WIDE_USER) };
   }
 
+  @EmePublic()
   @Post("notice/seen")
   async noticeSeen() {
     await this.noticesService.markSeen("eme", APP_WIDE_USER);
@@ -32,6 +57,7 @@ export class EmeController {
   }
 
   // Registro interno de uso (se ve en la app de Movimientos).
+  @EmePublic()
   @Post("activity")
   async trackActivity(@Body() dto: TrackEmeActivityDto, @Headers("user-agent") userAgent?: string) {
     await this.emeService.trackActivity(dto, userAgent);
