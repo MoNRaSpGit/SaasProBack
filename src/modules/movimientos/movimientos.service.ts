@@ -6,7 +6,8 @@ import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from ".
 // clients: sub-tarjetas por cliente (hoy solo Gym, 23/10/2026: "entro a
 // Gym y me sale Ale Gym y Pablo M").
 export type MovimientosClientSummary = { key: string; label: string; count: number };
-export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number };
+export type MovimientosVisitStats = { visits: number; views: number; carts: number; whatsapp: number };
+export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats };
 export type MovimientosDetailItem = { time: string; label: string; detail: string };
 
 // Gym: cada workspace es un cliente (gimnasio). Los de demo y el
@@ -267,8 +268,8 @@ export class MovimientosService {
       { key: "eme", label: "Eme", count: eme },
       { key: "agro", label: "Agro", count: agro.reduce((total, client) => total + client.count, 0), clients: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
-      { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits },
-      { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits },
+      { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits.visits, visitStats: qqVisits },
+      { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits.visits, visitStats: ropaVisits },
       { key: "juez", label: "Juez", count: juez },
       { key: "camiones", label: "Camiones", count: camiones }
     ];
@@ -300,13 +301,20 @@ export class MovimientosService {
   // al azar que no se guarda en el telefono, asi que cada visita = un visitante.
   // (16/11/2026) Generalizado para QQ y Ropa; la tabla viene SIEMPRE de este
   // archivo (nunca del request).
+  // 21/11/2026: una sola consulta agrupada trae visitas, productos vistos,
+  // agregados al carrito y clics en WhatsApp del dia (lo mismo que ve la
+  // clienta en su pestaña Visitas, mas WhatsApp, que es solo para nosotros).
   private async countVisits(table: "saas_qq_audit_log" | "saas_ropa_audit_log", dayLabel?: string) {
     const { start, end } = dayRangeUtc(dayLabel);
-    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
-      `SELECT COUNT(*) AS total FROM ${table} WHERE action = 'visit' AND occurred_at >= ? AND occurred_at < ?`,
+    const rows = await this.databaseService.query<(RowDataPacket & { action: string; total: number })[]>(
+      `SELECT action, COUNT(*) AS total FROM ${table}
+       WHERE entity_type = 'visitor' AND occurred_at >= ? AND occurred_at < ?
+         AND action IN ('visit', 'view_product', 'add_to_cart', 'whatsapp_click')
+       GROUP BY action`,
       [start, end]
     );
-    return Number(rows[0]?.total ?? 0);
+    const count = (action: string) => Number(rows.find((row) => row.action === action)?.total ?? 0);
+    return { visits: count("visit"), views: count("view_product"), carts: count("add_to_cart"), whatsapp: count("whatsapp_click") };
   }
 
   // ---------------- Camiones (15/11/2026, pedido explicito: reemplaza a GPS):
