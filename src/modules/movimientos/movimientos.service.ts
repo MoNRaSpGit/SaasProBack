@@ -246,7 +246,7 @@ export class MovimientosService {
 
   // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
   async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits, oriol] = await Promise.all([
       this.countSqlAudit("piloto", dayLabel),
       this.countSqlAudit("gaby", dayLabel),
       this.countSqlAudit("eme", dayLabel),
@@ -258,7 +258,8 @@ export class MovimientosService {
       this.countCamiones(dayLabel),
       this.countVisits("saas_qq_audit_log", dayLabel),
       this.countSqlAudit("ropa", dayLabel),
-      this.countVisits("saas_ropa_audit_log", dayLabel)
+      this.countVisits("saas_ropa_audit_log", dayLabel),
+      this.countOriol(dayLabel)
     ]);
 
     return [
@@ -271,7 +272,8 @@ export class MovimientosService {
       { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits.visits, visitStats: qqVisits },
       { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits.visits, visitStats: ropaVisits },
       { key: "juez", label: "Juez", count: juez },
-      { key: "camiones", label: "Camiones", count: camiones }
+      { key: "camiones", label: "Camiones", count: camiones },
+      { key: "oriol", label: "Oriol · cuenta corriente", count: oriol }
     ];
   }
 
@@ -283,6 +285,8 @@ export class MovimientosService {
         return this.detailAgro(dayLabel, client);
       case "camiones":
         return this.detailCamiones(dayLabel);
+      case "oriol":
+        return this.detailOriol(dayLabel);
       case "piloto":
       case "gaby":
       case "eme":
@@ -340,6 +344,62 @@ export class MovimientosService {
       [start, end, start, end, start, end, start, end]
     );
     return Number(rows[0]?.total ?? 0) + auditCount;
+  }
+
+  // ---------------- Oriol (21/11/2026, pedido explicito): SOLO cuenta
+  // corriente. No tiene auditoria propia: se arma con las fechas reales de
+  // clientes nuevos, ventas a credito y pagos de cuenta corriente. ----
+
+  private async countOriol(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
+      `SELECT
+         (SELECT COUNT(*) FROM saas_oriol_clientes WHERE created_at >= ? AND created_at < ?) +
+         (SELECT COUNT(*) FROM saas_oriol_ventas WHERE metodo_pago = 'credito' AND fecha >= ? AND fecha < ?) +
+         (SELECT COUNT(*) FROM saas_oriol_pagos_credito WHERE fecha >= ? AND fecha < ?) AS total`,
+      [start, end, start, end, start, end]
+    );
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  private async detailOriol(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const [clients, sales, payments] = await Promise.all([
+      this.databaseService.query<(RowDataPacket & { t: string; nombre: string })[]>(
+        `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS t, nombre FROM saas_oriol_clientes WHERE created_at >= ? AND created_at < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { t: string; nombre: string | null; pesos: string; dolares: string })[]>(
+        `SELECT DATE_FORMAT(v.fecha, '%Y-%m-%dT%H:%i:%s') AS t, c.nombre, v.total_pesos AS pesos, v.total_dolares AS dolares
+         FROM saas_oriol_ventas v LEFT JOIN saas_oriol_clientes c ON c.id = v.cliente_id
+         WHERE v.metodo_pago = 'credito' AND v.fecha >= ? AND v.fecha < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { t: string; nombre: string | null; moneda: string; monto: string; tipo: string })[]>(
+        `SELECT DATE_FORMAT(p.fecha, '%Y-%m-%dT%H:%i:%s') AS t, c.nombre, p.moneda, p.monto, p.tipo
+         FROM saas_oriol_pagos_credito p LEFT JOIN saas_oriol_clientes c ON c.id = p.cliente_id
+         WHERE p.fecha >= ? AND p.fecha < ?`,
+        [start, end]
+      )
+    ]);
+    const amount = (pesos: number, dolares: number) =>
+      [pesos > 0 ? `$${Math.round(pesos)}` : "", dolares > 0 ? `US$${dolares.toFixed(2)}` : ""].filter(Boolean).join(" + ") || "$0";
+    const items: Array<MovimientosDetailItem & { t: string }> = [
+      ...clients.map((row) => ({ time: formatMontevideoTime(row.t), label: "Cliente nuevo", detail: row.nombre, t: row.t })),
+      ...sales.map((row) => ({
+        time: formatMontevideoTime(row.t),
+        label: "Venta a cuenta corriente",
+        detail: `${row.nombre ?? "?"} · ${amount(Number(row.pesos), Number(row.dolares))}`,
+        t: row.t
+      })),
+      ...payments.map((row) => ({
+        time: formatMontevideoTime(row.t),
+        label: "Pago de cuenta corriente",
+        detail: `${row.nombre ?? "?"} · ${row.moneda === "dolares" || row.moneda === "USD" ? "US$" : "$"}${Number(row.monto).toFixed(2)}${row.tipo ? " · " + row.tipo : ""}`,
+        t: row.t
+      }))
+    ];
+    return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ t: _t, ...item }) => item);
   }
 
   private async detailCamiones(dayLabel?: string): Promise<MovimientosDetailItem[]> {
