@@ -6,6 +6,10 @@ import { AddEmeCategoryDto, CreateEmeClientDto, CreateEmeOrderDto, EditEmeOrderD
 import { TrackEmeActivityDto } from "./dto/track-eme-activity.dto";
 import { EmeService } from "./eme.service";
 
+// Cada usuario trabaja en su propio espacio (21/11/2026): el id del usuario de la sesion
+// es el espacio (workspace) de todo lo que lee o escribe.
+type WsRequest = Request & { emeUser?: EmeUser };
+
 // EME (restaurante). Sin login por ahora: la app se usa desde el local.
 // 20/11/2026: con login. Todo pide sesion salvo lo marcado @EmePublic().
 @UseGuards(EmeAuthGuard)
@@ -51,9 +55,9 @@ export class EmeController {
 
   // Estado de la app. Con ?since=<version>, si no cambio nada responde "unchanged".
   @Get("state")
-  getState(@Query("since") since?: string) {
+  getState(@Req() request: WsRequest, @Query("since") since?: string) {
     const parsed = since !== undefined && since !== "" ? Number(since) : null;
-    return this.emeService.getState(parsed !== null && Number.isInteger(parsed) ? parsed : null);
+    return this.emeService.getState(request.emeUser!.id, parsed !== null && Number.isInteger(parsed) ? parsed : null);
   }
 
   // Registro interno de uso (se ve en la app de Movimientos).
@@ -65,69 +69,69 @@ export class EmeController {
   }
 
   @Post("orders")
-  createOrder(@Body() dto: CreateEmeOrderDto) {
-    return this.emeService.createOrder(dto);
+  createOrder(@Req() request: WsRequest, @Body() dto: CreateEmeOrderDto) {
+    return this.emeService.createOrder(request.emeUser!.id, dto);
   }
 
   @Patch("orders/:id")
-  patchOrder(@Param("id") id: string, @Body() dto: PatchEmeOrderDto) {
-    return this.emeService.patchOrder(id, dto);
+  patchOrder(@Req() request: WsRequest, @Param("id") id: string, @Body() dto: PatchEmeOrderDto) {
+    return this.emeService.patchOrder(request.emeUser!.id, id, dto);
   }
 
   @Post("clients")
-  createClient(@Body() dto: CreateEmeClientDto) {
-    return this.emeService.createClient(dto);
+  createClient(@Req() request: WsRequest, @Body() dto: CreateEmeClientDto) {
+    return this.emeService.createClient(request.emeUser!.id, dto);
   }
 
   @Post("clients/:id/payments")
-  registerPayment(@Param("id", ParseIntPipe) id: number, @Body() dto: EmePaymentDto) {
-    return this.emeService.registerPayment(id, dto.amount);
+  registerPayment(@Req() request: WsRequest, @Param("id", ParseIntPipe) id: number, @Body() dto: EmePaymentDto) {
+    return this.emeService.registerPayment(request.emeUser!.id, id, dto.amount);
   }
 
   @Post("products")
-  createProduct(@Body() dto: SaveEmeProductDto) {
-    return this.emeService.createProduct(dto);
+  createProduct(@Req() request: WsRequest, @Body() dto: SaveEmeProductDto) {
+    return this.emeService.createProduct(request.emeUser!.id, dto);
   }
 
   @Put("products/:id")
-  updateProduct(@Param("id") id: string, @Body() dto: SaveEmeProductDto) {
-    return this.emeService.updateProduct(id, dto);
+  updateProduct(@Req() request: WsRequest, @Param("id") id: string, @Body() dto: SaveEmeProductDto) {
+    return this.emeService.updateProduct(request.emeUser!.id, id, dto);
   }
 
   @Delete("products/:id")
-  deleteProduct(@Param("id") id: string) {
-    return this.emeService.deleteProduct(id);
+  deleteProduct(@Req() request: WsRequest, @Param("id") id: string) {
+    return this.emeService.deleteProduct(request.emeUser!.id, id);
   }
 
   @Post("categories")
-  addCategory(@Body() dto: AddEmeCategoryDto) {
-    return this.emeService.addCategory(dto);
+  addCategory(@Req() request: WsRequest, @Body() dto: AddEmeCategoryDto) {
+    return this.emeService.addCategory(request.emeUser!.id, dto);
   }
 
   // ---------------- Caja (19/11/2026) ----------------
   @Put("register/opening")
-  setOpening(@Body() dto: EmeOpeningDto) {
-    return this.emeService.setOpening(dto.amount);
+  setOpening(@Req() request: WsRequest, @Body() dto: EmeOpeningDto) {
+    return this.emeService.setOpening(request.emeUser!.id, dto.amount);
   }
 
   @Post("register/expenses")
-  addExpense(@Body() dto: EmeExpenseDto) {
-    return this.emeService.addExpense(dto.description, dto.amount);
+  addExpense(@Req() request: WsRequest, @Body() dto: EmeExpenseDto) {
+    return this.emeService.addExpense(request.emeUser!.id, dto.description, dto.amount);
   }
 
   @Delete("register/expenses/:id")
-  deleteExpense(@Param("id", ParseIntPipe) id: number) {
-    return this.emeService.deleteExpense(id);
+  deleteExpense(@Req() request: WsRequest, @Param("id", ParseIntPipe) id: number) {
+    return this.emeService.deleteExpense(request.emeUser!.id, id);
   }
 
   @Post("register/close")
-  closeRegister() {
-    return this.emeService.closeRegister();
+  closeRegister(@Req() request: WsRequest) {
+    return this.emeService.closeRegister(request.emeUser!.id);
   }
 
   // Editar los productos de un pedido (20/11/2026).
   @Put("orders/:id")
-  editOrder(@Param("id") id: string, @Body() dto: EditEmeOrderDto) {
-    return this.emeService.editOrder(id, dto);
+  editOrder(@Req() request: WsRequest, @Param("id") id: string, @Body() dto: EditEmeOrderDto) {
+    return this.emeService.editOrder(request.emeUser!.id, id, dto);
   }
 }
