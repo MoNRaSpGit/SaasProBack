@@ -54,4 +54,6 @@ export type QqDiscountConfig = {
   code: string;
   percentage: number;
   enabled: boolean;
+  // 23/11/2026: codigos extra (uno por vendedor), hasta 4.
+  extraCodes: { code: string; percentage: number }[];
 };

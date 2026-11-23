@@ -36,7 +36,7 @@ import { QqCategoriesService } from "./qq-categories.service";
 import { QqClientsService } from "./qq-clients.service";
 import { QqDiscountService } from "./qq-discount.service";
 import { QqProductsService } from "./qq-products.service";
-import { QqUser } from "./qq.types";
+import { QqDiscountConfig, QqUser } from "./qq.types";
 
 function extractBearerToken(authorization: string | undefined): string | undefined {
   if (!authorization?.startsWith("Bearer ")) return undefined;
@@ -58,7 +58,13 @@ const PRODUCT_AUDIT_FIELDS = [
   "imageUrl"
 ] as const;
 const CLIENT_AUDIT_FIELDS = ["name", "email", "phone", "dueDate"] as const;
-const DISCOUNT_CONFIG_AUDIT_FIELDS = ["code", "percentage", "enabled"] as const;
+const DISCOUNT_CONFIG_AUDIT_FIELDS = ["code", "percentage", "enabled", "extraCodes"] as const;
+
+// extraCodes es una lista: se aplana a texto para que diffFields la compare por valor.
+const flattenDiscount = (config: QqDiscountConfig) => ({
+  ...config,
+  extraCodes: config.extraCodes.map((item) => `${item.code} (${item.percentage}%)`).join(", ")
+});
 
 // Limite del punto de entrada publico de "Comprar por WhatsApp" (ver
 // reportWhatsAppCheckout): como cualquiera puede llamarlo, se topea por IP
@@ -590,7 +596,7 @@ export class QqController {
     const admin = await this.requireAdmin(authorization);
     const before = await this.discountService.getConfig();
     const result = await this.discountService.updateConfig(dto);
-    const changes = diffFields(before.item, result.item, DISCOUNT_CONFIG_AUDIT_FIELDS);
+    const changes = diffFields(flattenDiscount(before.item), flattenDiscount(result.item), DISCOUNT_CONFIG_AUDIT_FIELDS);
     if (changes) {
       await this.auditService.record({
         action: "update",
