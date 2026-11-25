@@ -2,8 +2,9 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { CreatePeluqueriaReservationDto } from "./dto/create-peluqueria-reservation.dto";
-import { addDays, DAYS_AHEAD, isValidSlot, montevideoNow, normalizePhone, parseSchedule } from "./peluqueria-schedule";
-import { PeluqueriaBusySlot, PeluqueriaReservation, PeluqueriaSalonPublic } from "./peluqueria.types";
+import { SavePeluqueriaScheduleDto } from "./dto/save-peluqueria-schedule.dto";
+import { addDays, DAYS_AHEAD, isValidSlot, montevideoNow, normalizePhone, parseSchedule, validateScheduleInput } from "./peluqueria-schedule";
+import { PeluqueriaAdminSettings, PeluqueriaBusySlot, PeluqueriaReservation, PeluqueriaSalonPublic } from "./peluqueria.types";
 
 type SalonRow = RowDataPacket & { id: number; slug: string; name: string; logo_url: string | null; schedule_json: string };
 type BarberRow = RowDataPacket & { id: number; name: string };
@@ -98,6 +99,83 @@ export class PeluqueriaService {
       [salonId]
     );
     return rows.map(mapRow);
+  }
+
+  // Configuracion del dueño: sus peluqueros (tambien los desactivados) y el
+  // horario. Siempre filtrado por el local del dueño que inicio sesion.
+  async getAdminSettings(salonId: number): Promise<PeluqueriaAdminSettings> {
+    const salons = await this.databaseService.query<RowDataPacket[]>(`SELECT schedule_json FROM saas_peluqueria_salons WHERE id = ? LIMIT 1`, [salonId]);
+    if (!salons[0]) throw new NotFoundException("Peluquería no encontrada");
+    const barbers = await this.databaseService.query<(BarberRow & { active: number })[]>(
+      `SELECT id, name, active FROM saas_peluqueria_barbers WHERE salon_id = ? ORDER BY active DESC, position ASC, id ASC`,
+      [salonId]
+    );
+    return {
+      schedule: parseSchedule(String(salons[0].schedule_json)),
+      barbers: barbers.map((barber) => ({ id: barber.id, name: barber.name, active: Boolean(barber.active) }))
+    };
+  }
+
+  async saveSchedule(salonId: number, dto: SavePeluqueriaScheduleDto): Promise<PeluqueriaAdminSettings> {
+    const result = validateScheduleInput({ slotMinutes: dto.slotMinutes, days: dto.days });
+    if ("error" in result) throw new BadRequestException(result.error);
+    await this.databaseService.execute(`UPDATE saas_peluqueria_salons SET schedule_json = ? WHERE id = ?`, [JSON.stringify(result.schedule), salonId]);
+    return this.getAdminSettings(salonId);
+  }
+
+  async addBarber(salonId: number, name: string): Promise<PeluqueriaAdminSettings> {
+    const cleanName = name.trim();
+    if (cleanName.length < 2) throw new BadRequestException("Poné el nombre del peluquero.");
+    try {
+      await this.databaseService.execute(
+        `INSERT INTO saas_peluqueria_barbers (salon_id, name, position, active)
+         SELECT ?, ?, COALESCE(MAX(position), 0) + 1, 1 FROM saas_peluqueria_barbers WHERE salon_id = ?`,
+        [salonId, cleanName, salonId]
+      );
+    } catch (error) {
+      if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
+        throw new ConflictException("Ya hay un peluquero con ese nombre (fijate si está desactivado).");
+      }
+      throw error;
+    }
+    return this.getAdminSettings(salonId);
+  }
+
+  // Cambia nombre y/o activo. Nunca se borra: las reservas viejas conservan
+  // el nombre y el historial queda intacto; "desactivar" lo saca del link.
+  async updateBarber(salonId: number, barberId: number, changes: { name?: string; active?: boolean }): Promise<PeluqueriaAdminSettings> {
+    const found = await this.databaseService.query<BarberRow[]>(`SELECT id, name FROM saas_peluqueria_barbers WHERE id = ? AND salon_id = ? LIMIT 1`, [barberId, salonId]);
+    if (!found[0]) throw new NotFoundException("Peluquero no encontrado");
+
+    if (changes.active === false) {
+      const others = await this.databaseService.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total FROM saas_peluqueria_barbers WHERE salon_id = ? AND active = 1 AND id <> ?`,
+        [salonId, barberId]
+      );
+      if (Number(others[0]?.total ?? 0) === 0) throw new BadRequestException("Tiene que quedar al menos un peluquero activo.");
+    }
+
+    const sets: string[] = [];
+    const params: Array<string | number> = [];
+    if (changes.name !== undefined) {
+      const cleanName = changes.name.trim();
+      if (cleanName.length < 2) throw new BadRequestException("Poné el nombre del peluquero.");
+      sets.push("name = ?");
+      params.push(cleanName);
+    }
+    if (changes.active !== undefined) {
+      sets.push("active = ?");
+      params.push(changes.active ? 1 : 0);
+    }
+    if (sets.length > 0) {
+      try {
+        await this.databaseService.execute(`UPDATE saas_peluqueria_barbers SET ${sets.join(", ")} WHERE id = ? AND salon_id = ?`, [...params, barberId, salonId]);
+      } catch (error) {
+        if ((error as { code?: string }).code === "ER_DUP_ENTRY") throw new ConflictException("Ya hay un peluquero con ese nombre.");
+        throw error;
+      }
+    }
+    return this.getAdminSettings(salonId);
   }
 
   async createReservation(slug: string, dto: CreatePeluqueriaReservationDto): Promise<{ id: number; peluquero: string; date: string; time: string }> {

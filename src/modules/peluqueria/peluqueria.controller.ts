@@ -9,13 +9,17 @@ import {
   HttpStatus,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
+  Put,
   Query,
   Req,
   UnauthorizedException
 } from "@nestjs/common";
 import type { Request } from "express";
 import { CreatePeluqueriaReservationDto } from "./dto/create-peluqueria-reservation.dto";
+import { CreatePeluqueriaBarberDto, UpdatePeluqueriaBarberDto } from "./dto/peluqueria-barber.dto";
+import { SavePeluqueriaScheduleDto } from "./dto/save-peluqueria-schedule.dto";
 import { LoginPeluqueriaOwnerDto } from "./dto/login-peluqueria-owner.dto";
 import { PeluqueriaAuthService } from "./peluqueria-auth.service";
 import { PeluqueriaService } from "./peluqueria.service";
@@ -117,6 +121,34 @@ export class PeluqueriaController {
   async listReservations(@Headers("authorization") authorization: string | undefined) {
     const owner = await this.requireOwner(authorization);
     return this.peluqueriaService.listReservations(owner.salonId);
+  }
+
+  @Get("admin/settings")
+  async getSettings(@Headers("authorization") authorization: string | undefined) {
+    const owner = await this.requireOwner(authorization);
+    return this.peluqueriaService.getAdminSettings(owner.salonId);
+  }
+
+  @Put("admin/schedule")
+  async saveSchedule(@Headers("authorization") authorization: string | undefined, @Body() dto: SavePeluqueriaScheduleDto) {
+    const owner = await this.requireOwner(authorization);
+    return this.peluqueriaService.saveSchedule(owner.salonId, dto);
+  }
+
+  @Post("admin/barbers")
+  async addBarber(@Headers("authorization") authorization: string | undefined, @Body() dto: CreatePeluqueriaBarberDto) {
+    const owner = await this.requireOwner(authorization);
+    return this.peluqueriaService.addBarber(owner.salonId, dto.name);
+  }
+
+  @Patch("admin/barbers/:id")
+  async updateBarber(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UpdatePeluqueriaBarberDto
+  ) {
+    const owner = await this.requireOwner(authorization);
+    return this.peluqueriaService.updateBarber(owner.salonId, id, dto);
   }
 
   private async requireOwner(authorization: string | undefined): Promise<PeluqueriaOwner> {

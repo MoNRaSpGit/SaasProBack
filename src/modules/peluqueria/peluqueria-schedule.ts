@@ -84,3 +84,29 @@ export function normalizePhone(phone: string): string {
   if (digits.length === 8 && digits.startsWith("9")) digits = `0${digits}`;
   return digits;
 }
+
+// Validacion ESTRICTA del horario que manda el dueño (parseSchedule es
+// permisivo a proposito, para no romper la pantalla de la clienta). Devuelve
+// el horario limpio o el motivo del rechazo.
+export function validateScheduleInput(input: PeluqueriaSchedule): { schedule: PeluqueriaSchedule } | { error: string } {
+  const days: PeluqueriaSchedule["days"] = {};
+  for (const [day, ranges] of Object.entries(input.days ?? {})) {
+    if (!/^[0-6]$/.test(day) || !Array.isArray(ranges)) return { error: "Día inválido en el horario." };
+    if (ranges.length === 0) continue;
+    if (ranges.length > 4) return { error: "Hasta 4 tramos por día." };
+    const clean: Array<[string, string]> = [];
+    for (const range of ranges) {
+      if (!Array.isArray(range) || typeof range[0] !== "string" || typeof range[1] !== "string") return { error: "Tramo inválido." };
+      if (!TIME_PATTERN.test(range[0]) || !TIME_PATTERN.test(range[1])) return { error: "Las horas tienen que ser HH:MM." };
+      if (toMinutes(range[0]) >= toMinutes(range[1])) return { error: "En cada tramo, el cierre tiene que ser después de la apertura." };
+      clean.push([range[0], range[1]]);
+    }
+    clean.sort((a, b) => toMinutes(a[0]) - toMinutes(b[0]));
+    for (let index = 1; index < clean.length; index += 1) {
+      if (toMinutes(clean[index][0]) < toMinutes(clean[index - 1][1])) return { error: "Los tramos de un mismo día no se pueden pisar." };
+    }
+    days[day] = clean;
+  }
+  if (Object.keys(days).length === 0) return { error: "Dejá abierto al menos un día." };
+  return { schedule: { slotMinutes: input.slotMinutes, days } };
+}

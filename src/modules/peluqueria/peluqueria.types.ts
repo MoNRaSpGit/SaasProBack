@@ -28,6 +28,11 @@ export type PeluqueriaReservation = {
   createdAt: string;
 };
 
+export type PeluqueriaAdminSettings = {
+  schedule: PeluqueriaSchedule;
+  barbers: Array<{ id: number; name: string; active: boolean }>;
+};
+
 export type PeluqueriaBusySlot = {
   date: string;
   time: string;
