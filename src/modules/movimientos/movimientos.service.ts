@@ -246,7 +246,7 @@ export class MovimientosService {
 
   // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
   async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits, oriol] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits, oriol, reservas] = await Promise.all([
       this.countSqlAudit("piloto", dayLabel),
       this.countSqlAudit("gaby", dayLabel),
       this.countSqlAudit("eme", dayLabel),
@@ -259,7 +259,8 @@ export class MovimientosService {
       this.countVisits("saas_qq_audit_log", dayLabel),
       this.countSqlAudit("ropa", dayLabel),
       this.countVisits("saas_ropa_audit_log", dayLabel),
-      this.countOriol(dayLabel)
+      this.countOriol(dayLabel),
+      this.countReservas(dayLabel)
     ]);
 
     return [
@@ -273,7 +274,8 @@ export class MovimientosService {
       { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits.visits, visitStats: ropaVisits },
       { key: "juez", label: "Juez", count: juez },
       { key: "camiones", label: "Camiones", count: camiones },
-      { key: "oriol", label: "Oriol · cuenta corriente", count: oriol }
+      { key: "oriol", label: "Oriol · cuenta corriente", count: oriol },
+      { key: "reservas", label: "Reservas (peluquería)", count: reservas }
     ];
   }
 
@@ -287,6 +289,8 @@ export class MovimientosService {
         return this.detailCamiones(dayLabel);
       case "oriol":
         return this.detailOriol(dayLabel);
+      case "reservas":
+        return this.detailReservas(dayLabel);
       case "piloto":
       case "gaby":
       case "eme":
@@ -349,6 +353,65 @@ export class MovimientosService {
   // ---------------- Oriol (21/11/2026, pedido explicito): SOLO cuenta
   // corriente. No tiene auditoria propia: se arma con las fechas reales de
   // clientes nuevos, ventas a credito y pagos de cuenta corriente. ----
+
+  // ---- Reservas / peluqueria (25/11/2026, pedido explicito: "ver si alguien
+  // se registra, si entra, si la usa"). Sin auditoria propia: se arma con las
+  // fechas reales de las tablas: reservas hechas, clientes nuevos de cada
+  // local e ingresos del dueño (sesiones). Los turnos de EJEMPLO (celular
+  // 0990000NN, ver scripts/seed-peluqueria-demo-reservations.js) no cuentan.
+  // Ojo: cerrar sesion borra la sesion, asi que un ingreso con "Salir"
+  // posterior ya no aparece. Las VISITAS a la pagina de reservar (sin
+  // reservar) todavia no se registran. ----
+
+  private async countReservas(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
+      `SELECT
+         (SELECT COUNT(*) FROM saas_peluqueria_reservations WHERE created_at >= ? AND created_at < ? AND client_phone NOT LIKE '0990000%') +
+         (SELECT COUNT(*) FROM saas_peluqueria_clients WHERE created_at >= ? AND created_at < ? AND phone_norm NOT LIKE '0990000%') +
+         (SELECT COUNT(*) FROM saas_peluqueria_sessions WHERE created_at >= ? AND created_at < ?) AS total`,
+      [start, end, start, end, start, end]
+    );
+    return Number(rows[0]?.total ?? 0);
+  }
+
+  private async detailReservas(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const [reservations, clients, logins] = await Promise.all([
+      this.databaseService.query<(RowDataPacket & { t: string; salon: string; peluquero: string; client_name: string; turno: string; hora: string })[]>(
+        `SELECT DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%s') AS t, s.name AS salon, r.peluquero, r.client_name,
+                DATE_FORMAT(r.reservation_date, '%d/%m') AS turno, r.reservation_time AS hora
+         FROM saas_peluqueria_reservations r JOIN saas_peluqueria_salons s ON s.id = r.salon_id
+         WHERE r.created_at >= ? AND r.created_at < ? AND r.client_phone NOT LIKE '0990000%'`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { t: string; salon: string; name: string })[]>(
+        `SELECT DATE_FORMAT(c.created_at, '%Y-%m-%dT%H:%i:%s') AS t, s.name AS salon, c.name
+         FROM saas_peluqueria_clients c JOIN saas_peluqueria_salons s ON s.id = c.salon_id
+         WHERE c.created_at >= ? AND c.created_at < ? AND c.phone_norm NOT LIKE '0990000%'`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { t: string; salon: string; username: string })[]>(
+        `SELECT DATE_FORMAT(se.created_at, '%Y-%m-%dT%H:%i:%s') AS t, s.name AS salon, u.username
+         FROM saas_peluqueria_sessions se
+         JOIN saas_peluqueria_users u ON u.id = se.user_id
+         JOIN saas_peluqueria_salons s ON s.id = u.salon_id
+         WHERE se.created_at >= ? AND se.created_at < ?`,
+        [start, end]
+      )
+    ]);
+    const items: Array<MovimientosDetailItem & { t: string }> = [
+      ...reservations.map((row) => ({
+        time: formatMontevideoTime(row.t),
+        label: "Reserva nueva",
+        detail: `${row.client_name} · ${row.peluquero} · turno ${row.turno} ${row.hora} · ${row.salon}`,
+        t: row.t
+      })),
+      ...clients.map((row) => ({ time: formatMontevideoTime(row.t), label: "Cliente nuevo", detail: `${row.name} · ${row.salon}`, t: row.t })),
+      ...logins.map((row) => ({ time: formatMontevideoTime(row.t), label: "Ingreso del dueño", detail: `${row.username} · ${row.salon}`, t: row.t }))
+    ];
+    return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ t: _t, ...item }) => item);
+  }
 
   private async countOriol(dayLabel?: string) {
     const { start, end } = dayRangeUtc(dayLabel);
