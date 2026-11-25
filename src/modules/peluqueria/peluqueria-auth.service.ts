@@ -36,7 +36,14 @@ export class PeluqueriaAuthService {
       [dto.username.trim().toLowerCase()]
     );
     const row = rows[0];
-    const matches = await compare(dto.password, row?.password_hash ?? DUMMY_HASH);
+    // La contraseña NO distingue mayusculas de minusculas (pedido explicito,
+    // 25/11/2026): se guarda y se compara en minuscula. Los usuarios viejos
+    // cuyo hash fue hecho con la clave tal cual siguen entrando con ella
+    // (segundo intento). Siempre se hacen los dos compare, asi no cambia el
+    // tiempo de respuesta segun cual acierte.
+    const hashToCheck = row?.password_hash ?? DUMMY_HASH;
+    const [lowerMatches, exactMatches] = await Promise.all([compare(dto.password.toLowerCase(), hashToCheck), compare(dto.password, hashToCheck)]);
+    const matches = lowerMatches || exactMatches;
     if (!row || !matches) {
       throw new UnauthorizedException("Usuario o contraseña incorrectos");
     }
