@@ -39,6 +39,13 @@ export class SaveGymWorkspaceDto {
   @IsArray()
   progressRecords?: unknown[];
 
+  // Catalogo de actividades sueltas (Zumba, etc.), 24/11/2026. Opcional por
+  // la misma razon: un celular con la app vieja no lo manda y se conserva
+  // lo que ya habia.
+  @IsOptional()
+  @IsArray()
+  activities?: unknown[];
+
   @IsArray()
   auditLog!: unknown[];
 }

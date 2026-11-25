@@ -19,7 +19,14 @@ export type GymTask = {
   createdAt: string;
 };
 
-export type GymMovementType = "cobro" | "gasto" | "cliente_nuevo" | "otro";
+export type GymMovementType = "cobro" | "gasto" | "cliente_nuevo" | "producto" | "actividad" | "otro";
+
+// Actividad suelta (no es un plan): clase que se cobra por vez.
+export type GymActivity = {
+  id: string;
+  name: string;
+  price: number;
+};
 
 export type GymMovement = {
   id: string;
@@ -110,6 +117,7 @@ export type GymWorkspaceData = {
   students: GymStudent[];
   checkIns: GymCheckIn[];
   progressRecords: GymProgressRecord[];
+  activities: GymActivity[];
   auditLog: GymAuditEntry[];
 };
 
@@ -120,5 +128,5 @@ export type GymWorkspaceRecord = {
 };
 
 export function emptyGymWorkspaceData(): GymWorkspaceData {
-  return { expenses: [], tasks: [], movements: [], students: [], checkIns: [], progressRecords: [], auditLog: [] };
+  return { expenses: [], tasks: [], movements: [], students: [], checkIns: [], progressRecords: [], activities: [], auditLog: [] };
 }

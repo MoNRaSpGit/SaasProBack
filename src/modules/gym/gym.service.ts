@@ -66,6 +66,7 @@ export class GymService {
       students: (dto.students ?? previousData?.students ?? []) as GymWorkspaceData["students"],
       checkIns: (dto.checkIns ?? previousData?.checkIns ?? []) as GymWorkspaceData["checkIns"],
       progressRecords: (dto.progressRecords ?? previousData?.progressRecords ?? []) as GymWorkspaceData["progressRecords"],
+      activities: (dto.activities ?? previousData?.activities ?? []) as GymWorkspaceData["activities"],
       auditLog: dto.auditLog as GymWorkspaceData["auditLog"]
     };
 
@@ -93,6 +94,7 @@ export class GymService {
       students: current.data.students,
       checkIns: current.data.checkIns,
       progressRecords: current.data.progressRecords,
+      activities: current.data.activities,
       auditLog: [this.buildAuditEntry(action, details), ...current.data.auditLog]
     });
   }
@@ -114,7 +116,8 @@ export class GymService {
         ...(data as GymWorkspaceData),
         students: (data as GymWorkspaceData).students ?? [],
         checkIns: (data as GymWorkspaceData).checkIns ?? [],
-        progressRecords: (data as GymWorkspaceData).progressRecords ?? []
+        progressRecords: (data as GymWorkspaceData).progressRecords ?? [],
+        activities: (data as GymWorkspaceData).activities ?? []
       },
       rowVersion: row.row_version,
       updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at
