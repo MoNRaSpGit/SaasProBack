@@ -41,7 +41,8 @@ async function main() {
     await connection.query(`INSERT IGNORE INTO saas_peluqueria_barbers (salon_id, name, position) VALUES (?, ?, ?)`, [salon.id, barbers[i], i]);
   }
 
-  const passwordHash = await hash(password, 12);
+  // La clave no distingue mayusculas: se guarda en minuscula (ver peluqueria-auth.service.ts).
+  const passwordHash = await hash(password.toLowerCase(), 12);
   const user = username.trim().toLowerCase();
   const [[taken]] = await connection.query(`SELECT salon_id FROM saas_peluqueria_users WHERE username = ?`, [user]);
   if (taken && taken.salon_id !== salon.id) throw new Error("Ese usuario ya pertenece a otra peluqueria");
