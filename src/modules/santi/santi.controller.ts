@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from "@nestjs/common";
+import { CreateSantiOrderDto } from "./dto/santi-order.dto";
 import { CreateSantiClientDto, SetSantiHistoryDto, SetSantiMenuWeekDto, SetSantiWeeklyDto } from "./dto/santi.dto";
 import { SantiService } from "./santi.service";
 
@@ -37,6 +38,11 @@ export class SantiController {
   @Put("menus/:id/week")
   setMenuInWeek(@Param("id", ParseIntPipe) menuId: number, @Body() dto: SetSantiMenuWeekDto) {
     return this.santiService.setMenuInWeek(menuId, dto.inWeek);
+  }
+
+  @Post("orders")
+  createOrder(@Body() dto: CreateSantiOrderDto) {
+    return this.santiService.createOrder(dto);
   }
 
   @Post("reset")

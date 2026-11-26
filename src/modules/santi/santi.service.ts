@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
+import { CreateSantiOrderDto } from "./dto/santi-order.dto";
 
 // Santi: demo de cobros, clientes, menu semanal e historial de pagos.
 // Sin login (es una demo para mostrar). Los datos de ejemplo se cargan
@@ -8,6 +9,22 @@ import { DatabaseService } from "../../shared/database/database.service";
 
 const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
 const MAX_WEEK_OPTIONS = 3;
+
+// Precios de ejemplo (demo): vianda suelta y semana completa (5 dias).
+const PRICE_DAY = 320;
+const PRICE_WEEK = 1400;
+// Hasta cuantos dias adelante se puede cargar un pedido.
+const MAX_DAYS_AHEAD = 21;
+
+// Pedidos de ejemplo para que "Cocina" no arranque vacia:
+// [posicion del cliente, posicion del menu de la semana, dias habiles desde hoy, viandas, nota]
+const SEED_ORDERS: Array<[number, number, number[], number, string]> = [
+  [0, 0, [0, 1, 2, 3, 4], 1, "Sin cebolla"],
+  [1, 2, [0, 1], 1, ""],
+  [2, 0, [0, 2], 2, "Salsa aparte"],
+  [3, 1, [1], 1, "Porcion chica"],
+  [4, 1, [0, 1, 2, 3, 4], 2, ""]
+];
 
 type SeedClient = {
   name: string;
@@ -83,6 +100,17 @@ type ClientRow = RowDataPacket & {
   weekly_menu_id: number | null;
 };
 type MenuRow = RowDataPacket & { id: number; name: string; items: string; in_week: number };
+type OrderRow = RowDataPacket & {
+  id: number;
+  client_id: number;
+  kind: string;
+  qty: number;
+  total: number;
+  pay_status: string;
+  note: string;
+  date: string;
+  menu_name: string;
+};
 type PaymentRow = RowDataPacket & { id: number; client_id: number; amount: number; method: string; date: string };
 type HistoryRow = RowDataPacket & { client_id: number; day_name: string; dish: string };
 
@@ -100,6 +128,25 @@ function daysAgoMontevideo(days: number) {
   return new Date(base.getTime() - days * 86400000).toISOString().slice(0, 10);
 }
 
+function addDaysKey(dateKey: string, days: number) {
+  return new Date(new Date(`${dateKey}T12:00:00Z`).getTime() + days * 86400000).toISOString().slice(0, 10);
+}
+
+function weekdayOfKey(dateKey: string) {
+  return new Date(`${dateKey}T12:00:00Z`).getUTCDay();
+}
+
+// Los proximos N dias habiles (lunes a viernes) contando hoy.
+function nextBusinessDays(count: number) {
+  const result: string[] = [];
+  for (let offset = 0; result.length < count; offset += 1) {
+    const key = addDaysKey(todayMontevideo(), offset);
+    const weekday = weekdayOfKey(key);
+    if (weekday >= 1 && weekday <= 5) result.push(key);
+  }
+  return result;
+}
+
 function nowUtc() {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
 }
@@ -110,14 +157,23 @@ export class SantiService {
 
   async getState() {
     await this.ensureSeed();
-    const [clients, menus, payments, history] = await Promise.all([
+    await this.ensureSeedOrders();
+    const [clients, menus, payments, history, orderRows] = await Promise.all([
       this.db.query<ClientRow[]>(`SELECT * FROM saas_santi_clients ORDER BY id ASC`),
       this.db.query<MenuRow[]>(`SELECT * FROM saas_santi_menus ORDER BY id ASC`),
       this.db.query<PaymentRow[]>(
         `SELECT id, client_id, amount, method, DATE_FORMAT(paid_on, '%d/%m/%Y') AS date
          FROM saas_santi_payments ORDER BY paid_on DESC, id DESC`
       ),
-      this.db.query<HistoryRow[]>(`SELECT client_id, day_name, dish FROM saas_santi_history ORDER BY id ASC`)
+      this.db.query<HistoryRow[]>(`SELECT client_id, day_name, dish FROM saas_santi_history ORDER BY id ASC`),
+      // Pedidos desde hoy en adelante, un renglon por dia de entrega.
+      this.db.query<OrderRow[]>(
+        `SELECT o.id, o.client_id, o.kind, o.qty, o.total, o.pay_status, o.note,
+                DATE_FORMAT(d.delivery_date, '%Y-%m-%d') AS date, d.menu_name
+         FROM saas_santi_order_days d JOIN saas_santi_orders o ON o.id = d.order_id
+         WHERE d.delivery_date >= ? ORDER BY d.delivery_date ASC, o.id ASC`,
+        [todayMontevideo()]
+      )
     ]);
 
     return {
@@ -142,7 +198,20 @@ export class SantiService {
         method: row.method,
         date: row.date
       })),
-      history: history.map((row) => ({ clientId: row.client_id, day: row.day_name, dish: row.dish }))
+      history: history.map((row) => ({ clientId: row.client_id, day: row.day_name, dish: row.dish })),
+      today: todayMontevideo(),
+      prices: { day: PRICE_DAY, week: PRICE_WEEK },
+      orders: orderRows.map((row) => ({
+        orderId: row.id,
+        clientId: row.client_id,
+        kind: row.kind,
+        qty: row.qty,
+        total: row.total,
+        payStatus: row.pay_status,
+        note: row.note,
+        date: row.date,
+        menuName: row.menu_name
+      }))
     };
   }
 
@@ -207,6 +276,79 @@ export class SantiService {
     return this.getState();
   }
 
+  // Registrar pedido: guarda el pedido y sus dias, lo anota en el historial
+  // de la semana en curso, y lo que no se pago se suma a lo que debe.
+  async createOrder(dto: CreateSantiOrderDto) {
+    await this.getClientOrThrow(dto.clientId);
+
+    const today = todayMontevideo();
+    const lastAllowed = addDaysKey(today, MAX_DAYS_AHEAD);
+    const dates = new Set<string>();
+    for (const day of dto.days) {
+      const weekday = weekdayOfKey(day.date);
+      if (day.date < today || day.date > lastAllowed || weekday < 1 || weekday > 5) {
+        throw new BadRequestException("Los pedidos son de lunes a viernes, desde hoy y hasta 3 semanas adelante.");
+      }
+      if (dates.has(day.date)) throw new BadRequestException("Hay un día repetido en el pedido.");
+      dates.add(day.date);
+    }
+
+    const menus = await this.db.query<MenuRow[]>(`SELECT * FROM saas_santi_menus`);
+    const menuById = new Map(menus.map((menu) => [menu.id, menu]));
+    if (dto.days.some((day) => !menuById.has(day.menuId))) throw new BadRequestException("Elegí un menú para cada día.");
+
+    const paid = dto.payStatus === "pagado" ? dto.total : dto.payStatus === "sena" ? Number(dto.paidAmount ?? 0) : 0;
+    if (dto.payStatus === "sena" && (paid <= 0 || paid >= dto.total)) {
+      throw new BadRequestException("La seña tiene que ser mayor que 0 y menor que el total.");
+    }
+    const debt = dto.total - paid;
+    const note = (dto.note || "").trim();
+
+    await this.db.withTransaction(async (connection) => {
+      const [result] = await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_santi_orders (client_id, kind, qty, total, pay_status, paid_amount, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [dto.clientId, dto.kind, dto.qty, dto.total, dto.payStatus, paid, note, nowUtc()]
+      );
+      for (const day of dto.days) {
+        await connection.execute(`INSERT INTO saas_santi_order_days (order_id, delivery_date, menu_id, menu_name) VALUES (?, ?, ?, ?)`, [
+          result.insertId,
+          day.date,
+          day.menuId,
+          menuById.get(day.menuId)!.name
+        ]);
+      }
+      if (paid > 0) {
+        await connection.execute(`INSERT INTO saas_santi_payments (client_id, amount, method, paid_on, created_at) VALUES (?, ?, ?, ?, ?)`, [
+          dto.clientId,
+          paid,
+          "Efectivo",
+          today,
+          nowUtc()
+        ]);
+      }
+      if (debt > 0) {
+        await connection.execute(`UPDATE saas_santi_clients SET owes = owes + ? WHERE id = ?`, [debt, dto.clientId]);
+      }
+      // Historial "Lunes a Viernes": solo los dias de ESTA semana.
+      const monday = addDaysKey(today, -((weekdayOfKey(today) + 6) % 7));
+      const sunday = addDaysKey(monday, 6);
+      for (const day of dto.days) {
+        if (day.date < monday || day.date > sunday) continue;
+        await connection.execute(
+          `INSERT INTO saas_santi_history (client_id, day_name, dish) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE dish = VALUES(dish)`,
+          [dto.clientId, DAYS[weekdayOfKey(day.date) - 1], menuById.get(day.menuId)!.name]
+        );
+      }
+      // Semanal con una opcion de la semana: queda como "menu de toda la semana".
+      const first = menuById.get(dto.days[0].menuId)!;
+      if (dto.kind === "semanal" && first.in_week && dto.days.some((day) => day.date >= today && day.date <= sunday)) {
+        await connection.execute(`UPDATE saas_santi_clients SET weekly_menu_id = ? WHERE id = ?`, [first.id, dto.clientId]);
+      }
+    });
+
+    return this.getState();
+  }
+
   async setMenuInWeek(menuId: number, inWeek: boolean) {
     const menus = await this.db.query<MenuRow[]>(`SELECT * FROM saas_santi_menus WHERE id = ?`, [menuId]);
     if (!menus.length) throw new NotFoundException("Menú no encontrado.");
@@ -228,7 +370,7 @@ export class SantiService {
   }
 
   async reset() {
-    for (const table of ["saas_santi_history", "saas_santi_payments", "saas_santi_clients", "saas_santi_menus"]) {
+    for (const table of ["saas_santi_order_days", "saas_santi_orders", "saas_santi_history", "saas_santi_payments", "saas_santi_clients", "saas_santi_menus"]) {
       await this.db.execute(`DELETE FROM ${table}`);
     }
     await this.seed();
@@ -256,6 +398,36 @@ export class SantiService {
     );
     if (Number(rows[0]?.total ?? 0) === 0) {
       await this.seed();
+    }
+  }
+
+  // Pedidos de ejemplo: solo si no hay ninguno (demo). No tocan deudas ni pagos.
+  private async ensureSeedOrders() {
+    const count = await this.db.query<(RowDataPacket & { total: number })[]>(`SELECT COUNT(*) AS total FROM saas_santi_orders`);
+    if (Number(count[0]?.total ?? 0) > 0) return;
+    const [clients, menus] = await Promise.all([
+      this.db.query<ClientRow[]>(`SELECT * FROM saas_santi_clients ORDER BY id ASC LIMIT 5`),
+      this.db.query<MenuRow[]>(`SELECT * FROM saas_santi_menus WHERE in_week = 1 ORDER BY id ASC`)
+    ]);
+    if (!clients.length || !menus.length) return;
+    const days = nextBusinessDays(5);
+    for (const [clientIndex, menuIndex, offsets, qty, note] of SEED_ORDERS) {
+      const client = clients[clientIndex % clients.length];
+      const menu = menus[menuIndex % menus.length];
+      const weekly = offsets.length === 5;
+      const total = (weekly ? PRICE_WEEK : PRICE_DAY * offsets.length) * qty;
+      const result = await this.db.execute<ResultSetHeader>(
+        `INSERT INTO saas_santi_orders (client_id, kind, qty, total, pay_status, paid_amount, note, created_at) VALUES (?, ?, ?, ?, 'pagado', ?, ?, ?)`,
+        [client.id, weekly ? "semanal" : "dia", qty, total, total, note, nowUtc()]
+      );
+      for (const offset of offsets) {
+        await this.db.execute(`INSERT INTO saas_santi_order_days (order_id, delivery_date, menu_id, menu_name) VALUES (?, ?, ?, ?)`, [
+          result.insertId,
+          days[offset],
+          menu.id,
+          menu.name
+        ]);
+      }
     }
   }
 
