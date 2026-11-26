@@ -48,3 +48,15 @@ export class CreateSantiOrderDto {
   @Type(() => SantiOrderDayDto)
   days!: SantiOrderDayDto[];
 }
+
+export class SaveSantiSettingsDto {
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  priceDay!: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  priceWeek!: number;
+}

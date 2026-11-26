@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from "@nestjs/common";
-import { CreateSantiOrderDto } from "./dto/santi-order.dto";
+import { CreateSantiOrderDto, SaveSantiSettingsDto } from "./dto/santi-order.dto";
 import { CreateSantiClientDto, SetSantiHistoryDto, SetSantiMenuWeekDto, SetSantiWeeklyDto } from "./dto/santi.dto";
 import { SantiService } from "./santi.service";
 
@@ -43,6 +43,11 @@ export class SantiController {
   @Post("orders")
   createOrder(@Body() dto: CreateSantiOrderDto) {
     return this.santiService.createOrder(dto);
+  }
+
+  @Put("settings")
+  saveSettings(@Body() dto: SaveSantiSettingsDto) {
+    return this.santiService.saveSettings(dto.priceDay, dto.priceWeek);
   }
 
   @Post("reset")

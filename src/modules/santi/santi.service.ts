@@ -200,7 +200,7 @@ export class SantiService {
       })),
       history: history.map((row) => ({ clientId: row.client_id, day: row.day_name, dish: row.dish })),
       today: todayMontevideo(),
-      prices: { day: PRICE_DAY, week: PRICE_WEEK },
+      prices: await this.getPrices(),
       orders: orderRows.map((row) => ({
         orderId: row.id,
         clientId: row.client_id,
@@ -347,6 +347,22 @@ export class SantiService {
     });
 
     return this.getState();
+  }
+
+  async saveSettings(priceDay: number, priceWeek: number) {
+    await this.db.execute(
+      `INSERT INTO saas_santi_settings (id, price_day, price_week) VALUES (1, ?, ?)
+       ON DUPLICATE KEY UPDATE price_day = VALUES(price_day), price_week = VALUES(price_week)`,
+      [priceDay, priceWeek]
+    );
+    return this.getState();
+  }
+
+  private async getPrices() {
+    const rows = await this.db.query<(RowDataPacket & { price_day: number; price_week: number })[]>(
+      `SELECT price_day, price_week FROM saas_santi_settings WHERE id = 1`
+    );
+    return { day: rows[0]?.price_day ?? PRICE_DAY, week: rows[0]?.price_week ?? PRICE_WEEK };
   }
 
   async setMenuInWeek(menuId: number, inWeek: boolean) {
