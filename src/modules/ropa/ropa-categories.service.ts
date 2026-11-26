@@ -1,10 +1,17 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
+import { CloudinaryService } from "../../shared/cloudinary/cloudinary.service";
 import { DatabaseService } from "../../shared/database/database.service";
 
-export type RopaCategoryNode = { id: number; key: string; label: string; subcategories: Array<{ id: number; key: string; label: string }> };
+export type RopaCategoryNode = {
+  id: number;
+  key: string;
+  label: string;
+  imageUrl: string | null;
+  subcategories: Array<{ id: number; key: string; label: string }>;
+};
 
-type CategoryRow = RowDataPacket & { id: number; parent_id: number | null; slug: string; label: string; position: number };
+type CategoryRow = RowDataPacket & { id: number; parent_id: number | null; slug: string; label: string; position: number; image_url?: string | null };
 
 // Lista de la clienta (16/11/2026) que arrancaba fija en el frontend: se carga
 // una sola vez si la tabla esta vacia, asi lo que ya hay sigue igual.
@@ -33,14 +40,17 @@ export function slugify(label: string): string {
 export class RopaCategoriesService {
   private seeded: Promise<void> | null = null;
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly cloudinaryService: CloudinaryService
+  ) {}
 
   private ensureSeeded(): Promise<void> {
     if (!this.seeded) {
       this.seeded = (async () => {
         await this.databaseService.execute(`CREATE TABLE IF NOT EXISTS saas_ropa_categories (
           id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, parent_id INT UNSIGNED NULL, slug VARCHAR(80) NOT NULL, label VARCHAR(120) NOT NULL,
-          position INT UNSIGNED NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          position INT UNSIGNED NOT NULL DEFAULT 0, image_url VARCHAR(500) NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           UNIQUE KEY uq_ropa_categories_parent_slug (parent_id, slug), KEY idx_ropa_categories_parent (parent_id, position)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
         const count = await this.databaseService.query<(RowDataPacket & { total: number })[]>(`SELECT COUNT(*) AS total FROM saas_ropa_categories`);
@@ -72,7 +82,7 @@ export class RopaCategoriesService {
   async list(): Promise<{ items: RopaCategoryNode[] }> {
     await this.ensureSeeded();
     const rows = await this.databaseService.query<CategoryRow[]>(
-      `SELECT id, parent_id, slug, label, position FROM saas_ropa_categories ORDER BY position ASC, id ASC`
+      `SELECT id, parent_id, slug, label, position, image_url FROM saas_ropa_categories ORDER BY position ASC, id ASC`
     );
     const parents = rows.filter((row) => row.parent_id === null);
     return {
@@ -80,6 +90,7 @@ export class RopaCategoriesService {
         id: parent.id,
         key: parent.slug,
         label: parent.label,
+        imageUrl: parent.image_url ?? null,
         subcategories: rows.filter((row) => row.parent_id === parent.id).map((sub) => ({ id: sub.id, key: sub.slug, label: sub.label }))
       }))
     };
@@ -173,6 +184,31 @@ export class RopaCategoriesService {
     return { ok: true };
   }
 
+  // Foto de la tarjeta de portada (solo categorias principales). Va a
+  // Cloudinary y en la base queda solo el link.
+  async setImage(id: number, buffer: Buffer) {
+    const row = await this.getOrThrow(id);
+    if (row.parent_id !== null) throw new BadRequestException("Solo las categorías principales tienen foto de portada.");
+    if (!this.cloudinaryService.isConfigured()) throw new BadRequestException("No se pueden subir fotos en este momento.");
+    const upload = await this.cloudinaryService.uploadBuffer(buffer, "ropa/categories", `category-${id}`);
+    const imageUrl = this.cloudinaryService.optimizedUrl(upload.url);
+    await this.databaseService.execute(`UPDATE saas_ropa_categories SET image_url = ? WHERE id = ?`, [imageUrl, id]);
+    return { label: row.label, imageUrl };
+  }
+
+  // Quita la foto elegida: la tarjeta vuelve a usar la foto de un producto.
+  async removeImage(id: number) {
+    const row = await this.getOrThrow(id);
+    await this.databaseService.execute(`UPDATE saas_ropa_categories SET image_url = NULL WHERE id = ?`, [id]);
+    await this.deleteCloudImage(id);
+    return { label: row.label };
+  }
+
+  private async deleteCloudImage(id: number) {
+    if (!this.cloudinaryService.isConfigured()) return;
+    await this.cloudinaryService.deleteByPublicId(`ropa/categories/category-${id}`).catch(() => undefined);
+  }
+
   // No se puede borrar algo que todavia tiene productos: se pediria perder la
   // categoria de esos productos sin querer. Primero se les cambia la categoria.
   async remove(id: number) {
@@ -184,6 +220,7 @@ export class RopaCategoriesService {
       );
     }
     await this.databaseService.execute(`DELETE FROM saas_ropa_categories WHERE id = ? OR parent_id = ?`, [id, id]);
+    if (row.parent_id === null) await this.deleteCloudImage(id);
     return { ok: true, label: row.label };
   }
 }

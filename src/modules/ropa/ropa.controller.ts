@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -362,6 +363,28 @@ export class RopaController {
     const result = await this.categoriesService.move(id, dto.direction);
     await this.auditService.record({ action: "reorder", entityType: "category", entityId: id, actor: admin, details: { direction: dto.direction } });
     return result;
+  }
+
+  @Put("categories/:id/image")
+  async setCategoryImage(
+    @Headers("authorization") authorization: string | undefined,
+    @Param("id", ParseIntPipe) id: number,
+    @Body() dto: UploadRopaProductImageDto
+  ) {
+    const admin = await this.requireAdmin(authorization);
+    const match = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(dto.dataUri);
+    if (!match) throw new BadRequestException("La imagen debe ser JPG, PNG o WEBP.");
+    const result = await this.categoriesService.setImage(id, Buffer.from(match[2], "base64"));
+    await this.auditService.record({ action: "upload_image", entityType: "category", entityId: id, entityLabel: result.label, actor: admin });
+    return { ok: true, imageUrl: result.imageUrl };
+  }
+
+  @Delete("categories/:id/image")
+  async removeCategoryImage(@Headers("authorization") authorization: string | undefined, @Param("id", ParseIntPipe) id: number) {
+    const admin = await this.requireAdmin(authorization);
+    const result = await this.categoriesService.removeImage(id);
+    await this.auditService.record({ action: "update", entityType: "category", entityId: id, entityLabel: result.label, actor: admin, details: { image: "removed" } });
+    return { ok: true };
   }
 
   @Delete("categories/:id")
