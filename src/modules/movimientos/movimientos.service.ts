@@ -8,7 +8,8 @@ import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from ".
 export type MovimientosClientSummary = { key: string; label: string; count: number };
 export type MovimientosVisitStats = { visits: number; views: number; carts: number; whatsapp: number };
 export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats };
-export type MovimientosDetailItem = { time: string; label: string; detail: string };
+// kind: movimientos que la app resalta con otro color (hoy solo ventas a credito).
+export type MovimientosDetailItem = { time: string; label: string; detail: string; kind?: "credito" };
 
 // Gym: cada workspace es un cliente (gimnasio). Los de demo y el
 // "public" (pruebas internas) van juntos en "Otros".
@@ -292,6 +293,7 @@ export class MovimientosService {
       case "reservas":
         return this.detailReservas(dayLabel);
       case "piloto":
+        return this.detailPiloto(dayLabel);
       case "gaby":
       case "eme":
       case "distribuidora":
@@ -555,6 +557,62 @@ export class MovimientosService {
       [start, end]
     );
     return Number(rows[0]?.total ?? 0);
+  }
+
+  // Piloto (25/11/2026, pedido explicito): las ventas a CREDITO (fiado) se ven
+  // como "Crédito" con el monto y el nombre del cliente ("$150 · Pablo Porto")
+  // en vez de "Venta #123". Se cruza la auditoria con las boletas de cuenta
+  // corriente (saas_piloto_account_entries.sale_id). Solo lectura: no se toco
+  // nada de Piloto, todo sale de lo que ya se guarda.
+  private async detailPiloto(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+    const { table, timeCol, columns, actionLabels, buildDetail } = SQL_AUDIT_TABLES.piloto;
+    const { start, end } = dayRangeUtc(dayLabel);
+    const [creditSales, rows, entries] = await Promise.all([
+      // Por la venta misma: sigue marcada como credito aunque despues se salde
+      // la cuenta o se borre el cliente (ahi ya no hay boleta con el nombre).
+      this.databaseService.query<(RowDataPacket & { id: number; total_amount: string })[]>(
+        `SELECT id, total_amount FROM saas_piloto_sales
+         WHERE payment_method = 'credito' AND created_at >= ? AND created_at < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<AuditRow[]>(
+        `SELECT DATE_FORMAT(${timeCol}, '%Y-%m-%dT%H:%i:%s') AS when_raw, ${columns}
+         FROM ${table}
+         WHERE ${timeCol} >= ? AND ${timeCol} < ?`,
+        [start, end]
+      ),
+      this.databaseService.query<(RowDataPacket & { sale_id: number | null; total: string; name: string; t: string })[]>(
+        `SELECT e.sale_id, e.total, c.name, DATE_FORMAT(e.created_at, '%Y-%m-%dT%H:%i:%s') AS t
+         FROM saas_piloto_account_entries e JOIN saas_piloto_clients c ON c.id = e.client_id
+         WHERE e.created_at >= ? AND e.created_at < ?`,
+        [start, end]
+      )
+    ]);
+
+    const creditText = (entry: { total: string; name: string }) => `$${Number(entry.total)} · ${entry.name}`;
+    const bySale = new Map<string, (typeof entries)[number]>();
+    for (const entry of entries) if (entry.sale_id != null) bySale.set(String(entry.sale_id), entry);
+    const used = new Set<(typeof entries)[number]>();
+
+    const items: Array<MovimientosDetailItem & { t: string }> = rows.map((row) => {
+      const saleId = row.action === "sale" ? String(row.entity_id ?? "") : "";
+      const credit = saleId ? bySale.get(saleId) : undefined;
+      const creditSale = saleId ? creditSales.find((sale) => String(sale.id) === saleId) : undefined;
+      if (credit || creditSale) {
+        if (credit) used.add(credit);
+        const detail = credit ? creditText(credit) : `$${Number(creditSale?.total_amount)}`;
+        return { time: formatMontevideoTime(row.when_raw), label: "Crédito", detail, kind: "credito" as const, t: row.when_raw };
+      }
+      const label = (actionLabels && actionLabels[row.action]) || String(row.action || "").toUpperCase();
+      return { time: formatMontevideoTime(row.when_raw), label, detail: String(buildDetail(row, this) || ""), t: row.when_raw };
+    });
+
+    // Boletas de credito sin fila de auditoria (por las dudas): igual se ven.
+    for (const entry of entries) {
+      if (!used.has(entry)) items.push({ time: formatMontevideoTime(entry.t), label: "Crédito", detail: creditText(entry), kind: "credito", t: entry.t });
+    }
+
+    return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ t: _t, ...item }) => item);
   }
 
   private async detailSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES, dayLabel?: string): Promise<MovimientosDetailItem[]> {
