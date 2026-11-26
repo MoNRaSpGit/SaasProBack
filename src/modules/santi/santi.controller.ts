@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post, Put } from "@nestjs/common";
 import { CreateSantiOrderDto, SaveSantiSettingsDto } from "./dto/santi-order.dto";
-import { CreateSantiClientDto, SetSantiHistoryDto, SetSantiMenuWeekDto, SetSantiWeeklyDto } from "./dto/santi.dto";
+import { CreateSantiClientDto, CreateSantiMenuDto, SetSantiHistoryDto, SetSantiMenuWeekDto, SetSantiWeeklyDto } from "./dto/santi.dto";
 import { SantiService } from "./santi.service";
 
 // Demo "Santi" (09/11/2026): cobros, clientes, menu semanal e historial
@@ -33,6 +33,11 @@ export class SantiController {
   @Put("clients/:id/history/:day")
   setHistory(@Param("id", ParseIntPipe) clientId: number, @Param("day") day: string, @Body() dto: SetSantiHistoryDto) {
     return this.santiService.setHistory(clientId, day, dto.dish);
+  }
+
+  @Post("menus")
+  createMenu(@Body() dto: CreateSantiMenuDto) {
+    return this.santiService.createMenu(dto.name);
   }
 
   @Put("menus/:id/week")

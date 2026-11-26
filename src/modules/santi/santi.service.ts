@@ -8,7 +8,7 @@ import { CreateSantiOrderDto } from "./dto/santi-order.dto";
 // solos la primera vez y con POST /santi/reset.
 
 const DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"];
-const MAX_WEEK_OPTIONS = 3;
+const MAX_WEEK_OPTIONS = 6;
 
 // Precios de ejemplo (demo): vianda suelta y semana completa (5 dias).
 const PRICE_DAY = 320;
@@ -343,6 +343,18 @@ export class SantiService {
     return { day: rows[0]?.price_day ?? PRICE_DAY, week: rows[0]?.price_week ?? PRICE_WEEK };
   }
 
+  // Plato nuevo (ej. "Caruso"): entra directo a la semana si hay lugar.
+  async createMenu(name: string) {
+    const cleanName = name.replace(/\s+/g, " ").trim();
+    if (cleanName.length < 2) throw new BadRequestException("Poné el nombre del plato.");
+    const existing = await this.db.query<MenuRow[]>(`SELECT * FROM saas_santi_menus WHERE LOWER(name) = LOWER(?)`, [cleanName]);
+    if (existing.length) throw new BadRequestException("Ese plato ya está en la lista.");
+    const active = await this.db.query<(RowDataPacket & { total: number })[]>(`SELECT COUNT(*) AS total FROM saas_santi_menus WHERE in_week = 1`);
+    const inWeek = Number(active[0]?.total ?? 0) < MAX_WEEK_OPTIONS ? 1 : 0;
+    await this.db.execute(`INSERT INTO saas_santi_menus (name, items, in_week) VALUES (?, '[]', ?)`, [cleanName, inWeek]);
+    return this.getState();
+  }
+
   async setMenuInWeek(menuId: number, inWeek: boolean) {
     const menus = await this.db.query<MenuRow[]>(`SELECT * FROM saas_santi_menus WHERE id = ?`, [menuId]);
     if (!menus.length) throw new NotFoundException("Menú no encontrado.");
@@ -353,7 +365,7 @@ export class SantiService {
         [menuId]
       );
       if (Number(active[0]?.total ?? 0) >= MAX_WEEK_OPTIONS) {
-        throw new BadRequestException("Ya hay 3 opciones esta semana. Quitá una primero.");
+        throw new BadRequestException(`Ya hay ${MAX_WEEK_OPTIONS} platos esta semana. Quitá uno primero.`);
       }
     } else {
       // Si se quita una opcion, los clientes que la habian elegido quedan sin pedido.

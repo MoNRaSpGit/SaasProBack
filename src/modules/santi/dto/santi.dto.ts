@@ -30,3 +30,10 @@ export class SetSantiMenuWeekDto {
   @IsBoolean()
   inWeek!: boolean;
 }
+
+export class CreateSantiMenuDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  name!: string;
+}
