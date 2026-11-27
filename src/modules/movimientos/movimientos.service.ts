@@ -14,7 +14,7 @@ export type MovimientosRanking = { label: string; videos: number; completed: num
 // Que paso en el dia, agrupado ("Venta" x2, "Pago de cuenta" x1).
 export type MovimientosBreakdown = { label: string; count: number; kind?: MovimientosDetailItem["kind"] };
 // kind: movimientos que la app resalta con otro color (hoy solo ventas a credito).
-export type MovimientosDetailItem = { time: string; label: string; detail: string; kind?: "credito" | "referido" };
+export type MovimientosDetailItem = { time: string; label: string; detail: string; kind?: "credito" | "referido" | "llegada" };
 
 // Gym: cada workspace es un cliente (gimnasio). Los de demo y el
 // "public" (pruebas internas) van juntos en "Otros".
@@ -476,10 +476,13 @@ export class MovimientosService {
     return rows.map((row) => {
       const [label, what] = describe[row.event]?.(row) ?? [row.event, ""];
       const fromQq = row.src === "ref-qq";
-      const detail = [`Persona ${people.get(row.visitor_id)}`, what, fromQq ? "llegó desde Qq" : ""].filter(Boolean).join(" · ");
+      const detail = [`Persona ${people.get(row.visitor_id)}`, what, fromQq ? "desde QQ Digital" : ""].filter(Boolean).join(" · ");
       const time = formatMontevideoTime(row.when_raw);
       if (fromQq && LOGICLAB_CONTACT_EVENTS.includes(row.event)) {
-        return { time, label: "⭐ Posible venta desde Qq · WhatsApp", detail, kind: "referido" as const };
+        return { time, label: "⭐ Posible venta desde QQ Digital · WhatsApp", detail, kind: "referido" as const };
+      }
+      if (fromQq && row.event === "visit") {
+        return { time, label: "➜ Llegó desde QQ Digital", detail, kind: "llegada" as const };
       }
       return { time, label, detail };
     });
@@ -826,7 +829,10 @@ export class MovimientosService {
         if (row.action === "whatsapp_click") {
           return { time, label: "⭐ Posible venta tuya · WhatsApp", detail: rest || "Fue a WhatsApp", kind: "referido" as const };
         }
-        return { time, label, detail: "Llegó desde la web de Logic Lab" };
+        if (row.action === "visit") {
+          return { time, label: "➜ Llegó desde Logic Lab", detail: rest, kind: "llegada" as const };
+        }
+        return { time, label, detail: [rest, "desde Logic Lab"].filter(Boolean).join(" · ") };
       }
       return { time, label, detail };
     });
