@@ -94,7 +94,7 @@ const LOGICLAB_EVENT_LABELS: Record<string, string> = {
 // todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
 // scripts/inspect-*-audit.js, que son la fuente de verdad de cada esquema.
 const SQL_AUDIT_TABLES: Record<
-  "piloto" | "gaby" | "eme" | "distribuidora" | "qq" | "ropa" | "juez",
+  "piloto" | "gaby" | "distribuidora" | "qq" | "ropa" | "juez",
   { table: string; timeCol: string; columns: string; actionLabels?: Record<string, string>; buildDetail: (row: AuditRow, service: MovimientosService) => string }
 > = {
   piloto: {
@@ -123,21 +123,6 @@ const SQL_AUDIT_TABLES: Record<
     },
     buildDetail: (row, service) =>
       row.entity_label || service.summarizeJsonDetails(row.details) || `${row.entity_type || ""} #${row.entity_id ?? ""}`
-  },
-  // Eme (12/11/2026): demo de pizzeria, sin login. Cada fila es algo que hizo
-  // un navegador (visitor_id); los "yo-" son dispositivos NUESTROS.
-  eme: {
-    table: "saas_eme_activity_log",
-    timeCol: "occurred_at",
-    columns: "event AS action, detail AS summary, visitor_id AS actor",
-    actionLabels: {
-      entrada: "Entró a la app",
-      login: "Ingreso",
-      logout: "Salió",
-      seccion: "Abrió pestaña",
-      accion: "Acción"
-    },
-    buildDetail: (row) => `${String(row.actor || "").startsWith("yo-") ? "[Nosotros] " : ""}${row.summary || ""}`.trim()
   },
   distribuidora: {
     table: "saas_distribuidora_audit_log",
@@ -352,6 +337,7 @@ export class MovimientosService {
     // Tablas y columnas fijas de este archivo (nunca del pedido).
     // El tercer dato filtra lo que no cuenta (mismo criterio que el detalle).
     const sources: Record<string, Array<[string, string, string?]>> = {
+      eme: [["saas_eme_orders", "created_at"]],
       camiones: [
         ["saas_camiones_trips", "created_at"],
         ["saas_camiones_trips", "driver_done_at"],
@@ -451,10 +437,11 @@ export class MovimientosService {
         return this.detailLogiclab(dayLabel);
       case "reservas":
         return this.detailReservas(dayLabel);
+      case "eme":
+        return this.detailEme(dayLabel);
       case "piloto":
         return this.detailPiloto(dayLabel);
       case "gaby":
-      case "eme":
       case "distribuidora":
       case "qq":
       case "ropa":
@@ -581,6 +568,34 @@ export class MovimientosService {
       }))
     ];
     return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ t: _t, ...item }) => item);
+  }
+
+  // Eme (27/11/2026, pedido explicito: "cuando haga una venta, no cada pestaña
+  // que abre"): cada pedido AGENDADO es una venta, aunque despues se anule.
+  private async detailEme(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const rows = await this.databaseService.query<
+      (RowDataPacket & { t: string; number: number; client_name: string | null; kind: string; table_no: number | null; workspace_id: number })[]
+    >(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s') AS t, number, client_name, kind, table_no, workspace_id
+       FROM saas_eme_orders WHERE created_at >= ? AND created_at < ?
+       ORDER BY created_at DESC`,
+      [start, end]
+    );
+    const kinds: Record<string, string> = { delivery: "Delivery", retiro: "Retiro", salon: "Salón" };
+    return rows.map((row) => ({
+      time: formatMontevideoTime(row.t),
+      label: "Venta",
+      detail: [
+        `Pedido #${row.number}`,
+        row.client_name || "",
+        row.table_no ? `Mesa ${row.table_no}` : (kinds[row.kind] ?? row.kind),
+        // El espacio 1 es el de nuestro usuario admin.
+        row.workspace_id === 1 ? "(admin)" : ""
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    }));
   }
 
   private async detailCamiones(dayLabel?: string): Promise<MovimientosDetailItem[]> {
