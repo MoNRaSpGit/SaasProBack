@@ -4,7 +4,16 @@ import { IsIn, IsOptional, IsString, Matches, MaxLength } from "class-validator"
 // explicito: reemplazar GoatCounter porque el usuario no quiere cuentas
 // externas). Sin cookies: visitorId es un id al azar que vive solo
 // mientras la pagina esta abierta (ver script.js del sitio).
-export const LOGICLAB_TRACK_EVENTS = ["visit", "ver_video", "wa_click", "cotizador_abrir", "cotizador_enviar"] as const;
+export const LOGICLAB_TRACK_EVENTS = [
+  "visit",
+  "ver_video",
+  "video_completo",
+  "ver_seccion",
+  "clic",
+  "wa_click",
+  "cotizador_abrir",
+  "cotizador_enviar"
+] as const;
 export type LogiclabTrackEvent = (typeof LOGICLAB_TRACK_EVENTS)[number];
 
 export class TrackLogiclabEventDto {

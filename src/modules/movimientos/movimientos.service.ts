@@ -7,7 +7,10 @@ import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from ".
 // Gym y me sale Ale Gym y Pablo M").
 export type MovimientosClientSummary = { key: string; label: string; count: number };
 export type MovimientosVisitStats = { visits: number; views: number; carts: number; whatsapp: number };
-export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats; referrals?: { visits: number; whatsapp: number }; breakdown?: MovimientosBreakdown[]; lastAt?: string | null; unavailable?: boolean };
+export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats; referrals?: { visits: number; whatsapp: number }; breakdown?: MovimientosBreakdown[]; lastAt?: string | null; unavailable?: boolean; stats?: MovimientosStat[]; ranking?: MovimientosRanking[] };
+// Totales del dia y por rubro (web de Logic Lab).
+export type MovimientosStat = { label: string; value: number };
+export type MovimientosRanking = { label: string; videos: number; completed: number; quotes: number; whatsapp: number };
 // Que paso en el dia, agrupado ("Venta" x2, "Pago de cuenta" x1).
 export type MovimientosBreakdown = { label: string; count: number; kind?: MovimientosDetailItem["kind"] };
 // kind: movimientos que la app resalta con otro color (hoy solo ventas a credito).
@@ -82,12 +85,27 @@ const REFERRAL_TAG = "[LL]";
 
 // Web de Logic Lab: eventos que terminan en un mensaje de WhatsApp.
 const LOGICLAB_CONTACT_EVENTS = ["wa_click", "cotizador_enviar"];
-const LOGICLAB_EVENT_LABELS: Record<string, string> = {
-  visit: "Entró a la web",
-  ver_video: "Vio un video",
-  wa_click: "Tocó WhatsApp",
-  cotizador_abrir: "Abrió el cotizador",
-  cotizador_enviar: "Envió un presupuesto"
+const LOGICLAB_RUBROS: Record<string, string> = {
+  generico: "Video principal",
+  almacen: "Comercio (almacén)",
+  reservas: "Turnos y reservas",
+  restaurante: "Restaurante",
+  gimnasio: "Gimnasio",
+  distribuidora: "Distribuidora",
+  campo: "Campo"
+};
+const LOGICLAB_SECTIONS: Record<string, string> = {
+  rubros: "los rubros",
+  precios: "los precios",
+  "popup-qq": "el aviso de Qq",
+  "como-funciona": "Ver cómo funciona",
+  "banner-black-friday": "el cartel de Black Friday",
+  topbar: "botón de arriba",
+  hero: "botón del inicio",
+  closing: "botón del final",
+  floating: "botón flotante",
+  custom: "plan a medida",
+  rubro: "desde un video"
 };
 
 // Cada tabla de auditoria de este monorepo tiene sus propias columnas (no
@@ -292,7 +310,7 @@ export class MovimientosService {
 
   // Tiendas: visitas del dia (y en QQ lo que llega desde Logic Lab).
   private async summaryExtras(key: string, dayLabel?: string): Promise<Partial<MovimientosAppSummary>> {
-    if (key === "logiclab") return { referrals: await this.countLogiclabReferrals(dayLabel) };
+    if (key === "logiclab") return this.logiclabNumbers(dayLabel);
     if (key !== "qq" && key !== "ropa") return {};
     const [visitStats, referrals] = await Promise.all([
       this.countVisits(key === "qq" ? "saas_qq_audit_log" : "saas_ropa_audit_log", dayLabel),
@@ -392,34 +410,78 @@ export class MovimientosService {
   private async loadLogiclab(dayLabel?: string) {
     const { start, end } = dayRangeUtc(dayLabel);
     return this.databaseService
-      .query<(RowDataPacket & { when_raw: string; event: string; rubro: string | null; section: string | null; plan: string | null; src: string | null })[]>(
-        `SELECT DATE_FORMAT(occurred_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, event, rubro, section, plan, src
+      .query<
+        (RowDataPacket & { when_raw: string; event: string; rubro: string | null; section: string | null; plan: string | null; src: string | null; visitor_id: string })[]
+      >(
+        `SELECT DATE_FORMAT(occurred_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, event, rubro, section, plan, src, visitor_id
          FROM saas_logiclab_events WHERE occurred_at >= ? AND occurred_at < ?
-         ORDER BY occurred_at DESC`,
+         ORDER BY occurred_at DESC, id DESC`,
         [start, end]
       )
       .catch(() => []);
   }
 
-  private async countLogiclabReferrals(dayLabel?: string) {
-    const referred = (await this.loadLogiclab(dayLabel)).filter((row) => row.src === "ref-qq");
+  // Numeros de la web: cuantas personas, cuantos videos, WhatsApp y
+  // cotizador, y el mismo detalle por rubro.
+  private async logiclabNumbers(dayLabel?: string) {
+    const rows = await this.loadLogiclab(dayLabel);
+    const count = (list: typeof rows, ...events: string[]) => list.filter((row) => events.includes(row.event)).length;
+    const referred = rows.filter((row) => row.src === "ref-qq");
+    const stats: MovimientosStat[] = [
+      { label: "visitas", value: count(rows, "visit") },
+      { label: "videos", value: count(rows, "ver_video") },
+      { label: "cotizador", value: count(rows, "cotizador_abrir") },
+      { label: "WhatsApp", value: count(rows, ...LOGICLAB_CONTACT_EVENTS) }
+    ];
+    const ranking: MovimientosRanking[] = Object.entries(LOGICLAB_RUBROS)
+      .map(([key, label]) => {
+        const ofRubro = rows.filter((row) => row.rubro?.toLowerCase() === key);
+        return {
+          label,
+          videos: count(ofRubro, "ver_video"),
+          completed: count(ofRubro, "video_completo"),
+          quotes: count(ofRubro, "cotizador_abrir"),
+          whatsapp: count(ofRubro, ...LOGICLAB_CONTACT_EVENTS)
+        };
+      })
+      .filter((row) => row.videos + row.completed + row.quotes + row.whatsapp > 0)
+      .sort((a, b) => b.videos - a.videos || b.whatsapp - a.whatsapp);
     return {
-      visits: referred.filter((row) => row.event === "visit").length,
-      whatsapp: referred.filter((row) => LOGICLAB_CONTACT_EVENTS.includes(row.event)).length
+      stats,
+      ranking,
+      referrals: { visits: count(referred, "visit"), whatsapp: count(referred, ...LOGICLAB_CONTACT_EVENTS) }
     };
   }
 
   private async detailLogiclab(dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const rows = await this.loadLogiclab(dayLabel);
+    // "Persona N" por orden de llegada en el dia, para seguir su recorrido.
+    // (El identificador dura mientras la pagina esta abierta.)
+    const people = new Map<string, number>();
+    for (const row of [...rows].reverse()) {
+      if (!people.has(row.visitor_id)) people.set(row.visitor_id, people.size + 1);
+    }
+    const rubro = (key: string | null) => (key ? (LOGICLAB_RUBROS[key.toLowerCase()] ?? key) : "");
+    const section = (key: string | null) => (key ? (LOGICLAB_SECTIONS[key] ?? key) : "");
+    const describe: Record<string, (row: (typeof rows)[number]) => [string, string]> = {
+      visit: (row) => ["Entró a la web", row.src && row.src !== "ref-qq" ? `desde ${row.src}` : ""],
+      ver_video: (row) => ["Abrió un video", rubro(row.rubro)],
+      video_completo: (row) => ["Vio un video entero", rubro(row.rubro)],
+      ver_seccion: (row) => ["Recorrió", `Llegó a ${section(row.section)}`],
+      clic: (row) => ["Tocó un botón", section(row.section)],
+      wa_click: (row) => ["Tocó WhatsApp", [rubro(row.rubro), section(row.section)].filter(Boolean).join(" · ")],
+      cotizador_abrir: (row) => ["Abrió el cotizador", rubro(row.rubro)],
+      cotizador_enviar: (row) => ["Envió un presupuesto", [rubro(row.rubro), row.plan ? `plan ${row.plan}` : ""].filter(Boolean).join(" · ")]
+    };
     return rows.map((row) => {
-      const time = formatMontevideoTime(row.when_raw);
+      const [label, what] = describe[row.event]?.(row) ?? [row.event, ""];
       const fromQq = row.src === "ref-qq";
-      const parts = [row.rubro, row.section, row.plan, fromQq ? "" : row.src].filter(Boolean).join(" · ");
+      const detail = [`Persona ${people.get(row.visitor_id)}`, what, fromQq ? "llegó desde Qq" : ""].filter(Boolean).join(" · ");
+      const time = formatMontevideoTime(row.when_raw);
       if (fromQq && LOGICLAB_CONTACT_EVENTS.includes(row.event)) {
-        return { time, label: "⭐ Posible venta desde Qq · WhatsApp", detail: parts || "Tocó WhatsApp", kind: "referido" as const };
+        return { time, label: "⭐ Posible venta desde Qq · WhatsApp", detail, kind: "referido" as const };
       }
-      const detail = [parts, fromQq ? "Llegó desde Qq" : ""].filter(Boolean).join(" · ");
-      return { time, label: LOGICLAB_EVENT_LABELS[row.event] || row.event, detail };
+      return { time, label, detail };
     });
   }
 
