@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { RowDataPacket } from "mysql2";
 import { DatabaseService } from "../../shared/database/database.service";
 import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from "./movimientos.dateUtils";
@@ -7,7 +7,9 @@ import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from ".
 // Gym y me sale Ale Gym y Pablo M").
 export type MovimientosClientSummary = { key: string; label: string; count: number };
 export type MovimientosVisitStats = { visits: number; views: number; carts: number; whatsapp: number };
-export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats; referrals?: { visits: number; whatsapp: number } };
+export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats; referrals?: { visits: number; whatsapp: number }; breakdown?: MovimientosBreakdown[]; lastAt?: string | null; unavailable?: boolean };
+// Que paso en el dia, agrupado ("Venta" x2, "Pago de cuenta" x1).
+export type MovimientosBreakdown = { label: string; count: number; kind?: MovimientosDetailItem["kind"] };
 // kind: movimientos que la app resalta con otro color (hoy solo ventas a credito).
 export type MovimientosDetailItem = { time: string; label: string; detail: string; kind?: "credito" | "referido" };
 
@@ -15,7 +17,8 @@ export type MovimientosDetailItem = { time: string; label: string; detail: strin
 // "public" (pruebas internas) van juntos en "Otros".
 export const GYM_OTHERS_KEY = "otros";
 function isRealGymWorkspace(workspaceKey: string) {
-  return workspaceKey !== "public" && !workspaceKey.startsWith("demo");
+  // "vistaprevia" es el usuario nuestro para mirar cambios visuales.
+  return workspaceKey !== "public" && workspaceKey !== "vistaprevia" && !workspaceKey.startsWith("demo");
 }
 // Nombre lindo para los clientes que ya conocemos; el resto usa el nombre
 // del usuario del gym (o la clave del workspace).
@@ -57,7 +60,9 @@ const AGRO_KIND_LABELS: Record<string, string> = {
   death: "Muerte",
   shortage: "Faltante",
   correction_in: "Corrección +",
-  correction_out: "Corrección -"
+  correction_out: "Corrección -",
+  category_change_in: "Cambio de categoría (entrada)",
+  category_change_out: "Cambio de categoría (salida)"
 };
 
 type AuditRow = RowDataPacket & {
@@ -228,6 +233,8 @@ const SQL_AUDIT_TABLES: Record<
 
 @Injectable()
 export class MovimientosService {
+  private readonly logger = new Logger(MovimientosService.name);
+
   constructor(private readonly databaseService: DatabaseService) {}
 
   // Memoria corta (18/11/2026): los workspaces de Agro (~1,1 MB de JSON) y de
@@ -251,39 +258,119 @@ export class MovimientosService {
   }
 
   // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
+  // (27/11/2026, rediseño) Cada proyecto sale del MISMO detalle que se abre al
+  // tocarlo, asi el numero de la portada siempre coincide con la lista. Si uno
+  // falla, los demas se muestran igual.
   async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits, oriol, reservas, qqReferrals] = await Promise.all([
-      this.countSqlAudit("piloto", dayLabel),
-      this.countSqlAudit("gaby", dayLabel),
-      this.countSqlAudit("eme", dayLabel),
-      this.countGymByClient(dayLabel),
-      this.countAgroByClient(dayLabel),
-      this.countSqlAudit("distribuidora", dayLabel),
-      this.countSqlAudit("qq", dayLabel),
-      this.countSqlAudit("juez", dayLabel),
-      this.countCamiones(dayLabel),
-      this.countVisits("saas_qq_audit_log", dayLabel),
-      this.countSqlAudit("ropa", dayLabel),
-      this.countVisits("saas_ropa_audit_log", dayLabel),
-      this.countOriol(dayLabel),
-      this.countReservas(dayLabel),
-      this.countReferrals(dayLabel)
-    ]);
-
-    return [
-      { key: "gym", label: "Gym", count: gym.reduce((total, client) => total + client.count, 0), clients: gym },
-      { key: "piloto", label: "Piloto", count: piloto },
-      { key: "gaby", label: "Gaby", count: gaby },
-      { key: "eme", label: "Eme", count: eme },
-      { key: "agro", label: "Agro", count: agro.reduce((total, client) => total + client.count, 0), clients: agro },
-      { key: "distribuidora", label: "Distribuidora", count: distribuidora },
-      { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits.visits, visitStats: qqVisits, referrals: qqReferrals },
-      { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits.visits, visitStats: ropaVisits },
-      { key: "juez", label: "Juez", count: juez },
-      { key: "camiones", label: "Camiones", count: camiones },
-      { key: "oriol", label: "Oriol · cuenta corriente", count: oriol },
-      { key: "reservas", label: "Reservas (peluquería)", count: reservas }
+    const apps: Array<{ key: string; label: string }> = [
+      { key: "gym", label: "Gym" },
+      { key: "piloto", label: "Piloto" },
+      { key: "gaby", label: "Gaby" },
+      { key: "eme", label: "Eme" },
+      { key: "agro", label: "Agro" },
+      { key: "distribuidora", label: "Distribuidora" },
+      { key: "qq", label: "QQ" },
+      { key: "ropa", label: "Ropa" },
+      { key: "juez", label: "Juez" },
+      { key: "camiones", label: "Camiones" },
+      { key: "oriol", label: "Oriol · cuenta corriente" },
+      { key: "reservas", label: "Reservas (peluquería)" }
     ];
+    return Promise.all(apps.map((app) => this.summarizeApp(app.key, app.label, dayLabel)));
+  }
+
+  private async summarizeApp(key: string, label: string, dayLabel?: string): Promise<MovimientosAppSummary> {
+    try {
+      const [items, lastAt, clients, extra] = await Promise.all([
+        this.getDetail(key, dayLabel),
+        this.lastActivity(key).catch(() => null),
+        key === "gym" ? this.countGymByClient(dayLabel) : key === "agro" ? this.countAgroByClient(dayLabel) : undefined,
+        this.summaryExtras(key, dayLabel)
+      ]);
+      return { key, label, count: items.length, breakdown: this.groupItems(items), lastAt, ...(clients ? { clients } : {}), ...extra };
+    } catch (error) {
+      this.logger.error(`Resumen de ${key}: ${error instanceof Error ? error.message : String(error)}`);
+      return { key, label, count: 0, unavailable: true };
+    }
+  }
+
+  // Tiendas: visitas del dia (y en QQ lo que llega desde Logic Lab).
+  private async summaryExtras(key: string, dayLabel?: string): Promise<Partial<MovimientosAppSummary>> {
+    if (key !== "qq" && key !== "ropa") return {};
+    const [visitStats, referrals] = await Promise.all([
+      this.countVisits(key === "qq" ? "saas_qq_audit_log" : "saas_ropa_audit_log", dayLabel),
+      key === "qq" ? this.countReferrals(dayLabel) : undefined
+    ]);
+    return { visitsToday: visitStats.visits, visitStats, ...(referrals ? { referrals } : {}) };
+  }
+
+  private groupItems(items: MovimientosDetailItem[]): MovimientosBreakdown[] {
+    const groups = new Map<string, MovimientosBreakdown>();
+    for (const item of items) {
+      // Sin el "(Rosendo)" / "(alegym)" del final: en la portada se agrupa por accion.
+      const label = item.label.replace(/ \([^()]*\)$/, "");
+      const group = groups.get(label) ?? { label, count: 0, ...(item.kind ? { kind: item.kind } : {}) };
+      group.count += 1;
+      groups.set(label, group);
+    }
+    return [...groups.values()].sort((a, b) => b.count - a.count);
+  }
+
+  // Ultimo movimiento de siempre (ISO UTC), para ver quien esta quieto.
+  private async lastActivity(key: string): Promise<string | null> {
+    if (key === "gym") {
+      let last = 0;
+      for (const row of await this.loadGymWorkspaces()) {
+        if (!isRealGymWorkspace(row.workspace_key)) continue;
+        const log = this.parseJson(row.workspace_json)?.auditLog;
+        for (const entry of (Array.isArray(log) ? log : []) as { timestamp?: string }[]) {
+          const t = entry.timestamp ? Date.parse(entry.timestamp) : 0;
+          if (t > last) last = t;
+        }
+      }
+      return last ? new Date(last).toISOString() : null;
+    }
+    if (key === "agro") {
+      const data = await this.loadAgroWorkspace();
+      const events = data ? this.collectAgroEvents(data, 1, Number.MAX_SAFE_INTEGER) : [];
+      const login = await this.maxDate([["saas_agro_sessions", "created_at"]]);
+      const last = events.reduce((max, event) => Math.max(max, event.t), login ? Date.parse(login) : 0);
+      return last ? new Date(last).toISOString() : null;
+    }
+    // Tablas y columnas fijas de este archivo (nunca del pedido).
+    // El tercer dato filtra lo que no cuenta (mismo criterio que el detalle).
+    const sources: Record<string, Array<[string, string, string?]>> = {
+      camiones: [
+        ["saas_camiones_trips", "created_at"],
+        ["saas_camiones_trips", "driver_done_at"],
+        ["saas_camiones_trips", "driver_paid_at"],
+        ["saas_camiones_trips", "paid_at"]
+      ],
+      oriol: [
+        ["saas_oriol_clientes", "created_at"],
+        ["saas_oriol_pagos_credito", "fecha"],
+        ["saas_oriol_ventas", "fecha", "metodo_pago = 'credito'"]
+      ],
+      reservas: [
+        ["saas_peluqueria_reservations", "created_at", "client_phone NOT LIKE '0990000%'"],
+        ["saas_peluqueria_clients", "created_at", "phone_norm NOT LIKE '0990000%'"],
+        ["saas_peluqueria_sessions", "created_at"]
+      ]
+    };
+    const audit = SQL_AUDIT_TABLES[key as keyof typeof SQL_AUDIT_TABLES];
+    return this.maxDate(audit ? [[audit.table, audit.timeCol]] : (sources[key] ?? []));
+  }
+
+  private async maxDate(sources: Array<[string, string, string?]>): Promise<string | null> {
+    const values = await Promise.all(
+      sources.map(async ([table, column, where]) => {
+        const rows = await this.databaseService.query<(RowDataPacket & { t: string | null })[]>(
+          `SELECT DATE_FORMAT(MAX(${column}), '%Y-%m-%dT%H:%i:%sZ') AS t FROM ${table}${where ? ` WHERE ${where}` : ""}`
+        );
+        return rows[0]?.t ?? null;
+      })
+    );
+    return values.filter((value): value is string => value !== null).sort().pop() ?? null;
   }
 
   // Visitas y toques en WhatsApp en Qq que vinieron de la web de Logic Lab.
@@ -353,25 +440,6 @@ export class MovimientosService {
   // (driver_done_at), pagado al camionero (driver_paid_at) y cobrado al
   // cliente (paid_at). ----
 
-  private async countCamiones(dayLabel?: string) {
-    const { start, end } = dayRangeUtc(dayLabel);
-    // La tabla de auditoria de camiones se crea sola al primer uso: si todavia no
-    // existe, esa parte cuenta 0 y no rompe el resumen.
-    const auditCount = await this.databaseService
-      .query<(RowDataPacket & { total: number })[]>(`SELECT COUNT(*) AS total FROM saas_camiones_audit_log WHERE created_at >= ? AND created_at < ?`, [start, end])
-      .then((rows) => Number(rows[0]?.total ?? 0))
-      .catch(() => 0);
-    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
-      `SELECT
-         (SELECT COUNT(*) FROM saas_camiones_trips WHERE created_at >= ? AND created_at < ?) +
-         (SELECT COUNT(*) FROM saas_camiones_trips WHERE driver_done_at >= ? AND driver_done_at < ?) +
-         (SELECT COUNT(*) FROM saas_camiones_trips WHERE driver_paid_at >= ? AND driver_paid_at < ?) +
-         (SELECT COUNT(*) FROM saas_camiones_trips WHERE paid_at >= ? AND paid_at < ?) AS total`,
-      [start, end, start, end, start, end, start, end]
-    );
-    return Number(rows[0]?.total ?? 0) + auditCount;
-  }
-
   // ---------------- Oriol (21/11/2026, pedido explicito): SOLO cuenta
   // corriente. No tiene auditoria propia: se arma con las fechas reales de
   // clientes nuevos, ventas a credito y pagos de cuenta corriente. ----
@@ -384,18 +452,6 @@ export class MovimientosService {
   // Ojo: cerrar sesion borra la sesion, asi que un ingreso con "Salir"
   // posterior ya no aparece. Las VISITAS a la pagina de reservar (sin
   // reservar) todavia no se registran. ----
-
-  private async countReservas(dayLabel?: string) {
-    const { start, end } = dayRangeUtc(dayLabel);
-    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
-      `SELECT
-         (SELECT COUNT(*) FROM saas_peluqueria_reservations WHERE created_at >= ? AND created_at < ? AND client_phone NOT LIKE '0990000%') +
-         (SELECT COUNT(*) FROM saas_peluqueria_clients WHERE created_at >= ? AND created_at < ? AND phone_norm NOT LIKE '0990000%') +
-         (SELECT COUNT(*) FROM saas_peluqueria_sessions WHERE created_at >= ? AND created_at < ?) AS total`,
-      [start, end, start, end, start, end]
-    );
-    return Number(rows[0]?.total ?? 0);
-  }
 
   private async detailReservas(dayLabel?: string): Promise<MovimientosDetailItem[]> {
     const { start, end } = dayRangeUtc(dayLabel);
@@ -433,18 +489,6 @@ export class MovimientosService {
       ...logins.map((row) => ({ time: formatMontevideoTime(row.t), label: "Ingreso del dueño", detail: `${row.username} · ${row.salon}`, t: row.t }))
     ];
     return items.sort((a, b) => b.t.localeCompare(a.t)).map(({ t: _t, ...item }) => item);
-  }
-
-  private async countOriol(dayLabel?: string) {
-    const { start, end } = dayRangeUtc(dayLabel);
-    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
-      `SELECT
-         (SELECT COUNT(*) FROM saas_oriol_clientes WHERE created_at >= ? AND created_at < ?) +
-         (SELECT COUNT(*) FROM saas_oriol_ventas WHERE metodo_pago = 'credito' AND fecha >= ? AND fecha < ?) +
-         (SELECT COUNT(*) FROM saas_oriol_pagos_credito WHERE fecha >= ? AND fecha < ?) AS total`,
-      [start, end, start, end, start, end]
-    );
-    return Number(rows[0]?.total ?? 0);
   }
 
   private async detailOriol(dayLabel?: string): Promise<MovimientosDetailItem[]> {
@@ -569,16 +613,6 @@ export class MovimientosService {
   // ---------------- Piloto / Distribuidora / QQ / Juez: misma tabla de
   // auditoria SQL en los 4 casos, mismo rango de "hoy" en Montevideo. ----
 
-  private async countSqlAudit(appKey: keyof typeof SQL_AUDIT_TABLES, dayLabel?: string) {
-    const { table, timeCol } = SQL_AUDIT_TABLES[appKey];
-    const { start, end } = dayRangeUtc(dayLabel);
-    const rows = await this.databaseService.query<(RowDataPacket & { total: number })[]>(
-      `SELECT COUNT(*) AS total FROM ${table} WHERE ${timeCol} >= ? AND ${timeCol} < ?`,
-      [start, end]
-    );
-    return Number(rows[0]?.total ?? 0);
-  }
-
   // Piloto (25/11/2026, pedido explicito): las ventas a CREDITO (fiado) se ven
   // como "Crédito" con el monto y el nombre del cliente ("$150 · Pablo Porto")
   // en vez de "Venta #123". Se cruza la auditoria con las boletas de cuenta
@@ -615,7 +649,13 @@ export class MovimientosService {
     const used = new Set<(typeof entries)[number]>();
 
     const items: Array<MovimientosDetailItem & { t: string }> = rows.map((row) => {
-      const saleId = row.action === "sale" ? String(row.entity_id ?? "") : "";
+      // Fiado nuevo (entidad "account"): el id de la venta viene en details.
+      const saleId =
+        row.action !== "sale"
+          ? ""
+          : row.entity_type === "account"
+            ? String(this.parseDetails(row.details)?.saleId ?? "")
+            : String(row.entity_id ?? "");
       const credit = saleId ? bySale.get(saleId) : undefined;
       const creditSale = saleId ? creditSales.find((sale) => String(sale.id) === saleId) : undefined;
       if (credit || creditSale) {
@@ -661,6 +701,14 @@ export class MovimientosService {
       }
       return { time, label, detail };
     });
+  }
+
+  private parseDetails(raw: unknown): { saleId?: number } | null {
+    try {
+      return this.parseJson(raw);
+    } catch {
+      return null;
+    }
   }
 
   summarizeJsonDetails(raw: unknown): string {
