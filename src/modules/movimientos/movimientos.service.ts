@@ -7,9 +7,9 @@ import { dayRangeUtc, epochRangeMs, extractEpoch, formatMontevideoTime } from ".
 // Gym y me sale Ale Gym y Pablo M").
 export type MovimientosClientSummary = { key: string; label: string; count: number };
 export type MovimientosVisitStats = { visits: number; views: number; carts: number; whatsapp: number };
-export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats };
+export type MovimientosAppSummary = { key: string; label: string; count: number; clients?: MovimientosClientSummary[]; visitsToday?: number; visitStats?: MovimientosVisitStats; referrals?: { visits: number; whatsapp: number } };
 // kind: movimientos que la app resalta con otro color (hoy solo ventas a credito).
-export type MovimientosDetailItem = { time: string; label: string; detail: string; kind?: "credito" };
+export type MovimientosDetailItem = { time: string; label: string; detail: string; kind?: "credito" | "referido" };
 
 // Gym: cada workspace es un cliente (gimnasio). Los de demo y el
 // "public" (pruebas internas) van juntos en "Otros".
@@ -71,6 +71,9 @@ type AuditRow = RowDataPacket & {
   actor?: string;
   actor_email?: string;
 };
+
+// Marca de visitantes de Qq que llegan desde la web de Logic Lab.
+const REFERRAL_TAG = "[LL]";
 
 // Cada tabla de auditoria de este monorepo tiene sus propias columnas (no
 // todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
@@ -249,7 +252,7 @@ export class MovimientosService {
 
   // dayLabel (YYYY-MM-DD, Montevideo): dia a resumir; sin el, hoy.
   async getSummary(dayLabel?: string): Promise<MovimientosAppSummary[]> {
-    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits, oriol, reservas] = await Promise.all([
+    const [piloto, gaby, eme, gym, agro, distribuidora, qq, juez, camiones, qqVisits, ropa, ropaVisits, oriol, reservas, qqReferrals] = await Promise.all([
       this.countSqlAudit("piloto", dayLabel),
       this.countSqlAudit("gaby", dayLabel),
       this.countSqlAudit("eme", dayLabel),
@@ -263,7 +266,8 @@ export class MovimientosService {
       this.countSqlAudit("ropa", dayLabel),
       this.countVisits("saas_ropa_audit_log", dayLabel),
       this.countOriol(dayLabel),
-      this.countReservas(dayLabel)
+      this.countReservas(dayLabel),
+      this.countReferrals(dayLabel)
     ]);
 
     return [
@@ -273,13 +277,27 @@ export class MovimientosService {
       { key: "eme", label: "Eme", count: eme },
       { key: "agro", label: "Agro", count: agro.reduce((total, client) => total + client.count, 0), clients: agro },
       { key: "distribuidora", label: "Distribuidora", count: distribuidora },
-      { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits.visits, visitStats: qqVisits },
+      { key: "qq", label: "QQ", count: qq, visitsToday: qqVisits.visits, visitStats: qqVisits, referrals: qqReferrals },
       { key: "ropa", label: "Ropa", count: ropa, visitsToday: ropaVisits.visits, visitStats: ropaVisits },
       { key: "juez", label: "Juez", count: juez },
       { key: "camiones", label: "Camiones", count: camiones },
       { key: "oriol", label: "Oriol · cuenta corriente", count: oriol },
       { key: "reservas", label: "Reservas (peluquería)", count: reservas }
     ];
+  }
+
+  // Visitas y toques en WhatsApp en Qq que vinieron de la web de Logic Lab.
+  private async countReferrals(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
+    const rows = await this.databaseService.query<(RowDataPacket & { action: string; total: number })[]>(
+      `SELECT action, COUNT(*) AS total FROM saas_qq_audit_log
+       WHERE entity_type = 'visitor' AND occurred_at >= ? AND occurred_at < ?
+         AND action IN ('visit', 'whatsapp_click') AND entity_label LIKE ?
+       GROUP BY action`,
+      [start, end, `${REFERRAL_TAG}%`]
+    );
+    const count = (action: string) => Number(rows.find((row) => row.action === action)?.total ?? 0);
+    return { visits: count("visit"), whatsapp: count("whatsapp_click") };
   }
 
   async getDetail(appKey: string, dayLabel?: string, client?: string): Promise<MovimientosDetailItem[]> {
@@ -630,7 +648,18 @@ export class MovimientosService {
 
     return rows.map((row) => {
       const label = (actionLabels && actionLabels[row.action]) || String(row.action || "").toUpperCase();
-      return { time: formatMontevideoTime(row.when_raw), label, detail: String(buildDetail(row, this) || "") };
+      const detail = String(buildDetail(row, this) || "");
+      const time = formatMontevideoTime(row.when_raw);
+      // Qq (27/11/2026): visitantes derivados desde la web de Logic Lab, marcados
+      // con "[LL]". El WhatsApp se resalta: es una posible venta nuestra.
+      if (appKey === "qq" && row.entity_type === "visitor" && detail.startsWith(REFERRAL_TAG)) {
+        const rest = detail.slice(REFERRAL_TAG.length).trim();
+        if (row.action === "whatsapp_click") {
+          return { time, label: "⭐ Posible venta tuya · WhatsApp", detail: rest || "Fue a WhatsApp", kind: "referido" as const };
+        }
+        return { time, label, detail: "Llegó desde la web de Logic Lab" };
+      }
+      return { time, label, detail };
     });
   }
 
