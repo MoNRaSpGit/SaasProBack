@@ -11,7 +11,12 @@ const OFFICIAL_FRONTEND_ORIGINS = [
   "https://www.armiicreacionesalexa.com",
   "https://armiicreacionesalexa.com",
   "http://www.armiicreacionesalexa.com",
-  "http://armiicreacionesalexa.com"
+  "http://armiicreacionesalexa.com",
+  // Dominio propio de la web de Logic Lab (27/11/2026).
+  "https://logiclabuy.com",
+  "https://www.logiclabuy.com",
+  "http://logiclabuy.com",
+  "http://www.logiclabuy.com"
 ] as const;
 const LOCAL_DEV_FRONTEND_ORIGINS = ["http://localhost:5173", "http://localhost:5174"] as const;
 
