@@ -80,6 +80,16 @@ type AuditRow = RowDataPacket & {
 // Marca de visitantes de Qq que llegan desde la web de Logic Lab.
 const REFERRAL_TAG = "[LL]";
 
+// Web de Logic Lab: eventos que terminan en un mensaje de WhatsApp.
+const LOGICLAB_CONTACT_EVENTS = ["wa_click", "cotizador_enviar"];
+const LOGICLAB_EVENT_LABELS: Record<string, string> = {
+  visit: "Entró a la web",
+  ver_video: "Vio un video",
+  wa_click: "Tocó WhatsApp",
+  cotizador_abrir: "Abrió el cotizador",
+  cotizador_enviar: "Envió un presupuesto"
+};
+
 // Cada tabla de auditoria de este monorepo tiene sus propias columnas (no
 // todas tienen entity_type/entity_label/summary/actor) -- ver los distintos
 // scripts/inspect-*-audit.js, que son la fuente de verdad de cada esquema.
@@ -270,6 +280,7 @@ export class MovimientosService {
       { key: "agro", label: "Agro" },
       { key: "distribuidora", label: "Distribuidora" },
       { key: "qq", label: "QQ" },
+      { key: "logiclab", label: "Logic Lab (mi web)" },
       { key: "ropa", label: "Ropa" },
       { key: "juez", label: "Juez" },
       { key: "camiones", label: "Camiones" },
@@ -296,6 +307,7 @@ export class MovimientosService {
 
   // Tiendas: visitas del dia (y en QQ lo que llega desde Logic Lab).
   private async summaryExtras(key: string, dayLabel?: string): Promise<Partial<MovimientosAppSummary>> {
+    if (key === "logiclab") return { referrals: await this.countLogiclabReferrals(dayLabel) };
     if (key !== "qq" && key !== "ropa") return {};
     const [visitStats, referrals] = await Promise.all([
       this.countVisits(key === "qq" ? "saas_qq_audit_log" : "saas_ropa_audit_log", dayLabel),
@@ -346,6 +358,7 @@ export class MovimientosService {
         ["saas_camiones_trips", "driver_paid_at"],
         ["saas_camiones_trips", "paid_at"]
       ],
+      logiclab: [["saas_logiclab_events", "occurred_at"]],
       oriol: [
         ["saas_oriol_clientes", "created_at"],
         ["saas_oriol_pagos_credito", "fecha"],
@@ -387,6 +400,43 @@ export class MovimientosService {
     return { visits: count("visit"), whatsapp: count("whatsapp_click") };
   }
 
+  // ---------------- Web de Logic Lab (27/11/2026): eventos de la landing. Los
+  // que llegan desde Qq vienen con src = "ref-qq" y se resaltan. Si la tabla
+  // todavia no existe, cuenta 0 y no rompe el resumen.
+  private async loadLogiclab(dayLabel?: string) {
+    const { start, end } = dayRangeUtc(dayLabel);
+    return this.databaseService
+      .query<(RowDataPacket & { when_raw: string; event: string; rubro: string | null; section: string | null; plan: string | null; src: string | null })[]>(
+        `SELECT DATE_FORMAT(occurred_at, '%Y-%m-%dT%H:%i:%s') AS when_raw, event, rubro, section, plan, src
+         FROM saas_logiclab_events WHERE occurred_at >= ? AND occurred_at < ?
+         ORDER BY occurred_at DESC`,
+        [start, end]
+      )
+      .catch(() => []);
+  }
+
+  private async countLogiclabReferrals(dayLabel?: string) {
+    const referred = (await this.loadLogiclab(dayLabel)).filter((row) => row.src === "ref-qq");
+    return {
+      visits: referred.filter((row) => row.event === "visit").length,
+      whatsapp: referred.filter((row) => LOGICLAB_CONTACT_EVENTS.includes(row.event)).length
+    };
+  }
+
+  private async detailLogiclab(dayLabel?: string): Promise<MovimientosDetailItem[]> {
+    const rows = await this.loadLogiclab(dayLabel);
+    return rows.map((row) => {
+      const time = formatMontevideoTime(row.when_raw);
+      const fromQq = row.src === "ref-qq";
+      const parts = [row.rubro, row.section, row.plan, fromQq ? "" : row.src].filter(Boolean).join(" · ");
+      if (fromQq && LOGICLAB_CONTACT_EVENTS.includes(row.event)) {
+        return { time, label: "⭐ Posible venta desde Qq · WhatsApp", detail: parts || "Tocó WhatsApp", kind: "referido" as const };
+      }
+      const detail = [parts, fromQq ? "Llegó desde Qq" : ""].filter(Boolean).join(" · ");
+      return { time, label: LOGICLAB_EVENT_LABELS[row.event] || row.event, detail };
+    });
+  }
+
   async getDetail(appKey: string, dayLabel?: string, client?: string): Promise<MovimientosDetailItem[]> {
     switch (appKey) {
       case "gym":
@@ -397,6 +447,8 @@ export class MovimientosService {
         return this.detailCamiones(dayLabel);
       case "oriol":
         return this.detailOriol(dayLabel);
+      case "logiclab":
+        return this.detailLogiclab(dayLabel);
       case "reservas":
         return this.detailReservas(dayLabel);
       case "piloto":
