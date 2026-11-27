@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Q
 import type { Request, Response } from "express";
 import { CreatePilotoAccountEntryDto } from "./dto/create-piloto-account-entry.dto";
 import { CreatePilotoClientDto } from "./dto/create-piloto-client.dto";
+import { CreatePilotoAccountPaymentDto, CreatePilotoCreditSaleDto } from "./dto/create-piloto-credit.dto";
 import { CreatePilotoPriceEntryDto } from "./dto/create-piloto-price-entry.dto";
 import { CreatePilotoProductDto } from "./dto/create-piloto-product.dto";
 import { CreatePilotoSaleDto } from "./dto/create-piloto-sale.dto";
@@ -219,13 +220,16 @@ export class PilotoController {
   }
 
   @Post("clients")
-  createClient(@Body() dto: CreatePilotoClientDto) {
-    return this.clientsService.createClient(dto);
+  async createClient(@Body() dto: CreatePilotoClientDto) {
+    const client = await this.clientsService.createClient(dto);
+    await this.auditService.record({ action: "create", entityType: "client", entityId: client.id, entityLabel: client.name });
+    return client;
   }
 
   @Delete("clients/:id")
   async deleteClient(@Param("id", ParseIntPipe) id: number) {
-    await this.clientsService.deleteClient(id);
+    const client = await this.clientsService.deleteClient(id);
+    await this.auditService.record({ action: "delete", entityType: "client", entityId: id, entityLabel: client.name });
     return { ok: true };
   }
 
@@ -241,8 +245,51 @@ export class PilotoController {
 
   @Delete("account-entries/client/:clientId")
   async settleAccount(@Param("clientId", ParseIntPipe) clientId: number) {
-    await this.clientsService.settleAccount(clientId);
+    const result = await this.clientsService.settleAccount(clientId);
+    if (result && !result.duplicated) await this.recordPayment(result);
     return { ok: true };
+  }
+
+  @Post("credit-sales")
+  async createCreditSale(@Body() dto: CreatePilotoCreditSaleDto) {
+    const result = await this.clientsService.createCreditSale(dto);
+    if (!result.duplicated) {
+      await this.auditService.record({
+        action: "sale",
+        entityType: "account",
+        entityId: result.item.id,
+        entityLabel: `Fiado a ${result.clientName}: $${result.item.total}`,
+        details: { clientId: dto.clientId, saleId: result.item.saleId, total: result.item.total, items: result.item.items }
+      });
+    }
+    return result.item;
+  }
+
+  @Get("account-payments")
+  listAccountPayments() {
+    return this.clientsService.listPayments();
+  }
+
+  @Post("account-payments")
+  async registerAccountPayment(@Body() dto: CreatePilotoAccountPaymentDto) {
+    const result = await this.clientsService.registerPayment(dto);
+    if (!result.duplicated) await this.recordPayment(result);
+    return { payment: result.payment, balanceAfter: result.balanceAfter };
+  }
+
+  @Get("account-history")
+  getAccountHistory() {
+    return this.clientsService.getHistory();
+  }
+
+  private recordPayment(result: { payment: { id: number; clientId: number; amount: number }; clientName: string; balanceAfter: number }) {
+    return this.auditService.record({
+      action: "payment",
+      entityType: "account",
+      entityId: result.payment.id,
+      entityLabel: `${result.clientName} pagó $${result.payment.amount} (queda $${result.balanceAfter})`,
+      details: { clientId: result.payment.clientId, amount: result.payment.amount, balanceAfter: result.balanceAfter }
+    });
   }
 
   // Venta del "fondo" (30/10/2026): la tablet del fondo escanea y guarda

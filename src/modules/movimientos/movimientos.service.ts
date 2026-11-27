@@ -86,7 +86,9 @@ const SQL_AUDIT_TABLES: Record<
     actionLabels: {
       create: "Alta",
       update: "Edición",
-      sale: "Venta"
+      sale: "Venta",
+      payment: "Pago de cuenta",
+      delete: "Borrado"
     },
     buildDetail: (row, service) =>
       row.entity_label || service.summarizeJsonDetails(row.details) || `${row.entity_type || ""} #${row.entity_id ?? ""}`

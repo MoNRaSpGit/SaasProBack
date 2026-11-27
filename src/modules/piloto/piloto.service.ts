@@ -1,3 +1,4 @@
+import type { PoolConnection } from "mysql2/promise";
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
@@ -282,6 +283,13 @@ export class PilotoService {
   }
 
   async createSale(dto: CreatePilotoSaleDto): Promise<{ item: PilotoSale }> {
+    const item = await this.databaseService.withTransaction((connection) => this.insertSale(connection, dto));
+    return { item };
+  }
+
+  // Guarda la venta dentro de una transaccion ya abierta: fiar la usa para
+  // grabar venta y boleta juntas (ver piloto-clients.service.ts).
+  async insertSale(connection: PoolConnection, dto: CreatePilotoSaleDto): Promise<PilotoSale> {
     const paymentMethod = dto.paymentMethod ?? "efectivo";
     const normalizedItems = dto.items.map((item) => {
       const lineTotal = Math.round(item.price * item.quantity * 100) / 100;
@@ -298,8 +306,7 @@ export class PilotoService {
     const totalAmount = Math.round(normalizedItems.reduce((total, item) => total + item.lineTotal, 0) * 100) / 100;
     const itemsCount = normalizedItems.reduce((total, item) => total + item.quantity, 0);
 
-    const saleId = await this.databaseService.withTransaction(async (connection) => {
-      const [saleResult] = await connection.execute<ResultSetHeader>(
+    const [saleResult] = await connection.execute<ResultSetHeader>(
         `INSERT INTO saas_piloto_sales (
            total_amount,
            items_count,
@@ -309,34 +316,29 @@ export class PilotoService {
         [totalAmount, itemsCount, paymentMethod]
       );
 
-      const createdSaleId = Number(saleResult.insertId);
+    const saleId = Number(saleResult.insertId);
 
-      for (const item of normalizedItems) {
-        await connection.execute<ResultSetHeader>(
-          `INSERT INTO saas_piloto_sale_items (
-             sale_id,
-             product_id,
-             product_name,
-             unit_price,
-             quantity,
-             line_total,
-             image_url
-           ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [createdSaleId, item.productId, item.name, item.unitPrice, item.quantity, item.lineTotal, item.imageUrl]
-        );
-      }
-
-      return createdSaleId;
-    });
+    for (const item of normalizedItems) {
+      await connection.execute<ResultSetHeader>(
+        `INSERT INTO saas_piloto_sale_items (
+           sale_id,
+           product_id,
+           product_name,
+           unit_price,
+           quantity,
+           line_total,
+           image_url
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [saleId, item.productId, item.name, item.unitPrice, item.quantity, item.lineTotal, item.imageUrl]
+      );
+    }
 
     return {
-      item: {
-        id: saleId,
-        totalAmount,
-        itemsCount,
-        paymentMethod,
-        createdAt: new Date().toISOString()
-      }
+      id: saleId,
+      totalAmount,
+      itemsCount,
+      paymentMethod,
+      createdAt: new Date().toISOString()
     };
   }
 
@@ -488,13 +490,34 @@ export class PilotoService {
 
     const totalAmount = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
 
+    // Cobros de cuentas del dia (27/11/2026): plata que entro por fiados. Va
+    // aparte: el fiado ya conto como venta el dia que se hizo.
+    const paymentRows = await this.databaseService.query<
+      Array<RowDataPacket & { id: number; name: string; amount: string | number; created_at: string }>
+    >(
+      `SELECT p.id, c.name, p.amount, DATE_FORMAT(p.created_at, '%Y-%m-%dT%H:%i:%s') AS created_at
+       FROM saas_piloto_account_payments p
+       JOIN saas_piloto_clients c ON c.id = p.client_id
+       WHERE p.voided_at IS NULL AND p.created_at >= ? AND p.created_at < ?
+       ORDER BY p.created_at DESC, p.id DESC`,
+      [startIso, endIso]
+    );
+    const accountPayments = paymentRows.map((row) => ({
+      id: Number(row.id),
+      clientName: row.name,
+      amount: Number(row.amount),
+      createdAt: `${row.created_at}Z`
+    }));
+
     return {
       date,
       salesCount: sales.length,
       totalAmount,
       profitAmount: Math.round(totalAmount * PILOTO_PROFIT_MARGIN_RATIO * 100) / 100,
       profitMarginRatio: PILOTO_PROFIT_MARGIN_RATIO,
-      sales
+      sales,
+      accountPayments,
+      accountPaymentsAmount: accountPayments.reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0) / 100
     };
   }
 }

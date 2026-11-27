@@ -69,6 +69,8 @@ export type PilotoSalesSummary = {
   profitAmount: number;
   profitMarginRatio: number;
   sales: PilotoSaleMovement[];
+  accountPayments: { id: number; clientName: string; amount: number; createdAt: string }[];
+  accountPaymentsAmount: number;
 };
 
 // Clientes / cuenta corriente (06/10/2026, pedido explicito: "venta a
@@ -76,12 +78,22 @@ export type PilotoSalesSummary = {
 // cliente, similar a la de Joker, pero plan basico" -- version simple:
 // sin pagos parciales ni archivo historico, solo boletas + "saldar
 // cuenta" que las borra todas de una).
+export type PilotoAccountPayment = {
+  id: number;
+  clientId: number;
+  amount: number;
+  createdAt: string;
+  closedByPaymentId: number | null;
+  voided: boolean;
+};
+
 export type PilotoClient = {
   id: number;
   name: string;
   phone: string | null;
   address: string | null;
   createdAt: string;
+  deletedAt: string | null;
 };
 
 export type PilotoAccountEntryItem = {
@@ -97,4 +109,6 @@ export type PilotoAccountEntry = {
   total: number;
   items: PilotoAccountEntryItem[];
   createdAt: string;
+  closedByPaymentId: number | null;
+  voided: boolean;
 };

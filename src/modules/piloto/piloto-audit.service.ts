@@ -1,9 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../shared/database/database.service";
 
-export type PilotoAuditAction = "create" | "update" | "sale";
+export type PilotoAuditAction = "create" | "update" | "sale" | "payment" | "delete";
 
-export type PilotoAuditEntityType = "product" | "sale";
+export type PilotoAuditEntityType = "product" | "sale" | "client" | "account";
 
 export type PilotoAuditEvent = {
   action: PilotoAuditAction;
