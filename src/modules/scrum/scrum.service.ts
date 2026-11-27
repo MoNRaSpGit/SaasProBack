@@ -151,13 +151,15 @@ export class ScrumService {
   constructor(private readonly databaseService: DatabaseService) {}
 
   async getWorkspace() {
-    const [tasks, clients, debts] = await Promise.all([this.listTasks(), this.listClients(), this.listDebts()]);
+    // (27/11/2026, velocidad) Todo en paralelo. Las deudas ya no viajan: esa
+    // pestaña se saco del front en octubre.
+    const [tasks, clients, expenses] = await Promise.all([this.listTasks(), this.listClients(), this.listExpenses()]);
 
     return {
       ok: true,
       tasks,
       clients,
-      debts
+      expenses
     };
   }
 
@@ -517,47 +519,6 @@ export class ScrumService {
     return { ok: true };
   }
 
-  private async listDebts() {
-    const rows = await this.databaseService.query<ScrumDebtRow[]>(
-      `SELECT id, name, initial_amount, due_date, created_at, updated_at
-       FROM saas_scrum_debts
-       ORDER BY due_date ASC, id DESC`
-    );
-
-    if (!rows.length) {
-      return [];
-    }
-
-    const [chargeRows, paymentRows] = await Promise.all([
-      this.databaseService.query<ScrumDebtChargeRow[]>(
-        `SELECT id, debt_id, amount, detail, charged_at FROM saas_scrum_debt_charges ORDER BY charged_at ASC, id ASC`
-      ),
-      this.databaseService.query<ScrumDebtPaymentRow[]>(
-        `SELECT id, debt_id, amount, paid_at FROM saas_scrum_debt_payments ORDER BY paid_at ASC, id ASC`
-      )
-    ]);
-
-    const chargesByDebtId = new Map<number, ScrumDebtChargeRow[]>();
-    for (const chargeRow of chargeRows) {
-      const debtId = Number(chargeRow.debt_id);
-      const list = chargesByDebtId.get(debtId) ?? [];
-      list.push(chargeRow);
-      chargesByDebtId.set(debtId, list);
-    }
-
-    const paymentsByDebtId = new Map<number, ScrumDebtPaymentRow[]>();
-    for (const paymentRow of paymentRows) {
-      const debtId = Number(paymentRow.debt_id);
-      const list = paymentsByDebtId.get(debtId) ?? [];
-      list.push(paymentRow);
-      paymentsByDebtId.set(debtId, list);
-    }
-
-    return rows.map((row) =>
-      this.mapDebt(row, chargesByDebtId.get(Number(row.id)) ?? [], paymentsByDebtId.get(Number(row.id)) ?? [])
-    );
-  }
-
   private async getDebtById(debtId: number) {
     const rows = await this.databaseService.query<ScrumDebtRow[]>(
       `SELECT id, name, initial_amount, due_date, created_at, updated_at
@@ -665,7 +626,9 @@ export class ScrumService {
   }
 
   private async listClients() {
-    const rows = await this.databaseService.query<ScrumClientRow[]>(
+    // (27/11/2026, velocidad) Las consultas no dependen entre si: salen juntas
+    // en vez de una atras de la otra.
+    const rowsQuery = this.databaseService.query<ScrumClientRow[]>(
       `SELECT
          id,
          name,
@@ -682,15 +645,24 @@ export class ScrumService {
        ORDER BY id DESC`
     );
 
-    if (!rows.length) {
-      return [];
-    }
-
-    const paymentRows = await this.databaseService.query<ScrumClientDebtPaymentRow[]>(
+    const paymentsQuery = this.databaseService.query<ScrumClientDebtPaymentRow[]>(
       `SELECT id, client_id, amount, paid_at
        FROM saas_scrum_client_debt_payments
        ORDER BY paid_at ASC, id ASC`
     );
+
+    const amountChangesQuery = this.databaseService.query<ScrumClientAmountChangeRow[]>(
+      `SELECT id, client_id, previous_amount, new_amount, description, changed_at
+       FROM saas_scrum_client_amount_changes
+       ORDER BY changed_at ASC, id ASC`
+    );
+
+    const [rows, paymentRows, amountChangeRows, equipmentByClientId] = await Promise.all([
+      rowsQuery,
+      paymentsQuery,
+      amountChangesQuery,
+      this.loadEquipment()
+    ]);
 
     const paymentsByClientId = new Map<number, ScrumClientDebtPaymentRow[]>();
     for (const paymentRow of paymentRows) {
@@ -700,12 +672,6 @@ export class ScrumService {
       paymentsByClientId.set(clientId, list);
     }
 
-    const amountChangeRows = await this.databaseService.query<ScrumClientAmountChangeRow[]>(
-      `SELECT id, client_id, previous_amount, new_amount, description, changed_at
-       FROM saas_scrum_client_amount_changes
-       ORDER BY changed_at ASC, id ASC`
-    );
-
     const amountChangesByClientId = new Map<number, ScrumClientAmountChangeRow[]>();
     for (const changeRow of amountChangeRows) {
       const clientId = Number(changeRow.client_id);
@@ -713,8 +679,6 @@ export class ScrumService {
       list.push(changeRow);
       amountChangesByClientId.set(clientId, list);
     }
-
-    const equipmentByClientId = await this.loadEquipment();
 
     return rows.map((row) => ({
       ...this.mapClient(row, paymentsByClientId.get(Number(row.id)) ?? [], amountChangesByClientId.get(Number(row.id)) ?? []),
@@ -817,18 +781,17 @@ export class ScrumService {
   private async loadEquipment(clientId?: number) {
     const where = clientId === undefined ? "" : "WHERE client_id = ?";
     const params = clientId === undefined ? [] : [clientId];
-    const planRows = await this.databaseService.query<ScrumClientEquipmentRow[]>(
-      `SELECT client_id, installment_amount, months FROM saas_scrum_client_equipment ${where}`,
-      params
-    );
+    const [planRows, paymentRows] = await Promise.all([
+      this.databaseService.query<ScrumClientEquipmentRow[]>(
+        `SELECT client_id, installment_amount, months FROM saas_scrum_client_equipment ${where}`,
+        params
+      ),
+      this.databaseService.query<ScrumClientEquipmentPaymentRow[]>(
+        `SELECT id, client_id, amount, paid_at FROM saas_scrum_client_equipment_payments ${where} ORDER BY paid_at ASC, id ASC`,
+        params
+      )
+    ]);
     const result = new Map<number, ReturnType<ScrumService["buildEquipment"]>>();
-    if (!planRows.length) {
-      return result;
-    }
-    const paymentRows = await this.databaseService.query<ScrumClientEquipmentPaymentRow[]>(
-      `SELECT id, client_id, amount, paid_at FROM saas_scrum_client_equipment_payments ${where} ORDER BY paid_at ASC, id ASC`,
-      params
-    );
     for (const plan of planRows) {
       const id = Number(plan.client_id);
       result.set(

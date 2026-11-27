@@ -40,8 +40,14 @@ export class ScrumController {
   }
 
   @Get("workspace")
-  getWorkspace() {
-    return this.scrumService.getWorkspace();
+  async getWorkspace() {
+    // Los avisos viajan junto (27/11/2026, velocidad): antes se pedian aparte
+    // cada vez que se abria la ficha de un cliente. Si fallan, no frenan nada.
+    const [workspace, notices] = await Promise.all([
+      this.scrumService.getWorkspace(),
+      this.noticesService.listForScrum().catch(() => undefined)
+    ]);
+    return { ...workspace, notices };
   }
 
   @Post("tasks")
